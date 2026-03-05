@@ -30,6 +30,8 @@ news_agg = NewsAggregator(
     sec_enabled=news_cfg["sec_filings"],
     earnings_enabled=news_cfg["earnings_calendar"],
     press_releases_enabled=news_cfg["press_releases"],
+    use_real_sec=news_cfg.get("use_real_sec", False),
+    sec_user_agent=news_cfg.get("sec_user_agent", "TradingBot/1.0 (agent@tradingbot.local)"),
 )
 scorer = CatalystScorerV2(news_agg)
 catalyst_scores = scorer.score_symbols(universe)

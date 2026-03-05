@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 import re
 
 import requests
+
+from tradingbot.research.sec_filings import SECFilingsFetcher
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,12 +29,18 @@ class NewsAggregator:
         earnings_enabled: bool = True,
         press_releases_enabled: bool = True,
         max_age_hours: int = 24,
+        use_real_sec: bool = False,
+        sec_user_agent: str = "TradingBot/1.0 (agent@tradingbot.local)",
     ) -> None:
         self.sec_enabled = sec_enabled
         self.earnings_enabled = earnings_enabled
         self.press_releases_enabled = press_releases_enabled
         self.max_age_hours = max_age_hours
         self.cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
+        
+        # Initialize SEC fetcher for real data
+        self.use_real_sec = use_real_sec
+        self.sec_fetcher = SECFilingsFetcher(user_agent=sec_user_agent) if use_real_sec else None
 
     def fetch_news(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
         """Fetch news for all symbols from enabled sources."""
@@ -53,12 +64,38 @@ class NewsAggregator:
         return news_by_symbol
 
     def _fetch_sec_filings(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
-        """Fetch recent SEC filings (8-K, 10-Q, etc.)."""
+        """Fetch recent SEC filings (8-K, 10-Q, etc.) from EDGAR API."""
         news: dict[str, list[NewsItem]] = {symbol: [] for symbol in symbols}
         
-        # Mock implementation - in production would use SEC EDGAR API
-        # Example: https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=SYMBOL
+        # Try to fetch real SEC filings if enabled
+        if self.use_real_sec and self.sec_fetcher:
+            try:
+                filings = self.sec_fetcher.fetch_recent_filings(
+                    symbols,
+                    hours_lookback=self.max_age_hours,
+                    max_results_per_symbol=5,
+                )
+                
+                for filing in filings:
+                    symbol = filing["symbol"]
+                    # Score significance based on form type and filing content
+                    relevance = 70.0 if filing["is_significant"] else 50.0
+                    
+                    news[symbol].append(
+                        NewsItem(
+                            symbol=symbol,
+                            headline=f"{filing['form_type']}: {filing['description']}",
+                            source="SEC EDGAR",
+                            published_at=datetime.fromisoformat(filing["filed_date"].replace("Z", "+00:00")),
+                            relevance_score=relevance,
+                        )
+                    )
+                logger.info(f"Fetched {len(filings)} real SEC filings")
+                return news
+            except Exception as e:
+                logger.warning(f"Failed to fetch real SEC filings: {e}, falling back to mock")
         
+        # Fallback to mock data if real fetch is disabled or failed
         for symbol in symbols:
             # Simulate finding a recent 8-K filing for high-momentum stocks
             if symbol in ["NVDA", "TSLA", "PLTR", "COIN"]:

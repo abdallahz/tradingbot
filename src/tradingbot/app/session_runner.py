@@ -60,6 +60,8 @@ class SessionRunner:
                 earnings_enabled=news_cfg["earnings_calendar"],
                 press_releases_enabled=news_cfg["press_releases"],
                 max_age_hours=news_cfg["max_age_hours"],
+                use_real_sec=news_cfg.get("use_real_sec", False),
+                sec_user_agent=news_cfg.get("sec_user_agent", "TradingBot/1.0 (agent@tradingbot.local)"),
             )
             self.catalyst_scorer = CatalystScorerV2(news_agg)
         else:
