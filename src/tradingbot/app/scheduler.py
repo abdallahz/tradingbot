@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tradingbot.config import ConfigLoader
 from tradingbot.app.session_runner import SessionRunner
+from tradingbot.reports.archive_manager import ArchiveManager
 
 
 @dataclass
@@ -32,6 +33,7 @@ class Scheduler:
             close_scan=cfg["close_scan"],
             eod_reconcile=cfg["eod_reconcile"],
         )
+        self.archive = ArchiveManager(root)
 
     def describe(self) -> str:
         return (
@@ -61,6 +63,10 @@ class Scheduler:
         with scores_path.open("w", encoding="utf-8") as f:
             json.dump(catalyst_scores, f, indent=2)
         
+        # Archive the run
+        self.archive.archive_daily_run("news")
+        self.archive.create_daily_index()
+        
         return catalyst_scores
     
     def run_morning_only(self) -> None:
@@ -81,6 +87,10 @@ class Scheduler:
         # Run morning session
         results = runner.run_single_session("morning", catalyst_scores)
         runner._write_single_session_output(results, "morning")
+        
+        # Archive the run
+        self.archive.archive_daily_run("morning")
+        self.archive.create_daily_index()
     
     def run_midday_only(self) -> None:
         """Run midday scan using saved catalyst_scores.json"""
@@ -100,6 +110,10 @@ class Scheduler:
         # Run midday session
         results = runner.run_single_session("midday", catalyst_scores)
         runner._write_single_session_output(results, "midday")
+        
+        # Archive the run
+        self.archive.archive_daily_run("midday")
+        self.archive.create_daily_index()
     
     def run_close_only(self) -> None:
         """Run close scan using saved catalyst_scores.json"""
@@ -119,3 +133,7 @@ class Scheduler:
         # Run close session
         results = runner.run_single_session("close", catalyst_scores)
         runner._write_single_session_output(results, "close")
+        
+        # Archive the run
+        self.archive.archive_daily_run("close")
+        self.archive.create_daily_index()

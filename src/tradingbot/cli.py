@@ -36,28 +36,41 @@ def main() -> None:
         print(f"\n{mode_str} News Research Complete")
         print(f">> Saved {len(catalyst_scores)} catalyst scores to outputs/catalyst_scores.json")
         high_scores = {s: score for s, score in catalyst_scores.items() if score >= 60}
-        print(f">> {len(high_scores)} symbols with catalyst score >= 60\n")
+        print(f">> {len(high_scores)} symbols with catalyst score >= 60")
+        from datetime import datetime
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        print(f">> Archived to: outputs/archive/{today}/")
+        print(f">> View index: outputs/archive/{today}/INDEX.md\n")
         return
     
     if args.command == "run-morning":
         scheduler.run_morning_only()
         print(f"\n{mode_str} Morning Pre-Market Scan Complete")
         print(f">> Watchlist: outputs/morning_watchlist.csv")
-        print(f">> Playbook:  outputs/morning_playbook.md\n")
+        print(f">> Playbook:  outputs/morning_playbook.md")
+        from datetime import datetime
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        print(f">> Archived to: outputs/archive/{today}/\n")
         return
     
     if args.command == "run-midday":
         scheduler.run_midday_only()
         print(f"\n{mode_str} Midday Scan Complete")
         print(f">> Watchlist: outputs/midday_watchlist.csv")
-        print(f">> Playbook:  outputs/midday_playbook.md\n")
+        print(f">> Playbook:  outputs/midday_playbook.md")
+        from datetime import datetime
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        print(f">> Archived to: outputs/archive/{today}/\n")
         return
     
     if args.command == "run-close":
         scheduler.run_close_only()
         print(f"\n{mode_str} Close Scan Complete")
         print(f">> Watchlist: outputs/close_watchlist.csv")
-        print(f">> Playbook:  outputs/close_playbook.md\n")
+        print(f">> Playbook:  outputs/close_playbook.md")
+        from datetime import datetime
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        print(f">> Archived to: outputs/archive/{today}/\n")
         return
 
     # Legacy run-day command
