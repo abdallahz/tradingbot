@@ -1,0 +1,9 @@
+schedule:
+  timezone: America/New_York
+  night_research: "20:00"      # 8:00 PM - Night news research
+  morning_news: "08:00"         # 8:00 AM - Early morning news update
+  premarket_scan: "08:45"       # 8:45 AM - Pre-market scan
+  midday_scan: "12:00"          # 12:00 PM - Midday market scan
+  close_scan: "15:50"           # 3:50 PM - After-hours close scan
+  eod_reconcile: "17:00"        # 5:00 PM - End of day reconciliation
+

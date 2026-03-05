@@ -1,0 +1,15 @@
+scanner:
+  price_min: 2.0
+  price_max: 30.0
+  min_gap_pct: 4.0
+  min_premarket_volume: 500000
+  min_dollar_volume: 20000000
+  max_spread_pct: 0.35
+  min_score: 70
+  max_candidates: 10
+
+midday:
+  min_relative_volume: 1.8
+  min_dollar_volume: 35000000
+  max_spread_pct: 0.25
+  min_score: 75

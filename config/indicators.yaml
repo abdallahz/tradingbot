@@ -1,0 +1,6 @@
+indicators:
+  ema_fast: 9
+  ema_slow: 20
+  volume_spike_multiplier_morning: 1.8
+  volume_spike_multiplier_midday: 2.2
+  vwap_hold_bars: 1

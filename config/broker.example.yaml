@@ -1,0 +1,19 @@
+alpaca:
+  # Get free paper trading credentials at https://alpaca.markets
+  api_key: "YOUR_ALPACA_API_KEY"
+  api_secret: "YOUR_ALPACA_SECRET_KEY"
+  paper: true  # Set to false for live trading (NOT RECOMMENDED until fully validated)
+  
+news:
+  # Enable/disable individual news sources
+  sec_filings: true
+  earnings_calendar: true
+  press_releases: true
+  twitter_enabled: false  # Requires Twitter API credentials
+  reddit_enabled: false   # Reddit scraping
+  
+  # Twitter API (optional)
+  twitter_bearer_token: ""
+  
+  # Minimum news age for catalyst scoring (hours)
+  max_age_hours: 24
