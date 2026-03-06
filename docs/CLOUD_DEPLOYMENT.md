@@ -72,6 +72,29 @@ After deployment, each cron job should produce:
 - `outputs/catalyst_scores.json` from `run-news`
 - session watchlists and playbooks from morning/midday/close runs
 
+## Data quality validation
+
+**Note:** Alpaca's free paper trading API occasionally returns stale or incorrect prices. The bot now includes automatic data quality validation:
+
+**What it checks:**
+- Extreme gaps (>50%) without obvious news
+- Wide bid-ask spreads (>5%) indicating stale quotes
+- Suspiciously low prices with high gaps
+- Round/placeholder prices
+
+**How it works:**
+- Suspicious stocks are automatically filtered out
+- You won't see bad data in your watchlists
+- Enable `DEBUG=1` environment variable to see validation warnings in logs
+
+**Examples of filtered data:**
+```
+[DEBUG] SOUN: price=$6.86, prev=$8.27, gap=-17.05% ⚠️ extreme_gap
+[DEBUG] SOUN: Skipping due to suspicious data quality
+```
+
+**If you see frequent filtering:** Consider upgrading to Alpaca's paid market data tier ($9/mo) for real-time accurate quotes.
+
 ## Heroku-style option
 
 Use `Procfile` with Scheduler add-on commands:
