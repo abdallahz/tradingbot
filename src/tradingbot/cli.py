@@ -37,8 +37,8 @@ def main() -> None:
         print(f">> Saved {len(catalyst_scores)} catalyst scores to outputs/catalyst_scores.json")
         high_scores = {s: score for s, score in catalyst_scores.items() if score >= 60}
         print(f">> {len(high_scores)} symbols with catalyst score >= 60")
-        from datetime import datetime
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         print(f">> Archived to: outputs/archive/{today}/")
         print(f">> View index: outputs/archive/{today}/INDEX.md\n")
         return
