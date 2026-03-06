@@ -80,12 +80,26 @@ class AlpacaClient:
                         continue
                     
                     gap_pct = ((current_price - prev_close) / prev_close) * 100
-                    if DEBUG:
-                        print(f"[DEBUG] {symbol}: price=${current_price:.2f}, prev=${prev_close:.2f}, gap={gap_pct:.2f}%")                    
+                    
                     # Calculate spread
                     bid = float(quote.bid_price) if quote.bid_price else current_price
                     ask = float(quote.ask_price) if quote.ask_price else current_price
                     spread_pct = ((ask - bid) / current_price) * 100 if current_price > 0 else 0
+                    
+                    # Data quality validation (paper trading data can be unreliable)
+                    data_warning = self._validate_price_data(symbol, current_price, prev_close, gap_pct, spread_pct)
+                    
+                    if DEBUG:
+                        warn_str = f" ⚠️ {data_warning}" if data_warning else ""
+                        print(f"[DEBUG] {symbol}: price=${current_price:.2f}, prev=${prev_close:.2f}, gap={gap_pct:.2f}%{warn_str}")
+                    
+                    # Skip symbols with critical data quality issues
+                    if data_warning and any(
+                        flag in data_warning for flag in ["extreme_gap", "wide_spread"]
+                    ):
+                        if DEBUG:
+                            print(f"[DEBUG] {symbol}: Skipping due to suspicious data quality")
+                        continue
                     
                     # Get volume metrics
                     daily_volume = snap.daily_bar.volume if snap.daily_bar else 0
@@ -223,6 +237,35 @@ class AlpacaClient:
             return float(ema9), float(ema20), float(vwap)
         except Exception:
             return current_price, current_price * 0.99, current_price
+
+    def _validate_price_data(
+        self, symbol: str, current_price: float, prev_close: float, gap_pct: float, spread_pct: float
+    ) -> str | None:
+        """
+        Validate price data quality from Alpaca's paper trading API.
+        Returns warning message if data looks suspicious, None if OK.
+        """
+        warnings = []
+        
+        # 1. Check for extreme gaps (>50% for any stock is suspicious without news)
+        if abs(gap_pct) > 50:
+            warnings.append(f"extreme_gap_{gap_pct:.1f}%")
+        
+        # 2. Check for unreasonably wide spreads (>5% suggests bad/stale data)
+        if spread_pct > 5:
+            warnings.append(f"wide_spread_{spread_pct:.1f}%")
+        
+        # 3. Check for price/gap mismatch (if gap is huge but price seems wrong)
+        if abs(gap_pct) > 30 and current_price < 5:
+            warnings.append("low_price_high_gap")
+        
+        # 4. Check for suspiciously round prices (e.g., exactly $10.00 might be placeholder)
+        if current_price > 0 and current_price == round(current_price) and current_price >= 10:
+            decimal_places = len(str(current_price).split('.')[-1]) if '.' in str(current_price) else 0
+            if decimal_places == 0:
+                warnings.append("round_price")
+        
+        return ", ".join(warnings) if warnings else None
 
     def get_tradable_universe(self) -> list[str]:
         """Get list of tradable symbols matching basic criteria."""
