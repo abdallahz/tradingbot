@@ -77,6 +77,23 @@ python -m tradingbot.cli run-close    # 3:50 PM close
 python -m tradingbot.cli schedule
 ```
 
+5. Optional: cloud cron deployment (Phase 5)
+
+Set environment variables (instead of committing secrets):
+```bash
+ALPACA_API_KEY=...
+ALPACA_API_SECRET=...
+ALPACA_PAPER=true
+SEC_USER_AGENT="TradingBot/1.0 (you@example.com)"
+```
+
+Use the included cloud files:
+- `render.yaml` (Render cron blueprint)
+- `Procfile` (Heroku-style scheduler command)
+- `.env.example` (variable template)
+
+See [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) for full setup.
+
 **Outputs:**
 - `run-news`: `outputs/catalyst_scores.json`
 - `run-morning`: `outputs/morning_watchlist.csv`, `outputs/morning_playbook.md`
@@ -84,7 +101,7 @@ python -m tradingbot.cli schedule
 - `run-close`: `outputs/close_watchlist.csv`, `outputs/close_playbook.md`
 - `run-day`: `outputs/morning_watchlist.csv`, `outputs/midday_watchlist.csv`, `outputs/daily_playbook.md`
 
-5. Run tests:
+6. Run tests:
 
 ```bash
 pytest tests/ -v
@@ -463,6 +480,7 @@ See **[TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md)** for automation setup.
 - [PHASE2_GUIDE.md](PHASE2_GUIDE.md) - Detailed Alpaca integration guide
 - [PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md) - Phase 4 roadmap (automation + real news)
 - [TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Windows Task Scheduler automation guide
+- [CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) - Phase 5 cloud deployment runbook
 - [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) - File management and archiving system
 - [PRE_PUSH_CHECKLIST.md](PRE_PUSH_CHECKLIST.md) - Pre-commit verification checklist
 - [config/broker.example.yaml](config/broker.example.yaml) - API credential template

@@ -1,5 +1,6 @@
 alpaca:
   # Get free paper trading credentials at https://alpaca.markets
+  # Cloud deployments should set ALPACA_API_KEY / ALPACA_API_SECRET env vars.
   api_key: "YOUR_ALPACA_API_KEY"
   api_secret: "YOUR_ALPACA_SECRET_KEY"
   paper: true  # Set to false for live trading (NOT RECOMMENDED until fully validated)
@@ -7,10 +8,15 @@ alpaca:
 news:
   # Enable/disable individual news sources
   sec_filings: true
+  rss_feeds: true
+  social_proxy_enabled: true  # Free social fallback (Stocktwits/Reddit)
   earnings_calendar: true
   press_releases: true
   twitter_enabled: false  # Requires Twitter API credentials
   reddit_enabled: false   # Reddit scraping
+
+  # SEC requires a descriptive user-agent in requests
+  sec_user_agent: "TradingBot/1.0 (yourbot@example.com)"
   
   # Twitter API (optional)
   twitter_bearer_token: ""
