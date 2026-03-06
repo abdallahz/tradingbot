@@ -62,6 +62,7 @@ class SessionRunner:
                 max_age_hours=news_cfg["max_age_hours"],
                 use_real_sec=news_cfg.get("use_real_sec", False),
                 sec_user_agent=news_cfg.get("sec_user_agent", "TradingBot/1.0 (agent@tradingbot.local)"),
+                rss_enabled=news_cfg.get("rss_feeds", True),
             )
             self.catalyst_scorer = CatalystScorerV2(news_agg)
         else:
@@ -279,9 +280,23 @@ class SessionRunner:
     ) -> ThreeOptionWatchlist:
         """Run 3 different scan approaches and provide recommendation."""
         
-        # Option 1: Night Research - Top catalyst picks
+        # Option 1: Night Research - Top catalyst picks with smart money signals
         night_picks = []
         top_catalysts = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # Fetch smart money signals for top catalysts
+        smart_money_signals = {}
+        try:
+            from tradingbot.research.insider_tracking import SmartMoneyTracker
+            tracker = SmartMoneyTracker()
+            top_symbols = [symbol for symbol, _ in top_catalysts if catalyst_scores.get(symbol, 0) >= 60]
+            if top_symbols:
+                smart_money_signals = tracker.get_smart_money_signals(top_symbols, days_lookback=7)
+        except Exception as e:
+            # If smart money tracking fails, continue without it
+            import logging
+            logging.warning(f"Could not fetch smart money signals: {e}")
+        
         for symbol, score in top_catalysts:
             if score >= 60:
                 # Get reasons from snapshots if available
@@ -293,10 +308,49 @@ class SessionRunner:
                         reasons.append(f"Gap: {snap.gap_pct:+.1f}%")
                     if snap.relative_volume >= 1.5:
                         reasons.append(f"RelVol: {snap.relative_volume:.1f}x")
+                    
+                    # Add smart money data if available
+                    smart_money_score = 50.0
+                    insider_signal = ""
+                    institutional_signal = ""
+                    
+                    if symbol in smart_money_signals:
+                        sm_data = smart_money_signals[symbol]
+                        smart_money_score = sm_data.get("smart_money_score", 50.0)
+                        
+                        # Analyze insider trades
+                        insider_trades = sm_data.get("insider_trades", [])
+                        if insider_trades:
+                            purchases = sum(1 for t in insider_trades if "Purchase" in t.transaction_type)
+                            sales = sum(1 for t in insider_trades if "Sale" in t.transaction_type)
+                            if purchases > sales:
+                                insider_signal = "buying"
+                            elif sales > purchases:
+                                insider_signal = "selling"
+                            else:
+                                insider_signal = "neutral"
+                        
+                        # Analyze institutional positions
+                        inst_positions = sm_data.get("institutional_positions", [])
+                        if inst_positions:
+                            increasing = sum(1 for p in inst_positions 
+                                           if p.change_from_prior_quarter and p.change_from_prior_quarter > 0)
+                            decreasing = sum(1 for p in inst_positions
+                                           if p.change_from_prior_quarter and p.change_from_prior_quarter < 0)
+                            if increasing > decreasing:
+                                institutional_signal = "accumulating"
+                            elif decreasing > increasing:
+                                institutional_signal = "reducing"
+                            else:
+                                institutional_signal = "neutral"
+                    
                     night_picks.append(NightResearchResult(
                         symbol=symbol,
                         catalyst_score=score,
                         reasons=reasons or ["High catalyst score"],
+                        smart_money_score=smart_money_score,
+                        insider_signal=insider_signal,
+                        institutional_signal=institutional_signal,
                     ))
         
         # Option 2: Relaxed filters scan

@@ -63,6 +63,9 @@ class NightResearchResult:
     symbol: str
     catalyst_score: float
     reasons: list[str]
+    smart_money_score: float = 50.0  # Default neutral score
+    insider_signal: str = ""  # "buying", "selling", "neutral", ""
+    institutional_signal: str = ""  # "accumulating", "reducing", "neutral", ""
 
 
 @dataclass

@@ -158,7 +158,7 @@ class SECFilingsFetcher:
                     try:
                         filed_dt = datetime.strptime(filed_date_str, "%Y-%m-%d")
                         filed_iso = filed_dt.isoformat() + "Z"
-                    except:
+                    except (ValueError, TypeError) as e:
                         logger.warning(f"Could not parse date: {filed_date_str}")
                         continue
                     

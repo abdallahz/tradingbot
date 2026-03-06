@@ -126,8 +126,36 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
     
     if watchlist.night_research_picks:
         for pick in watchlist.night_research_picks:
-            reasons_str = " | ".join(pick.reasons) if pick.reasons else "Strong catalyst"
-            lines.append(f"- **{pick.symbol}** (catalyst={pick.catalyst_score:.0f}) | {reasons_str}")
+            # Base info
+            main_line = f"- **{pick.symbol}** (catalyst={pick.catalyst_score:.0f}"
+            
+            # Add smart money score if available
+            if pick.smart_money_score != 50.0:
+                sentiment = "🟢" if pick.smart_money_score >= 70 else "🟡" if pick.smart_money_score >= 50 else "🔴"
+                main_line += f" | smart_money={pick.smart_money_score:.0f}{sentiment}"
+            
+            # Add signals if available
+            signals = []
+            if pick.insider_signal:
+                signal_emoji = "👥🟢" if pick.insider_signal == "buying" else "👥🔴" if pick.insider_signal == "selling" else "👥⚪"
+                signals.append(f"{signal_emoji} {pick.insider_signal}")
+            if pick.institutional_signal:
+                signal_emoji = "🏦🟢" if pick.institutional_signal == "accumulating" else "🏦🔴" if pick.institutional_signal == "reducing" else "🏦⚪"
+                signals.append(f"{signal_emoji} {pick.institutional_signal}")
+            
+            if signals:
+                main_line += f" | {' | '.join(signals)}"
+            
+            main_line += ")"
+            
+            # Add reasons
+            if pick.reasons:
+                reasons_str = " | ".join(pick.reasons)
+                main_line += f" | {reasons_str}"
+            else:
+                main_line += " | Strong catalyst"
+            
+            lines.append(main_line)
     else:
         lines.append("- No significant catalysts detected")
     
