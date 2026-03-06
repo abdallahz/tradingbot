@@ -292,6 +292,9 @@ class SessionRunner:
             top_symbols = [symbol for symbol, _ in top_catalysts if catalyst_scores.get(symbol, 0) >= 60]
             if top_symbols:
                 smart_money_signals = tracker.get_smart_money_signals(top_symbols, days_lookback=7)
+                
+                # Save smart money signals to file for persistence
+                self._save_smart_money_signals(smart_money_signals, session_tag)
         except Exception as e:
             # If smart money tracking fails, continue without it
             import logging
@@ -552,3 +555,76 @@ class SessionRunner:
         
         playbook_path = output_dir / f"{session_name}_playbook.md"
         playbook_path.write_text("\n".join(lines), encoding="utf-8")
+    
+    def _save_smart_money_signals(self, signals: dict, session_tag: str) -> None:
+        """Save smart money signals to JSON file for historical reference."""
+        import json
+        from dataclasses import asdict
+        
+        output_dir = self.root / "outputs"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Convert dataclass objects to dictionaries
+        serializable_signals = {}
+        for symbol, data in signals.items():
+            serializable_data = {
+                "symbol": symbol,
+                "smart_money_score": data.get("smart_money_score", 50.0),
+                "insider_trades": [],
+                "institutional_positions": [],
+                "congressional_trades": [],
+            }
+            
+            # Convert insider trades
+            for trade in data.get("insider_trades", []):
+                serializable_data["insider_trades"].append({
+                    "symbol": trade.symbol,
+                    "insider_name": trade.insider_name,
+                    "insider_title": trade.insider_title,
+                    "transaction_date": trade.transaction_date.isoformat() if trade.transaction_date else None,
+                    "transaction_type": trade.transaction_type,
+                    "shares": trade.shares,
+                    "price_per_share": trade.price_per_share,
+                    "total_value": trade.total_value,
+                    "is_significant": trade.is_significant,
+                })
+            
+            # Convert institutional positions
+            for pos in data.get("institutional_positions", []):
+                serializable_data["institutional_positions"].append({
+                    "symbol": pos.symbol,
+                    "institution_name": pos.institution_name,
+                    "shares_held": pos.shares_held,
+                    "market_value": pos.market_value,
+                    "percent_of_portfolio": pos.percent_of_portfolio,
+                    "filing_date": pos.filing_date.isoformat() if pos.filing_date else None,
+                    "change_from_prior_quarter": pos.change_from_prior_quarter,
+                    "percent_change": pos.percent_change,
+                })
+            
+            # Convert congressional trades
+            for trade in data.get("congressional_trades", []):
+                serializable_data["congressional_trades"].append({
+                    "symbol": trade.symbol,
+                    "politician_name": trade.politician_name,
+                    "position": trade.position,
+                    "party": trade.party,
+                    "transaction_date": trade.transaction_date.isoformat() if trade.transaction_date else None,
+                    "transaction_type": trade.transaction_type,
+                    "amount_range": trade.amount_range,
+                    "estimated_value": trade.estimated_value,
+                })
+            
+            serializable_signals[symbol] = serializable_data
+        
+        # Save to file with timestamp
+        signals_path = output_dir / f"smart_money_signals_{session_tag}.json"
+        with signals_path.open("w", encoding="utf-8") as f:
+            json.dump({
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "session_tag": session_tag,
+                "signals": serializable_signals,
+            }, f, indent=2)
+        
+        import logging
+        logging.info(f"Saved smart money signals to {signals_path}")

@@ -51,13 +51,20 @@ class ArchiveManager:
                 logger.info(f"Archived: {dst}")
         
         elif run_type in ["morning", "midday", "close"]:
-            # Archive watchlist and playbook
+            # Archive watchlist, playbook, and smart money signals
             for suffix in ["watchlist.csv", "playbook.md"]:
                 src = self.outputs_dir / f"{run_type}_{suffix}"
                 if src.exists():
                     dst = today_archive / f"{run_type}_{suffix.replace('.', '_')}_{timestamp}.{suffix.split('.')[-1]}"
                     shutil.copy2(src, dst)
                     logger.info(f"Archived: {dst}")
+            
+            # Archive smart money signals if they exist
+            smart_money_src = self.outputs_dir / f"smart_money_signals_{run_type}.json"
+            if smart_money_src.exists():
+                dst = today_archive / f"smart_money_signals_{run_type}_{timestamp}.json"
+                shutil.copy2(smart_money_src, dst)
+                logger.info(f"Archived: {dst}")
         
         elif run_type == "day":
             # Archive the full daily playbook
@@ -66,6 +73,14 @@ class ArchiveManager:
                 dst = today_archive / f"daily_playbook_{timestamp}.md"
                 shutil.copy2(src, dst)
                 logger.info(f"Archived: {dst}")
+            
+            # Archive all smart money signals from morning and midday
+            for session in ["morning", "midday"]:
+                smart_money_src = self.outputs_dir / f"smart_money_signals_{session}.json"
+                if smart_money_src.exists():
+                    dst = today_archive / f"smart_money_signals_{session}_{timestamp}.json"
+                    shutil.copy2(smart_money_src, dst)
+                    logger.info(f"Archived: {dst}")
     
     def create_daily_index(self) -> None:
         """Create an index of all archived runs for easy browsing."""
@@ -93,6 +108,8 @@ class ArchiveManager:
             name = f.stem
             if name.startswith("catalyst_scores"):
                 run_type = "NEWS RESEARCH"
+            elif name.startswith("smart_money_signals"):
+                run_type = "SMART MONEY TRACKING"
             elif name.startswith("morning"):
                 run_type = "MORNING PRE-MARKET (8:45 AM)"
             elif name.startswith("midday"):
@@ -161,12 +178,15 @@ class ArchiveManager:
             
             # Count by type
             news_count = len([f for f in files if "catalyst" in f.name])
-            morning_count = len([f for f in files if "morning" in f.name])
-            midday_count = len([f for f in files if "midday" in f.name])
-            close_count = len([f for f in files if "close" in f.name])
+            smart_money_count = len([f for f in files if "smart_money" in f.name])
+            morning_count = len([f for f in files if "morning" in f.name and "smart_money" not in f.name])
+            midday_count = len([f for f in files if "midday" in f.name and "smart_money" not in f.name])
+            close_count = len([f for f in files if "close" in f.name and "smart_money" not in f.name])
             
             if news_count:
                 lines.append(f"- News research runs: {news_count}")
+            if smart_money_count:
+                lines.append(f"- Smart money tracking: {smart_money_count}")
             if morning_count:
                 lines.append(f"- Morning scans: {morning_count // 2}")  # Div by 2 for CSV+MD pairs
             if midday_count:
