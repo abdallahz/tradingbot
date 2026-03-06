@@ -48,8 +48,8 @@ def main() -> None:
         print(f"\n{mode_str} Morning Pre-Market Scan Complete")
         print(f">> Watchlist: outputs/morning_watchlist.csv")
         print(f">> Playbook:  outputs/morning_playbook.md")
-        from datetime import datetime
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         print(f">> Archived to: outputs/archive/{today}/\n")
         return
     
@@ -58,8 +58,8 @@ def main() -> None:
         print(f"\n{mode_str} Midday Scan Complete")
         print(f">> Watchlist: outputs/midday_watchlist.csv")
         print(f">> Playbook:  outputs/midday_playbook.md")
-        from datetime import datetime
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         print(f">> Archived to: outputs/archive/{today}/\n")
         return
     
@@ -68,8 +68,8 @@ def main() -> None:
         print(f"\n{mode_str} Close Scan Complete")
         print(f">> Watchlist: outputs/close_watchlist.csv")
         print(f">> Playbook:  outputs/close_playbook.md")
-        from datetime import datetime
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         print(f">> Archived to: outputs/archive/{today}/\n")
         return
 
