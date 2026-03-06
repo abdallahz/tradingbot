@@ -18,6 +18,20 @@ Set these in your cloud provider:
 - `ALPACA_PAPER` (usually `true`)
 - `SEC_USER_AGENT` (required for SEC EDGAR requests)
 
+## Local preflight check
+
+Run before cloud deployment:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/cloud_preflight.ps1
+```
+
+Optional smoke test:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/cloud_preflight.ps1 -SmokeRun
+```
+
 Optional toggles:
 
 - `NEWS_SOCIAL_PROXY_ENABLED=true`
