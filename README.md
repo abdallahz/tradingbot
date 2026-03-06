@@ -351,26 +351,31 @@ The bot now supports 5 separate commands for scheduled execution:
 
 Each command supports `--real-data` flag and generates independent output files.
 
-#### 🚧 Phase 4B-4F: Real News & Automation (Next)
+#### ✅ Phase 4B-4E: Real News & Automation (Complete)
 
 See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the complete implementation roadmap.
 
 **Goals:**
-- Integrate real news sources: SEC EDGAR + RSS Feeds + Twitter/X
-- Windows Task Scheduler automation (5 daily runs)
-- Prepare for future Heroku deployment
+- ✅ SEC EDGAR API integration for real filings (8-K, 10-K, 10-Q)
+- ✅ Multi-source RSS feeds (Yahoo Finance, MarketWatch, Benzinga)
+- ✅ Social proxy fallback (Stocktwits + Reddit) - free alternative to paid X API
+- ✅ Windows Task Scheduler automation with 4 daily scheduled runs
+- ✅ File persistence and archiving system with timestamps
+- ✅ Smart money tracking (13F filings, congressional trades)
 
 **Schedule:**
 ```
-8:00 PM  → Night news research
-8:00 AM  → Morning news update
-8:45 AM  → Pre-market scan
+12:00 AM → Night news research (SEC + RSS + social proxy)
+8:45 AM  → Pre-market scan (gap analysis + volume)
 12:00 PM → Midday scan
-3:50 PM  → After-hours scan
+3:50 PM  → Close scan (late opportunities)
 ```
 
-**Timeline:** 12-17 hours over several days (careful implementation)  
-**Status:** Planning complete, ready to implement Phase 4A (CLI split)
+**Documentation:**
+- [TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Automation setup and troubleshooting
+- [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) - File management and archiving
+
+**Status:** Phase 4 complete! Ready for Phase 5 (Cloud Deployment)
 
 ---
 
@@ -418,26 +423,30 @@ See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the c
 
 ## Next Steps
 
-### Phase 4: Automation & Real News (In Progress)
+### ✅ Phase 4: Automation & Real News (Complete)
 
-See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the complete implementation roadmap.
-
-**Goals:**
-- Split CLI into 5 separate commands (news, morning, midday, close, full-day)
-- Integrate real news sources: SEC EDGAR + RSS Feeds + Twitter/X
-- Windows Task Scheduler automation (5 daily runs)
+**Completed:**
+- ✅ Split CLI into separate commands (run-news, run-morning, run-midday, run-close)
+- ✅ Real news sources: SEC EDGAR + RSS Feeds + Social Proxy (Stocktwits/Reddit)
+- ✅ Windows Task Scheduler automation (4 daily runs)
+- ✅ File persistence and archiving with timestamps
+- ✅ Smart money tracking integration
 - Prepare for future Heroku deployment
 
-**Schedule:**
-```
-8:00 PM  → Night news research
-8:00 AM  → Morning news update
-8:45 AM  → Pre-market scan
-12:00 PM → Midday scan
-3:50 PM  → After-hours scan
-```
+**Automated Schedule (Windows Task Scheduler):**
+- 12:00 AM → News research (SEC + RSS + social signals)
+- 8:45 AM  → Pre-market scan
+- 12:00 PM → Midday scan
+- 3:50 PM  → Close scan
 
-**Status:** Planning complete, ready to implement Phase 4A (CLI split)
+See **[TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md)** for automation setup.
+
+### Phase 5: Cloud Deployment (Next)
+
+**Goals:**
+- Deploy to Heroku or cloud platform
+- Scheduled job execution (no local PC required)
+- Environment-based configuration
 
 ---
 
@@ -453,6 +462,8 @@ See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the c
 - [README.md](README.md) - This file (overview + usage)
 - [PHASE2_GUIDE.md](PHASE2_GUIDE.md) - Detailed Alpaca integration guide
 - [PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md) - Phase 4 roadmap (automation + real news)
+- [TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Windows Task Scheduler automation guide
+- [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) - File management and archiving system
 - [PRE_PUSH_CHECKLIST.md](PRE_PUSH_CHECKLIST.md) - Pre-commit verification checklist
 - [config/broker.example.yaml](config/broker.example.yaml) - API credential template
 
