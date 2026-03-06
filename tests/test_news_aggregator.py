@@ -33,3 +33,15 @@ def test_catalyst_scorer_with_mocked_news():
     # Symbols with mocked news (NVDA, TSLA, PLTR) should score higher than baseline
     # AAPL has no mocked news so should be baseline
     assert scores.get("NVDA", 0) >= 50.0 or scores.get("TSLA", 0) >= 50.0 or scores.get("PLTR", 0) >= 50.0
+
+
+def test_social_proxy_signals_populated():
+    """Social proxy fallback should populate latest signals for tracked symbols."""
+    agg = NewsAggregator(social_proxy_enabled=True)
+    scorer = CatalystScorerV2(agg)
+    scorer.score_symbols(["AAPL", "MSFT"])
+
+    social_signals = agg.get_latest_social_signals()
+    assert "AAPL" in social_signals
+    assert "MSFT" in social_signals
+    assert 0 <= float(social_signals["AAPL"]["social_momentum_score"]) <= 100

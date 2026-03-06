@@ -10,6 +10,7 @@ import requests
 
 from tradingbot.research.sec_filings import SECFilingsFetcher
 from tradingbot.research.rss_feeds import RSSFeedFetcher
+from tradingbot.research.social_proxy import SocialProxyFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class NewsAggregator:
         use_real_sec: bool = False,
         sec_user_agent: str = "TradingBot/1.0 (agent@tradingbot.local)",
         rss_enabled: bool = True,
+        social_proxy_enabled: bool = False,
     ) -> None:
         self.sec_enabled = sec_enabled
         self.earnings_enabled = earnings_enabled
@@ -47,6 +49,9 @@ class NewsAggregator:
         # Initialize RSS fetcher for financial news
         self.rss_enabled = rss_enabled
         self.rss_fetcher = RSSFeedFetcher() if rss_enabled else None
+        self.social_proxy_enabled = social_proxy_enabled
+        self.social_proxy_fetcher = SocialProxyFetcher() if social_proxy_enabled else None
+        self.latest_social_signals: dict[str, dict[str, float | int | str]] = {}
 
     def fetch_news(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
         """Fetch news for all symbols from enabled sources."""
@@ -61,6 +66,11 @@ class NewsAggregator:
             rss_news = self._fetch_rss_feeds(symbols)
             for symbol, items in rss_news.items():
                 news_by_symbol[symbol].extend(items)
+
+        if self.social_proxy_enabled:
+            social_news = self._fetch_social_proxy(symbols)
+            for symbol, items in social_news.items():
+                news_by_symbol[symbol].extend(items)
         
         if self.earnings_enabled:
             earnings_news = self._fetch_earnings_calendar(symbols)
@@ -73,6 +83,10 @@ class NewsAggregator:
                 news_by_symbol[symbol].extend(items)
         
         return news_by_symbol
+
+    def get_latest_social_signals(self) -> dict[str, dict[str, float | int | str]]:
+        """Return latest social proxy signals from the most recent fetch."""
+        return self.latest_social_signals
 
     def _fetch_sec_filings(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
         """Fetch recent SEC filings (8-K, 10-Q, etc.) from EDGAR API."""
@@ -185,6 +199,48 @@ class NewsAggregator:
                     )
                 )
         
+        return news
+
+    def _fetch_social_proxy(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
+        """Fetch free social-proxy momentum signals and map to NewsItem entries."""
+        news: dict[str, list[NewsItem]] = {symbol: [] for symbol in symbols}
+
+        if not self.social_proxy_fetcher:
+            return news
+
+        try:
+            signals = self.social_proxy_fetcher.fetch_signals(
+                symbols=symbols,
+                hours_lookback=self.max_age_hours,
+            )
+            self.latest_social_signals = signals
+
+            for symbol in symbols:
+                signal = signals.get(symbol, {})
+                social_score = float(signal.get("social_momentum_score", 50.0))
+                trend = str(signal.get("trend", "neutral"))
+                mentions = int(signal.get("mentions", 0))
+                sentiment = float(signal.get("sentiment_score", 50.0))
+
+                headline = (
+                    f"Social momentum {trend}: mentions={mentions}, "
+                    f"sentiment={sentiment:.1f}, social_score={social_score:.1f}"
+                )
+
+                news[symbol].append(
+                    NewsItem(
+                        symbol=symbol,
+                        headline=headline,
+                        source="Social Proxy",
+                        published_at=datetime.utcnow(),
+                        relevance_score=social_score,
+                    )
+                )
+
+            return news
+        except Exception as e:
+            logger.warning(f"Failed to fetch social proxy data: {e}")
+
         return news
 
     def _calculate_rss_relevance(self, article: dict[str, Any], symbol: str) -> float:

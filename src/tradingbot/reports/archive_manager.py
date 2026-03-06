@@ -49,6 +49,12 @@ class ArchiveManager:
                 dst = today_archive / f"catalyst_scores_{timestamp}.json"
                 shutil.copy2(src, dst)
                 logger.info(f"Archived: {dst}")
+
+            social_src = self.outputs_dir / "social_proxy_signals_news.json"
+            if social_src.exists():
+                social_dst = today_archive / f"social_proxy_signals_news_{timestamp}.json"
+                shutil.copy2(social_src, social_dst)
+                logger.info(f"Archived: {social_dst}")
         
         elif run_type in ["morning", "midday", "close"]:
             # Archive watchlist, playbook, and smart money signals
@@ -73,6 +79,12 @@ class ArchiveManager:
                 dst = today_archive / f"daily_playbook_{timestamp}.md"
                 shutil.copy2(src, dst)
                 logger.info(f"Archived: {dst}")
+
+            social_src = self.outputs_dir / "social_proxy_signals_news.json"
+            if social_src.exists():
+                social_dst = today_archive / f"social_proxy_signals_news_{timestamp}.json"
+                shutil.copy2(social_src, social_dst)
+                logger.info(f"Archived: {social_dst}")
             
             # Archive all smart money signals from morning and midday
             for session in ["morning", "midday"]:
@@ -108,6 +120,8 @@ class ArchiveManager:
             name = f.stem
             if name.startswith("catalyst_scores"):
                 run_type = "NEWS RESEARCH"
+            elif name.startswith("social_proxy_signals"):
+                run_type = "SOCIAL PROXY SIGNALS"
             elif name.startswith("smart_money_signals"):
                 run_type = "SMART MONEY TRACKING"
             elif name.startswith("morning"):
@@ -178,6 +192,7 @@ class ArchiveManager:
             
             # Count by type
             news_count = len([f for f in files if "catalyst" in f.name])
+            social_count = len([f for f in files if "social_proxy" in f.name])
             smart_money_count = len([f for f in files if "smart_money" in f.name])
             morning_count = len([f for f in files if "morning" in f.name and "smart_money" not in f.name])
             midday_count = len([f for f in files if "midday" in f.name and "smart_money" not in f.name])
@@ -185,6 +200,8 @@ class ArchiveManager:
             
             if news_count:
                 lines.append(f"- News research runs: {news_count}")
+            if social_count:
+                lines.append(f"- Social proxy snapshots: {social_count}")
             if smart_money_count:
                 lines.append(f"- Smart money tracking: {smart_money_count}")
             if morning_count:

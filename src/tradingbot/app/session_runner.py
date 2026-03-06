@@ -63,6 +63,7 @@ class SessionRunner:
                 use_real_sec=news_cfg.get("use_real_sec", False),
                 sec_user_agent=news_cfg.get("sec_user_agent", "TradingBot/1.0 (agent@tradingbot.local)"),
                 rss_enabled=news_cfg.get("rss_feeds", True),
+                social_proxy_enabled=news_cfg.get("social_proxy_enabled", True),
             )
             self.catalyst_scorer = CatalystScorerV2(news_agg)
         else:
@@ -477,6 +478,12 @@ class SessionRunner:
             # Real news sources
             universe = self.alpaca_client.get_tradable_universe()
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
+
+            # Persist latest social proxy signals (if available)
+            social_signals = self.catalyst_scorer.news_aggregator.get_latest_social_signals()
+            if social_signals:
+                self._save_social_proxy_signals(social_signals, "news")
+
             return catalyst_scores
         else:
             # Fallback to mock catalyst scoring
@@ -559,7 +566,6 @@ class SessionRunner:
     def _save_smart_money_signals(self, signals: dict, session_tag: str) -> None:
         """Save smart money signals to JSON file for historical reference."""
         import json
-        from dataclasses import asdict
         
         output_dir = self.root / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -628,3 +634,25 @@ class SessionRunner:
         
         import logging
         logging.info(f"Saved smart money signals to {signals_path}")
+
+    def _save_social_proxy_signals(self, signals: dict[str, dict[str, float | int | str]], session_tag: str) -> None:
+        """Save social proxy signals to JSON file for historical reference."""
+        import json
+
+        output_dir = self.root / "outputs"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        signals_path = output_dir / f"social_proxy_signals_{session_tag}.json"
+        with signals_path.open("w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "generated_at": datetime.utcnow().isoformat() + "Z",
+                    "session_tag": session_tag,
+                    "signals": signals,
+                },
+                f,
+                indent=2,
+            )
+
+        import logging
+        logging.info(f"Saved social proxy signals to {signals_path}")
