@@ -30,13 +30,32 @@ class ConfigLoader:
         return self._load_yaml("schedule.yaml")
 
     def broker(self) -> dict[str, Any]:
-        config = self._load_yaml("broker.yaml")
+        # Try loading YAML; if not found (e.g., on cloud), use env vars only
+        yaml_path = self.root / "config" / "broker.yaml"
+        if yaml_path.exists():
+            config = self._load_yaml("broker.yaml")
+        else:
+            config = {}
         return self._apply_broker_env_overrides(config)
 
     def _apply_broker_env_overrides(self, config: dict[str, Any]) -> dict[str, Any]:
         alpaca = config.setdefault("alpaca", {})
         news = config.setdefault("news", {})
 
+        # If no YAML exists, set reasonable defaults
+        alpaca.setdefault("paper", True)
+        news.setdefault("sec_filings", True)
+        news.setdefault("use_real_sec", True)
+        news.setdefault("rss_feeds", True)
+        news.setdefault("rss_sources", ["yahoo_finance", "marketwatch", "benzinga"])
+        news.setdefault("earnings_calendar", True)
+        news.setdefault("press_releases", True)
+        news.setdefault("twitter_enabled", False)
+        news.setdefault("reddit_enabled", False)
+        news.setdefault("social_proxy_enabled", True)
+        news.setdefault("max_age_hours", 24)
+
+        # Apply env var overrides
         self._set_if_present(alpaca, "api_key", "ALPACA_API_KEY")
         self._set_if_present(alpaca, "api_secret", "ALPACA_API_SECRET")
         self._set_if_present(alpaca, "paper", "ALPACA_PAPER", caster=self._to_bool)
