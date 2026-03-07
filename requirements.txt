@@ -6,5 +6,10 @@ feedparser>=6.0.10
 lxml>=4.9.0
 pytz>=2025.1
 
+# Optional: AI sentiment analysis (Phase 6)
+# Uncomment ONE of these if you want AI-powered news analysis:
+# openai>=1.0.0        # For OpenAI GPT-4 sentiment
+# anthropic>=0.18.0    # For Anthropic Claude sentiment
+
 # Development dependencies
 pytest>=7.0

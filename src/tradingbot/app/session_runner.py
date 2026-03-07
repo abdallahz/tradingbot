@@ -65,7 +65,17 @@ class SessionRunner:
                 rss_enabled=news_cfg.get("rss_feeds", True),
                 social_proxy_enabled=news_cfg.get("social_proxy_enabled", True),
             )
-            self.catalyst_scorer = CatalystScorerV2(news_agg)
+            
+            # AI sentiment analyzer (Phase 6 - optional)
+            ai_analyzer = None
+            if news_cfg.get("ai_sentiment_enabled", False):
+                from tradingbot.research.ai_sentiment import AISentimentAnalyzer
+                provider = news_cfg.get("ai_sentiment_provider", "openai")
+                ai_analyzer = AISentimentAnalyzer(provider=provider)
+                if not ai_analyzer.enabled:
+                    ai_analyzer = None  # Fallback to keyword if API unavailable
+            
+            self.catalyst_scorer = CatalystScorerV2(news_agg, ai_sentiment_analyzer=ai_analyzer)
         else:
             self.alpaca_client = None
             self.catalyst_scorer = None

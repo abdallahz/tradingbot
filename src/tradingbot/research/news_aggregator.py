@@ -305,8 +305,13 @@ class NewsAggregator:
 
 
 class CatalystScorerV2:
-    def __init__(self, news_aggregator: NewsAggregator) -> None:
+    def __init__(
+        self,
+        news_aggregator: NewsAggregator,
+        ai_sentiment_analyzer: Any | None = None
+    ) -> None:
         self.news_aggregator = news_aggregator
+        self.ai_analyzer = ai_sentiment_analyzer
         self.high_impact_keywords = [
             "earnings beat", "guidance raise", "acquisition", "partnership",
             "FDA approval", "clinical trial", "breakthrough", "record",
@@ -318,6 +323,13 @@ class CatalystScorerV2:
         news_by_symbol = self.news_aggregator.fetch_news(symbols)
         scores: dict[str, float] = {}
         
+        # If AI analyzer available, use it for sentiment scoring
+        if self.ai_analyzer:
+            ai_scores = self._score_with_ai(news_by_symbol)
+            if ai_scores:
+                return ai_scores
+        
+        # Fall back to keyword-based scoring
         for symbol, news_items in news_by_symbol.items():
             if not news_items:
                 scores[symbol] = 50.0  # Neutral baseline
@@ -344,3 +356,54 @@ class CatalystScorerV2:
             scores[symbol] = final_score
         
         return scores
+    
+    def _score_with_ai(self, news_by_symbol: dict[str, list[Any]]) -> dict[str, float]:
+        """Use AI to analyze sentiment and generate scores."""
+        try:
+            # Prepare headlines for batch analysis
+            headlines = []
+            for symbol, news_items in news_by_symbol.items():
+                for item in news_items[:3]:  # Top 3 headlines per symbol for cost efficiency
+                    headlines.append({
+                        "symbol": symbol,
+                        "headline": item.headline
+                    })
+            
+            if not headlines:
+                return {}
+            
+            # Get AI sentiment analysis
+            ai_results = self.ai_analyzer.analyze_headlines_batch(headlines)
+            
+            # Aggregate scores by symbol
+            scores: dict[str, float] = {}
+            for symbol, news_items in news_by_symbol.items():
+                if symbol not in ai_results:
+                    scores[symbol] = 50.0
+                    continue
+                
+                sentiment = ai_results[symbol]
+                base_score = sentiment["sentiment_score"]
+                
+                # Boost score if multiple positive headlines
+                symbol_headlines = [h for h in headlines if h["symbol"] == symbol]
+                if len(symbol_headlines) > 1:
+                    avg_sentiment = sum(
+                        ai_results.get(h["symbol"], {}).get("sentiment_score", 50.0)
+                        for h in symbol_headlines
+                    ) / len(symbol_headlines)
+                    base_score = avg_sentiment
+                
+                # Weight by recency (use first headline's timestamp)
+                if news_items:
+                    hours_old = (datetime.utcnow() - news_items[0].published_at).total_seconds() / 3600
+                    recency_weight = max(0.5, 1.0 - (hours_old / self.news_aggregator.max_age_hours))
+                    base_score *= recency_weight
+                
+                scores[symbol] = min(100.0, max(0.0, base_score))
+            
+            return scores
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"AI scoring failed: {e}. Falling back to keywords.")
+            return {}

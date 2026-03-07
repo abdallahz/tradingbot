@@ -481,6 +481,7 @@ See **[TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md)** for automation setup.
 - [PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md) - Phase 4 roadmap (automation + real news)
 - [TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Windows Task Scheduler automation guide
 - [CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) - Phase 5 cloud deployment runbook
+- [AI_INTEGRATION.md](docs/AI_INTEGRATION.md) - Phase 6 AI/ML enhancements guide
 - [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) - File management and archiving system
 - [PRE_PUSH_CHECKLIST.md](PRE_PUSH_CHECKLIST.md) - Pre-commit verification checklist
 - [config/broker.example.yaml](config/broker.example.yaml) - API credential template

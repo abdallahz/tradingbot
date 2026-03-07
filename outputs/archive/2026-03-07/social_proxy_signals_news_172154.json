@@ -1,7 +1,77 @@
 {
-  "generated_at": "2026-03-07T17:22:19.409052Z",
+  "generated_at": "2026-03-07T17:21:54.882132Z",
   "session_tag": "news",
   "signals": {
+    "META": {
+      "symbol": "META",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "NFLX": {
+      "symbol": "NFLX",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "SOFI": {
+      "symbol": "SOFI",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "RIVN": {
+      "symbol": "RIVN",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "QCOM": {
+      "symbol": "QCOM",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "AAPL": {
+      "symbol": "AAPL",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "SNAP": {
+      "symbol": "SNAP",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
     "UBER": {
       "symbol": "UBER",
       "mentions": 4,
@@ -22,8 +92,8 @@
       "social_momentum_score": 58.65,
       "trend": "neutral"
     },
-    "LCID": {
-      "symbol": "LCID",
+    "AMC": {
+      "symbol": "AMC",
       "mentions": 4,
       "sentiment_score": 50.0,
       "mention_spike": 48.0,
@@ -32,28 +102,8 @@
       "social_momentum_score": 58.65,
       "trend": "neutral"
     },
-    "COIN": {
-      "symbol": "COIN",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "INTC": {
-      "symbol": "INTC",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "SOFI": {
-      "symbol": "SOFI",
+    "TSLA": {
+      "symbol": "TSLA",
       "mentions": 4,
       "sentiment_score": 50.0,
       "mention_spike": 48.0,
@@ -72,78 +122,8 @@
       "social_momentum_score": 58.65,
       "trend": "neutral"
     },
-    "RBLX": {
-      "symbol": "RBLX",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "BABA": {
-      "symbol": "BABA",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "SNAP": {
-      "symbol": "SNAP",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "META": {
-      "symbol": "META",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "NVDA": {
-      "symbol": "NVDA",
-      "mentions": 5,
-      "sentiment_score": 50.0,
-      "mention_spike": 60.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 62.25,
-      "trend": "neutral"
-    },
-    "GME": {
-      "symbol": "GME",
-      "mentions": 7,
-      "sentiment_score": 100.0,
-      "mention_spike": 84.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 86.95,
-      "trend": "bullish"
-    },
-    "TSLA": {
-      "symbol": "TSLA",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "QCOM": {
-      "symbol": "QCOM",
+    "BBBY": {
+      "symbol": "BBBY",
       "mentions": 4,
       "sentiment_score": 50.0,
       "mention_spike": 48.0,
@@ -162,8 +142,18 @@
       "social_momentum_score": 58.65,
       "trend": "neutral"
     },
-    "AMD": {
-      "symbol": "AMD",
+    "PLTR": {
+      "symbol": "PLTR",
+      "mentions": 5,
+      "sentiment_score": 50.0,
+      "mention_spike": 60.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 62.25,
+      "trend": "neutral"
+    },
+    "SPCE": {
+      "symbol": "SPCE",
       "mentions": 4,
       "sentiment_score": 50.0,
       "mention_spike": 48.0,
@@ -182,68 +172,8 @@
       "social_momentum_score": 58.65,
       "trend": "neutral"
     },
-    "SPCE": {
-      "symbol": "SPCE",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "NFLX": {
-      "symbol": "NFLX",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "BBBY": {
-      "symbol": "BBBY",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "AMC": {
-      "symbol": "AMC",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "AMZN": {
-      "symbol": "AMZN",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
-    "PLTR": {
-      "symbol": "PLTR",
-      "mentions": 5,
-      "sentiment_score": 50.0,
-      "mention_spike": 60.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 62.25,
-      "trend": "neutral"
-    },
-    "RIVN": {
-      "symbol": "RIVN",
+    "LCID": {
+      "symbol": "LCID",
       "mentions": 4,
       "sentiment_score": 50.0,
       "mention_spike": 48.0,
@@ -262,16 +192,6 @@
       "social_momentum_score": 58.65,
       "trend": "neutral"
     },
-    "AAPL": {
-      "symbol": "AAPL",
-      "mentions": 4,
-      "sentiment_score": 50.0,
-      "mention_spike": 48.0,
-      "recency_score": 85.0,
-      "source_quality": 65.0,
-      "social_momentum_score": 58.65,
-      "trend": "neutral"
-    },
     "PYPL": {
       "symbol": "PYPL",
       "mentions": 5,
@@ -281,6 +201,86 @@
       "source_quality": 65.0,
       "social_momentum_score": 62.25,
       "trend": "neutral"
+    },
+    "BABA": {
+      "symbol": "BABA",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "AMD": {
+      "symbol": "AMD",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "COIN": {
+      "symbol": "COIN",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "NVDA": {
+      "symbol": "NVDA",
+      "mentions": 5,
+      "sentiment_score": 50.0,
+      "mention_spike": 60.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 62.25,
+      "trend": "neutral"
+    },
+    "RBLX": {
+      "symbol": "RBLX",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "AMZN": {
+      "symbol": "AMZN",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "INTC": {
+      "symbol": "INTC",
+      "mentions": 4,
+      "sentiment_score": 50.0,
+      "mention_spike": 48.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 58.65,
+      "trend": "neutral"
+    },
+    "GME": {
+      "symbol": "GME",
+      "mentions": 7,
+      "sentiment_score": 100.0,
+      "mention_spike": 84.0,
+      "recency_score": 85.0,
+      "source_quality": 65.0,
+      "social_momentum_score": 86.95,
+      "trend": "bullish"
     }
   }
 }

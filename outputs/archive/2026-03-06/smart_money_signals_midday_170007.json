@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-03-06T17:00:07.598105Z",
+  "session_tag": "midday",
+  "signals": {
+    "MSFT": {
+      "symbol": "MSFT",
+      "smart_money_score": 50.0,
+      "insider_trades": [],
+      "institutional_positions": [],
+      "congressional_trades": []
+    },
+    "NVDA": {
+      "symbol": "NVDA",
+      "smart_money_score": 50.0,
+      "insider_trades": [],
+      "institutional_positions": [],
+      "congressional_trades": []
+    },
+    "AAPL": {
+      "symbol": "AAPL",
+      "smart_money_score": 50.0,
+      "insider_trades": [],
+      "institutional_positions": [],
+      "congressional_trades": []
+    },
+    "GOOGL": {
+      "symbol": "GOOGL",
+      "smart_money_score": 50.0,
+      "insider_trades": [],
+      "institutional_positions": [],
+      "congressional_trades": []
+    },
+    "AMD": {
+      "symbol": "AMD",
+      "smart_money_score": 50.0,
+      "insider_trades": [],
+      "institutional_positions": [],
+      "congressional_trades": []
+    },
+    "SOFI": {
+      "symbol": "SOFI",
+      "smart_money_score": 50.0,
+      "insider_trades": [],
+      "institutional_positions": [],
+      "congressional_trades": []
+    }
+  }
+}
