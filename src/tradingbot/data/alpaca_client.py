@@ -9,6 +9,7 @@ from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest, Stoc
 from alpaca.data.timeframe import TimeFrame
 import pandas as pd
 
+from tradingbot.analysis.technical_indicators import compute_indicators, interpret_signals
 from tradingbot.models import SymbolSnapshot
 
 # Enable debug logging with environment variable: DEBUG=1
@@ -110,17 +111,30 @@ class AlpacaClient:
                     prev_volume = self._get_previous_volume(bars, symbol)
                     relative_volume = daily_volume / prev_volume if prev_volume and prev_volume > 0 else 1.0
                     
-                    # Compute technical indicators
-                    ema9, ema20, vwap = self._compute_indicators(bars, symbol, current_price)
-                    
+                    # Compute enhanced technical indicators
+                    symbol_bars = self._get_bars_list(bars, symbol)
+                    tech = compute_indicators(symbol_bars)
+                    ema9  = tech.get("ema9",  current_price)
+                    ema20 = tech.get("ema20", current_price * 0.99)
+                    vwap  = tech.get("vwap",  current_price)
+
+                    # Interpret technical signals for debug/logging
+                    if DEBUG and tech:
+                        tech_signals = interpret_signals(tech, current_price)
+                        rsi  = tech.get("rsi",  0.0)
+                        macd = tech.get("macd", 0.0)
+                        atr  = tech.get("atr",  0.0)
+                        print(f"[DEBUG] {symbol} indicators: RSI={rsi:.1f}, MACD={macd:.3f}, ATR={atr:.2f}, signals={tech_signals}")
+
                     # Get recent volume for volume spike detection
                     recent_volume = snap.minute_bar.volume if snap.minute_bar else 0
                     avg_volume_20 = daily_volume // 390 if daily_volume > 0 else 1  # Rough estimate
-                    
-                    # Pullback levels (will be computed from intraday bars)
-                    pullback_low = current_price * 0.995
-                    reclaim_level = current_price
-                    pullback_high = current_price * 1.005
+
+                    # Pullback levels derived from ATR if available, else % fallback
+                    atr_val = tech.get("atr", current_price * 0.005)
+                    pullback_low  = current_price - atr_val
+                    reclaim_level = tech.get("support", current_price)
+                    pullback_high = current_price + atr_val * 0.5
                     
                     snapshots.append(
                         SymbolSnapshot(
@@ -207,36 +221,16 @@ class AlpacaClient:
         except Exception:
             return None
     
-    def _compute_indicators(self, bars: Any, symbol: str, current_price: float) -> tuple[float, float, float]:
-        """Compute EMA9, EMA20, and VWAP from historical bars."""
+    def _get_bars_list(self, bars: Any, symbol: str) -> list[Any]:
+        """Extract a list of bar objects for the given symbol."""
         try:
-            # Access BarSet properly
             if hasattr(bars, 'data') and symbol in bars.data:
-                symbol_bars = bars.data[symbol]
+                return list(bars.data[symbol])
             elif hasattr(bars, '__getitem__'):
-                try:
-                    symbol_bars = bars[symbol]
-                except (KeyError, IndexError):
-                    return current_price, current_price * 0.99, current_price
-            else:
-                return current_price, current_price * 0.99, current_price
-            
-            if not symbol_bars or len(symbol_bars) == 0:
-                return current_price, current_price * 0.99, current_price
-            
-            # Convert to pandas for EMA calculation
-            closes = [float(bar.close) for bar in symbol_bars]
-            df = pd.DataFrame({'close': closes})
-            
-            ema9 = df['close'].ewm(span=9, adjust=False).mean().iloc[-1] if len(closes) >= 9 else current_price
-            ema20 = df['close'].ewm(span=20, adjust=False).mean().iloc[-1] if len(closes) >= 20 else current_price * 0.99
-            
-            # VWAP approximation (simplified)
-            vwap = current_price
-            
-            return float(ema9), float(ema20), float(vwap)
+                return list(bars[symbol])
         except Exception:
-            return current_price, current_price * 0.99, current_price
+            pass
+        return []
 
     def _validate_price_data(
         self, symbol: str, current_price: float, prev_close: float, gap_pct: float, spread_pct: float
