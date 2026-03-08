@@ -57,7 +57,7 @@ class AISentimentAnalyzer:
             self.client = pipeline(
                 "text-classification",
                 model="ProsusAI/finbert",
-                return_all_scores=True,
+                top_k=None,  # return all labels (transformers 5.x, replaces return_all_scores)
             )
             self.enabled = True
             logger.info("FinBERT loaded successfully.")
@@ -105,7 +105,8 @@ class AISentimentAnalyzer:
             headline = h["headline"][:512]  # FinBERT max token limit
 
             # Returns e.g. [{"label":"positive","score":0.9}, {"label":"negative",...}, ...]
-            raw = self.client(headline)[0]
+            # transformers 5.x with top_k=None returns a flat list directly
+            raw = self.client(headline)
             score_map = {r["label"]: r["score"] for r in raw}
 
             positive = score_map.get("positive", 0.0)
