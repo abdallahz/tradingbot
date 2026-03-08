@@ -57,7 +57,7 @@ class AISentimentAnalyzer:
             self.client = pipeline(
                 "text-classification",
                 model="ProsusAI/finbert",
-                top_k=3,  # return all 3 labels: positive, negative, neutral
+                top_k=3,
             )
             self.enabled = True
             logger.info("FinBERT loaded successfully.")
