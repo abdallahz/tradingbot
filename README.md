@@ -21,8 +21,13 @@ Your day trading assistant that generates 2-3 stock opportunities daily targetin
 **Implementation:**
 - **Phase 1**: Config-driven scanner with mock data (complete)
 - **Phase 2**: Alpaca API + multi-source news aggregation (complete, tested)
+- **Phase 3**: 3-option trading system with intelligent recommendations (complete)
+- **Phase 4**: CLI split + real news sources + Windows Task Scheduler automation (complete)
+- **Phase 5**: Render cloud deployment with 4 cron jobs (complete, validated)
+- **Phase 6**: Enhanced technical indicators (RSI, MACD, ATR, Bollinger Bands, VWAP) via `ta` library (complete)
 
-See [PHASE2_GUIDE.md](PHASE2_GUIDE.md) for detailed integration documentation.
+See [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) for cloud setup.
+See [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) for AI/ML enhancement roadmap.
 
 ## Quick start
 
@@ -316,42 +321,23 @@ Larger universe = higher chance of finding gappers daily.
 
 ## Project Status
 
-✅ **Phase 1 Complete:**
-- Config-driven scanner with gap, volume, spread filters
-- 3-indicator confirmation (Volume + EMA + VWAP)
-- Risk management (daily lockout, trade count, stop-loss)
-- Mock data mode for development/testing
-- Alert-only output (CSV + Markdown)
+✅ **Phase 1 Complete:** Config-driven scanner, 3-indicator confirmation, risk management, mock data mode
 
-✅ **Phase 2 Complete:**
-- Alpaca API integration (tested with real credentials)
-- Multi-source news aggregation (SEC, earnings, press releases)
-- Catalyst scoring with keyword boost and recency weighting
-- Dual-mode operation (mock vs. real data)
-- Virtual environment with all dependencies
+✅ **Phase 2 Complete:** Alpaca API integration, multi-source news aggregation, catalyst scoring, dual-mode operation
 
-✅ **Phase 3 Complete:**
-- 3-option trading system with intelligent recommendations
-- Market condition analyzer (detects volatility levels)
-- Night research catalyst picks (Option 1)
-- Relaxed filter scan (Option 2: gap≥1%, vol≥100k)
-- Strict filter scan (Option 3: gap≥4%, vol≥500k)
-- Automatic recommendation based on market conditions
+✅ **Phase 3 Complete:** 3-option trading system, market condition analyzer, intelligent recommendations
 
-📋 **Phase 4 Planned:**
-- Detailed implementation plan created (see [PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md))
-- CLI split into 5 commands (news, morning, midday, close, full-day)
-- Real news integration: SEC EDGAR + RSS Feeds + Twitter/X
-- Windows Task Scheduler automation (5 daily runs)
-- Timeline: 12-17 hours over several days
+✅ **Phase 4 Complete:** CLI split (5 commands), SEC EDGAR + RSS + social proxy news, Windows Task Scheduler automation, smart money tracking
 
-✅ **Validated:**
-- All 7 tests pass
-- Real Alpaca connection confirmed (March 5, 2026)
-- Data pipeline functional (gaps, volume, indicators computed correctly)
-- Filters working as designed (strict by default)
-- 3-option system tested with both mock and real data
-- Recommendation engine correctly identifies volatility levels
+✅ **Phase 5 Complete:** Render cloud deployment, 4 cron jobs running (news/morning/midday/close), env-var config, data quality validation
+
+✅ **Phase 6 Complete:** Free technical indicators via `ta` library (RSI, MACD, ATR, Bollinger Bands, VWAP, OBV), ATR-based dynamic stop levels, keyword-based news sentiment
+
+✅ **Validated (March 2026):**
+- 18/18 tests pass
+- All 4 Render cron jobs confirmed working
+- Real Alpaca data pipeline functional
+- Technical indicators computing correctly with ATR-based stops
 
 ## Next Steps
 
@@ -396,22 +382,23 @@ See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the c
 
 ---
 
-### Immediate Actions (Current Phase 3)
-1. Run during pre-market hours (6-9:30 AM ET) for best results
-2. Monitor `outputs/daily_playbook.md` for entry signals
-3. Manually execute trades based on generated cards
-
 ### Future Phases
-**Phase 5: Heroku Deployment**
-- Cloud-based execution (no PC required)
-- Environment variables for config
-- Heroku Scheduler add-on
 
-**Phase 6: Advanced Features**
-- Email/Telegram real-time alerts
-- Position tracking and P&L journaling
-- Backtesting on historical data
-- Semi-automated order placement
+**Phase 7: Alerts & Notifications**
+- Email or Telegram alerts when a trade card is generated
+- No action needed from you — the alert arrives on your phone
+
+**Phase 8: P&L Journal**
+- Track trade outcomes against generated cards
+- Win rate, average R, best setups
+
+**Phase 9: Backtesting**
+- Replay historical data through the scanner
+- Validate filter thresholds against past results
+
+**Phase 10: Semi-Automated Orders**
+- Optional bracket order placement via Alpaca paper trading
+- Full review before any live trading
 
 **⚠️ Never use for live trading without extensive paper trading validation first.**
 
@@ -440,30 +427,7 @@ See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the c
 
 ## Next Steps
 
-### ✅ Phase 4: Automation & Real News (Complete)
-
-**Completed:**
-- ✅ Split CLI into separate commands (run-news, run-morning, run-midday, run-close)
-- ✅ Real news sources: SEC EDGAR + RSS Feeds + Social Proxy (Stocktwits/Reddit)
-- ✅ Windows Task Scheduler automation (4 daily runs)
-- ✅ File persistence and archiving with timestamps
-- ✅ Smart money tracking integration
-- Prepare for future Heroku deployment
-
-**Automated Schedule (Windows Task Scheduler):**
-- 12:00 AM → News research (SEC + RSS + social signals)
-- 8:45 AM  → Pre-market scan
-- 12:00 PM → Midday scan
-- 3:50 PM  → Close scan
-
-See **[TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md)** for automation setup.
-
-### Phase 5: Cloud Deployment (Next)
-
-**Goals:**
-- Deploy to Heroku or cloud platform
-- Scheduled job execution (no local PC required)
-- Environment-based configuration
+All phases through Phase 6 are complete. See [Future Phases](#future-phases) above for what comes next.
 
 ---
 
@@ -477,18 +441,14 @@ See **[TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md)** for automation setup.
 ## Documentation
 
 - [README.md](README.md) - This file (overview + usage)
-- [PHASE2_GUIDE.md](PHASE2_GUIDE.md) - Detailed Alpaca integration guide
-- [PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md) - Phase 4 roadmap (automation + real news)
-- [TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Windows Task Scheduler automation guide
-- [CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) - Phase 5 cloud deployment runbook
-- [AI_INTEGRATION.md](docs/AI_INTEGRATION.md) - Phase 6 AI/ML enhancements guide
-- [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) - File management and archiving system
-- [PRE_PUSH_CHECKLIST.md](PRE_PUSH_CHECKLIST.md) - Pre-commit verification checklist
+- [docs/TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Windows Task Scheduler automation guide
+- [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) - Render cloud deployment runbook
+- [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) - Free & paid AI/ML enhancement roadmap
 - [config/broker.example.yaml](config/broker.example.yaml) - API credential template
 
 ## Notes
 
-- Virtual environment configured at `venv/` with all dependencies
-- `diagnostic.py` available for debugging Alpaca data flow
 - Mock mode works without any API credentials
-- Real data mode tested and validated with Alpaca paper trading account
+- Real data mode tested and validated with Alpaca paper trading
+- 4 cron jobs running on Render cloud (free tier)
+- 18/18 tests passing
