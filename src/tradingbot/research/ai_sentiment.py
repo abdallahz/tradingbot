@@ -66,8 +66,8 @@ class AISentimentAnalyzer:
                 "FinBERT requires 'transformers' and 'torch'. "
                 "Run: pip install transformers torch. Falling back to keywords."
             )
-        except Exception as e:
-            logger.warning(f"FinBERT failed to load: {e}. Falling back to keywords.")
+        except BaseException as e:
+            logger.warning(f"FinBERT failed to load: {type(e).__name__}: {e}. Falling back to keywords.")
 
     def analyze_headlines_batch(
         self,

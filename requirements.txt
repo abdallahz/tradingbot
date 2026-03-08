@@ -7,9 +7,9 @@ lxml>=4.9.0
 pytz>=2025.1
 ta>=0.11.0              # Free technical indicators (RSI, MACD, ATR, Bollinger Bands)
 
-# Optional: AI sentiment analysis (Phase 6) — free local model
-# transformers>=4.38.0  # For FinBERT (free, no API key)
-# torch>=2.0.0          # Required by FinBERT
+# Optional: AI sentiment analysis (Phase 6) — free local model (FinBERT)
+transformers>=4.38.0    # For FinBERT NLP sentiment (free, no API key)
+torch>=2.0.0            # Required by FinBERT
 
 # Optional: Paid AI sentiment providers (future use)
 # openai>=1.0.0         # For OpenAI GPT-4 sentiment
