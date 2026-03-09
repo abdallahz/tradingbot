@@ -11,8 +11,11 @@ mplfinance==0.12.10b0    # Candlestick chart generation (Phase 7)
 matplotlib>=3.7.0       # Required by mplfinance
 
 # Optional: AI sentiment analysis (Phase 6) — free local model (FinBERT)
-transformers>=4.38.0    # For FinBERT NLP sentiment (free, no API key)
-torch>=2.0.0            # Required by FinBERT
+# torch and transformers are NOT installed on Heroku (slug would exceed 1GB limit).
+# The sentiment analyzer degrades gracefully when these are absent.
+# To enable locally: pip install transformers torch
+# transformers>=4.38.0
+# torch>=2.0.0
 
 # Optional: Paid AI sentiment providers (future use)
 # openai>=1.0.0         # For OpenAI GPT-4 sentiment
