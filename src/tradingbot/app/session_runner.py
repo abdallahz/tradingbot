@@ -31,6 +31,7 @@ from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
+from tradingbot.notifications.telegram_notifier import TelegramNotifier
 
 
 class SessionRunner:
@@ -107,6 +108,7 @@ class SessionRunner:
             max_consecutive_losses=risk_defaults["max_consecutive_losses"],
         )
         self.market_analyzer = MarketConditionAnalyzer()
+        self.notifier = TelegramNotifier.from_env()
         
         # Relaxed scanner for Option 2
         self.relaxed_scanner = GapScanner(
@@ -294,6 +296,7 @@ class SessionRunner:
                 card.chart_path = chart_path
             cards.append(card)
             risk_state.trades_taken += 1
+            self.notifier.send_trade_alert(card)
 
         return WatchlistRun(
             generated_at=datetime.utcnow(),
@@ -493,6 +496,7 @@ class SessionRunner:
                 card.chart_path = chart_path
             cards.append(card)
             risk_state.trades_taken += 1
+            self.notifier.send_trade_alert(card)
 
         return cards
 

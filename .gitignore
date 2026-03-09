@@ -45,6 +45,7 @@ outputs/*.md
 
 # Configuration with secrets
 config/broker.yaml
+.env
 
 # OS
 .DS_Store

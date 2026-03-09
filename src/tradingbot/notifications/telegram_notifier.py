@@ -1,0 +1,185 @@
+"""
+Telegram notification module.
+
+Sends trade alerts to a Telegram chat via the Bot API.
+No third-party SDK — uses only the standard `urllib` from the stdlib,
+so no extra dependencies are needed.
+
+Required environment variables (set in .env or Render):
+  TELEGRAM_BOT_TOKEN  — token from @BotFather
+  TELEGRAM_CHAT_ID    — numeric chat ID (get from /getUpdates)
+
+If either variable is missing, notifications are silently skipped
+so the bot continues to run normally.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tradingbot.models import TradeCard
+
+logger = logging.getLogger(__name__)
+
+_API_BASE = "https://api.telegram.org/bot{token}/{method}"
+_TIMEOUT  = 10  # seconds per HTTP call
+
+
+class TelegramNotifier:
+    """
+    Sends trade alert messages (and optional chart images) to Telegram.
+
+    Usage:
+        notifier = TelegramNotifier.from_env()
+        notifier.send_trade_alert(card)
+    """
+
+    def __init__(self, token: str, chat_id: str) -> None:
+        self._token   = token
+        self._chat_id = chat_id
+        self._enabled = bool(token and chat_id)
+
+    # ── Factory ────────────────────────────────────────────────────────────
+
+    @classmethod
+    def from_env(cls) -> "TelegramNotifier":
+        """Create from TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID env vars."""
+        token   = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        instance = cls(token, chat_id)
+        if not instance._enabled:
+            logger.info(
+                "TelegramNotifier: env vars not set — notifications disabled"
+            )
+        return instance
+
+    # ── Public API ─────────────────────────────────────────────────────────
+
+    def send_trade_alert(self, card: "TradeCard") -> bool:
+        """
+        Send a formatted trade alert message. If card.chart_path exists and
+        is a valid file, also send the chart image.
+
+        Returns True if the message was sent successfully.
+        """
+        if not self._enabled:
+            return False
+
+        text = self._format_alert(card)
+        ok   = self._send_message(text)
+
+        # Send chart image if available
+        chart = getattr(card, "chart_path", "")
+        if ok and chart and Path(chart).is_file():
+            self._send_photo(Path(chart), caption=f"{card.symbol} chart")
+
+        return ok
+
+    def send_session_summary(self, session: str, card_count: int) -> bool:
+        """Send a short session-start summary (no cards = warn, cards = info)."""
+        if not self._enabled:
+            return False
+
+        if card_count == 0:
+            text = f"📭 *{session} scan complete* — no qualifying setups found."
+        else:
+            text = (
+                f"📋 *{session} scan complete* — "
+                f"{card_count} alert{'s' if card_count != 1 else ''} sent above."
+            )
+        return self._send_message(text)
+
+    # ── Message formatters ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _format_alert(card: "TradeCard") -> str:
+        from tradingbot.analysis.pattern_detector import format_patterns
+
+        side_emoji = "🟢 LONG" if card.side == "long" else "🔴 SHORT"
+        patterns   = format_patterns(getattr(card, "patterns", []))
+        confluence = getattr(card, "score", 0.0)
+
+        lines = [
+            f"🚨 *TRADE ALERT — {card.symbol}*",
+            f"",
+            f"Direction : {side_emoji}",
+            f"Session   : {card.session_tag.upper()}",
+            f"Score     : {confluence:.0f} / 100",
+            f"",
+            f"📍 *Levels*",
+            f"Entry  : `${card.entry_price:.2f}`",
+            f"Stop   : `${card.stop_price:.2f}`",
+            f"TP 1   : `${card.tp1_price:.2f}`",
+            f"TP 2   : `${card.tp2_price:.2f}`",
+            f"",
+            f"📊 *Patterns* : {patterns}",
+            f"📝 *Signals*  : {', '.join(card.reason)}",
+        ]
+        return "\n".join(lines)
+
+    # ── Low-level HTTP helpers ─────────────────────────────────────────────
+
+    def _send_message(self, text: str) -> bool:
+        """Send a Markdown-formatted text message."""
+        url = _API_BASE.format(token=self._token, method="sendMessage")
+        payload = json.dumps({
+            "chat_id":    self._chat_id,
+            "text":       text,
+            "parse_mode": "Markdown",
+        }).encode()
+        return self._post(url, payload, content_type="application/json")
+
+    def _send_photo(self, photo_path: Path, caption: str = "") -> bool:
+        """Upload and send a photo file with an optional caption."""
+        url = _API_BASE.format(token=self._token, method="sendPhoto")
+        boundary = "----TradingBotBoundary"
+        body = b""
+
+        def field(name: str, value: str) -> bytes:
+            return (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                f"{value}\r\n"
+            ).encode()
+
+        body += field("chat_id", self._chat_id)
+        body += field("caption", caption)
+        body += field("parse_mode", "Markdown")
+
+        # File part
+        photo_bytes = photo_path.read_bytes()
+        body += (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="photo"; filename="{photo_path.name}"\r\n'
+            f"Content-Type: image/png\r\n\r\n"
+        ).encode() + photo_bytes + b"\r\n"
+        body += f"--{boundary}--\r\n".encode()
+
+        return self._post(
+            url,
+            body,
+            content_type=f"multipart/form-data; boundary={boundary}",
+        )
+
+    def _post(self, url: str, data: bytes, content_type: str) -> bool:
+        try:
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={"Content-Type": content_type},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                result = json.loads(resp.read())
+                if not result.get("ok"):
+                    logger.warning(f"Telegram API error: {result}")
+                return bool(result.get("ok"))
+        except Exception as e:
+            logger.warning(f"Telegram send failed: {e}")
+            return False
