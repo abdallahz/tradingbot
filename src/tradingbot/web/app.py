@@ -74,7 +74,7 @@ def _run_scan_in_background() -> None:
         from tradingbot.app.session_runner import SessionRunner
         from tradingbot.web.alert_store import card_to_dict, save_alert
 
-        root = Path(__file__).resolve().parents[4]
+        root = Path(__file__).resolve().parents[3]
         use_real = bool(os.getenv("ALPACA_API_KEY") or os.getenv("ALPACA_KEY_ID"))
         runner = SessionRunner(root, use_real_data=use_real)
         morning, _ = runner.run_day()
