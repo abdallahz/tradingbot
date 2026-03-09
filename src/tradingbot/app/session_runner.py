@@ -28,6 +28,7 @@ from tradingbot.risk.risk_manager import RiskManager
 from tradingbot.scanner.gap_scanner import GapScanner
 from tradingbot.signals.pullback_setup import has_valid_setup
 from tradingbot.strategy.trade_card import build_trade_card
+from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
 
 
@@ -272,6 +273,17 @@ class SessionRunner:
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=cast(Literal["morning", "midday"], session_tag),
             )
+            # Attach detected patterns from snapshot
+            card.patterns = list(symbol.patterns)
+            # Generate candlestick chart (returns None gracefully if mplfinance not installed)
+            chart_path = generate_chart(
+                symbol=symbol.symbol,
+                bars_data=symbol.raw_bars,
+                indicators=symbol.tech_indicators,
+                trade_card=card,
+            )
+            if chart_path:
+                card.chart_path = chart_path
             cards.append(card)
             risk_state.trades_taken += 1
 
@@ -454,9 +466,20 @@ class SessionRunner:
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=cast(Literal["morning", "midday"], session_tag),
             )
+            # Attach detected patterns from snapshot
+            card.patterns = list(symbol.patterns)
+            # Generate candlestick chart (returns None gracefully if mplfinance not installed)
+            chart_path = generate_chart(
+                symbol=symbol.symbol,
+                bars_data=symbol.raw_bars,
+                indicators=symbol.tech_indicators,
+                trade_card=card,
+            )
+            if chart_path:
+                card.chart_path = chart_path
             cards.append(card)
             risk_state.trades_taken += 1
-        
+
         return cards
 
     def _write_outputs(self, morning: list[TradeCard], midday: list[TradeCard]) -> None:

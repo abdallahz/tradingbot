@@ -25,6 +25,9 @@ class SymbolSnapshot:
     pullback_low: float
     reclaim_level: float
     pullback_high: float
+    patterns: list[str] = field(default_factory=list)
+    raw_bars: list = field(default_factory=list)
+    tech_indicators: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -39,6 +42,8 @@ class TradeCard:
     invalidation_price: float
     session_tag: Literal["morning", "midday"]
     reason: list[str] = field(default_factory=list)
+    chart_path: str = ""
+    patterns: list[str] = field(default_factory=list)
 
 
 @dataclass

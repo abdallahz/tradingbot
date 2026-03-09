@@ -10,6 +10,7 @@ from alpaca.data.timeframe import TimeFrame
 import pandas as pd
 
 from tradingbot.analysis.technical_indicators import compute_indicators, interpret_signals
+from tradingbot.analysis.pattern_detector import detect_patterns
 from tradingbot.models import SymbolSnapshot
 
 # Enable debug logging with environment variable: DEBUG=1
@@ -117,6 +118,7 @@ class AlpacaClient:
                     ema9  = tech.get("ema9",  current_price)
                     ema20 = tech.get("ema20", current_price * 0.99)
                     vwap  = tech.get("vwap",  current_price)
+                    patterns = detect_patterns(symbol_bars, tech)
 
                     # Interpret technical signals for debug/logging
                     if DEBUG and tech:
@@ -154,6 +156,9 @@ class AlpacaClient:
                             pullback_low=pullback_low,
                             reclaim_level=reclaim_level,
                             pullback_high=pullback_high,
+                            patterns=patterns,
+                            raw_bars=symbol_bars,
+                            tech_indicators=tech,
                         )
                     )
                 except Exception as e:

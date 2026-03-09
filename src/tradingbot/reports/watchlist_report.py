@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from tradingbot.models import ThreeOptionWatchlist, TradeCard
+from tradingbot.analysis.pattern_detector import format_patterns
 
 
 def write_csv(path: Path, cards: list[TradeCard]) -> None:
@@ -63,6 +64,10 @@ def _section_rows(cards: list[TradeCard]) -> list[str]:
             f"tp1={card.tp1_price} | tp2={card.tp2_price} | stop={card.stop_price} | "
             f"why={','.join(card.reason)}"
         )
+        if card.patterns:
+            rows.append(f"  patterns: {format_patterns(card.patterns)}")
+        if card.chart_path:
+            rows.append(f"  ![{card.symbol} Chart]({card.chart_path})")
     return rows
 
 
@@ -177,6 +182,10 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
                 f"stop=${card.stop_price:.2f}"
             )
             lines.append(f"  _{', '.join(card.reason)}_")
+            if card.patterns:
+                lines.append(f"  **Patterns:** {format_patterns(card.patterns)}")
+            if card.chart_path:
+                lines.append(f"  ![{card.symbol} Chart]({card.chart_path})")
     else:
         lines.append("- No setups even with relaxed filters")
     
@@ -198,6 +207,10 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
                 f"stop=${card.stop_price:.2f}"
             )
             lines.append(f"  _{', '.join(card.reason)}_")
+            if card.patterns:
+                lines.append(f"  **Patterns:** {format_patterns(card.patterns)}")
+            if card.chart_path:
+                lines.append(f"  ![{card.symbol} Chart]({card.chart_path})")
     else:
         lines.append("- No qualified setups with strict filters ✅ (Capital protection mode)")
     
