@@ -1,418 +1,657 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AI Trading Bot — Dashboard</title>
-  <style>
-    /* ── Reset & base ─────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg:        #0d0f14;
-      --surface:   #161a23;
-      --border:    #252b38;
-      --muted:     #4a5568;
-      --text:      #e2e8f0;
-      --sub:       #8896ab;
-      --green:     #22c55e;
-      --red:       #ef4444;
-      --amber:     #f59e0b;
-      --blue:      #3b82f6;
-      --purple:    #a855f7;
-      --radius:    10px;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    a { color: var(--blue); text-decoration: none; }
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Trading Bot — Dashboard</title>
+    <style>
+        /* ── Reset & base ─────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-    /* ── Layout ───────────────────────────────────────── */
-    .shell { max-width: 1280px; margin: 0 auto; padding: 0 20px 60px; }
+        :root {
+            --bg: #0d0f14;
+            --surface: #161a23;
+            --border: #252b38;
+            --muted: #4a5568;
+            --text: #e2e8f0;
+            --sub: #8896ab;
+            --green: #22c55e;
+            --red: #ef4444;
+            --amber: #f59e0b;
+            --blue: #3b82f6;
+            --purple: #a855f7;
+            --radius: 10px;
+        }
 
-    /* ── Top bar ──────────────────────────────────────── */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 18px 0 16px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 28px;
-    }
-    .logo {
-      display: flex; align-items: center; gap: 10px;
-    }
-    .logo-icon {
-      width: 36px; height: 36px; border-radius: 8px;
-      background: linear-gradient(135deg, #3b82f6, #a855f7);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-    }
-    .logo-text { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
-    .logo-sub  { font-size: 11px; color: var(--sub); }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            font-size: 14px;
+            line-height: 1.5;
+        }
 
-    /* Market status pill */
-    .market-pill {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 14px; border-radius: 20px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      font-size: 13px; font-weight: 500;
-    }
-    .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-    }
-    .dot.open     { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .dot.premarket{ background: var(--amber); box-shadow: 0 0 6px var(--amber); }
-    .dot.afterhours{background: var(--amber); box-shadow: 0 0 6px var(--amber); }
-    .dot.closed   { background: var(--muted); }
+        a {
+            color: var(--blue);
+            text-decoration: none;
+        }
 
-    header .time-label { color: var(--sub); font-size: 12px; }
+        /* ── Layout ───────────────────────────────────────── */
+        .shell {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 20px 60px;
+        }
 
-    /* ── Stats row ────────────────────────────────────── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 14px;
-      margin-bottom: 28px;
-    }
-    .stat-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px 18px;
-    }
-    .stat-label { font-size: 11px; text-transform: uppercase;
-                  letter-spacing: .8px; color: var(--sub); margin-bottom: 6px; }
-    .stat-value { font-size: 22px; font-weight: 700; }
-    .stat-value.green  { color: var(--green); }
-    .stat-value.blue   { color: var(--blue); }
-    .stat-value.amber  { color: var(--amber); }
-    .stat-sub   { font-size: 11px; color: var(--sub); margin-top: 2px; }
+        /* ── Top bar ──────────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 0 16px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 28px;
+        }
 
-    /* ── Scan button ──────────────────────────────────── */
-    .scan-section {
-      margin-bottom: 28px;
-      display: flex; align-items: center; gap: 16px;
-    }
-    .btn-scan {
-      background: linear-gradient(135deg, #3b82f6, #6366f1);
-      color: #fff; border: none; border-radius: 8px;
-      padding: 10px 22px; font-size: 14px; font-weight: 600;
-      cursor: pointer; transition: opacity .2s;
-    }
-    .btn-scan:hover { opacity: .85; }
-    .btn-scan:disabled {
-      background: var(--surface); color: var(--muted);
-      border: 1px solid var(--border); cursor: not-allowed;
-    }
-    .scan-info { font-size: 12px; color: var(--sub); }
-    .scan-error { font-size: 12px; color: var(--red); }
-    .spinner {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid var(--muted); border-top-color: var(--blue);
-      border-radius: 50%; animation: spin .7s linear infinite;
-      vertical-align: middle; margin-right: 6px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
-    /* ── Section header ───────────────────────────────── */
-    .section-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 16px;
-    }
-    .section-title {
-      font-size: 15px; font-weight: 600;
-    }
-    .badge-count {
-      background: var(--border); border-radius: 12px;
-      padding: 2px 10px; font-size: 12px; color: var(--sub);
-    }
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #3b82f6, #a855f7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
 
-    /* ── Alert grid ───────────────────────────────────── */
-    .alert-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-      gap: 16px;
-    }
+        .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
 
-    /* ── Alert card ───────────────────────────────────── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px;
-      transition: border-color .2s;
-      position: relative;
-      overflow: hidden;
-    }
-    .card:hover { border-color: var(--blue); }
-    .card.long-card  { border-top: 3px solid var(--green); }
-    .card.short-card { border-top: 3px solid var(--red);   }
+        .logo-sub {
+            font-size: 11px;
+            color: var(--sub);
+        }
 
-    .card-top {
-      display: flex; align-items: flex-start;
-      justify-content: space-between; margin-bottom: 14px;
-    }
-    .card-symbol { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-    .side-badge {
-      font-size: 11px; font-weight: 700; letter-spacing: .8px;
-      padding: 3px 10px; border-radius: 4px;
-      text-transform: uppercase;
-    }
-    .side-badge.long  { background: rgba(34,197,94,.15);  color: var(--green); }
-    .side-badge.short { background: rgba(239,68,68,.15);  color: var(--red);   }
+        /* Market status pill */
+        .market-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            font-size: 13px;
+            font-weight: 500;
+        }
 
-    /* Score bar */
-    .score-row {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
-    }
-    .score-bar-wrap {
-      flex: 1; height: 5px; border-radius: 3px;
-      background: var(--border); overflow: hidden;
-    }
-    .score-bar-fill {
-      height: 100%; border-radius: 3px;
-      background: linear-gradient(90deg, #3b82f6, #a855f7);
-    }
-    .score-num { font-size: 13px; font-weight: 700; color: var(--blue); }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
 
-    /* Price levels */
-    .levels {
-      display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 6px; margin-bottom: 14px;
-    }
-    .level { text-align: center; }
-    .level-label {
-      font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
-      color: var(--sub); margin-bottom: 2px;
-    }
-    .level-price { font-size: 13px; font-weight: 600; }
-    .level-price.entry { color: var(--blue);  }
-    .level-price.stop  { color: var(--red);   }
-    .level-price.tp1   { color: var(--green); }
-    .level-price.tp2   { color: var(--green); opacity: .75; }
+        .dot.open {
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+        }
 
-    /* Patterns */
-    .patterns {
-      display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;
-    }
-    .pattern-tag {
-      background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.2);
-      color: #93c5fd; border-radius: 4px;
-      font-size: 10px; padding: 2px 8px; font-weight: 500;
-    }
+        .dot.premarket {
+            background: var(--amber);
+            box-shadow: 0 0 6px var(--amber);
+        }
 
-    /* Timestamp */
-    .card-footer {
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .session-tag {
-      font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
-      color: var(--purple);
-    }
-    .timestamp { font-size: 10px; color: var(--muted); }
+        .dot.afterhours {
+            background: var(--amber);
+            box-shadow: 0 0 6px var(--amber);
+        }
 
-    /* ── Empty state ──────────────────────────────────── */
-    .empty-state {
-      grid-column: 1 / -1;
-      text-align: center; padding: 64px 20px;
-      border: 1px dashed var(--border); border-radius: var(--radius);
-    }
-    .empty-icon  { font-size: 48px; margin-bottom: 16px; }
-    .empty-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
-    .empty-sub   { font-size: 13px; color: var(--sub); }
+        .dot.closed {
+            background: var(--muted);
+        }
 
-    /* ── Auto-refresh bar ─────────────────────────────── */
-    #refresh-hint {
-      position: fixed; bottom: 16px; right: 20px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 8px 14px;
-      font-size: 11px; color: var(--sub);
-    }
+        header .time-label {
+            color: var(--sub);
+            font-size: 12px;
+        }
 
-    /* ── Responsive ───────────────────────────────────── */
-    @media (max-width: 600px) {
-      .levels { grid-template-columns: 1fr 1fr; }
-      header  { flex-direction: column; gap: 12px; text-align: center; }
-    }
-  </style>
+        /* ── Stats row ────────────────────────────────────── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+
+        .stat-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            color: var(--sub);
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .stat-value.green {
+            color: var(--green);
+        }
+
+        .stat-value.blue {
+            color: var(--blue);
+        }
+
+        .stat-value.amber {
+            color: var(--amber);
+        }
+
+        .stat-sub {
+            font-size: 11px;
+            color: var(--sub);
+            margin-top: 2px;
+        }
+
+        /* ── Scan button ──────────────────────────────────── */
+        .scan-section {
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .btn-scan {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 22px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity .2s;
+        }
+
+        .btn-scan:hover {
+            opacity: .85;
+        }
+
+        .btn-scan:disabled {
+            background: var(--surface);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            cursor: not-allowed;
+        }
+
+        .scan-info {
+            font-size: 12px;
+            color: var(--sub);
+        }
+
+        .scan-error {
+            font-size: 12px;
+            color: var(--red);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--muted);
+            border-top-color: var(--blue);
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── Section header ───────────────────────────────── */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .badge-count {
+            background: var(--border);
+            border-radius: 12px;
+            padding: 2px 10px;
+            font-size: 12px;
+            color: var(--sub);
+        }
+
+        /* ── Alert grid ───────────────────────────────────── */
+        .alert-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+            gap: 16px;
+        }
+
+        /* ── Alert card ───────────────────────────────────── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+            transition: border-color .2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            border-color: var(--blue);
+        }
+
+        .card.long-card {
+            border-top: 3px solid var(--green);
+        }
+
+        .card.short-card {
+            border-top: 3px solid var(--red);
+        }
+
+        .card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+
+        .card-symbol {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .side-badge {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .8px;
+            padding: 3px 10px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .side-badge.long {
+            background: rgba(34, 197, 94, .15);
+            color: var(--green);
+        }
+
+        .side-badge.short {
+            background: rgba(239, 68, 68, .15);
+            color: var(--red);
+        }
+
+        /* Score bar */
+        .score-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .score-bar-wrap {
+            flex: 1;
+            height: 5px;
+            border-radius: 3px;
+            background: var(--border);
+            overflow: hidden;
+        }
+
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, #3b82f6, #a855f7);
+        }
+
+        .score-num {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--blue);
+        }
+
+        /* Price levels */
+        .levels {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+
+        .level {
+            text-align: center;
+        }
+
+        .level-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--sub);
+            margin-bottom: 2px;
+        }
+
+        .level-price {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .level-price.entry {
+            color: var(--blue);
+        }
+
+        .level-price.stop {
+            color: var(--red);
+        }
+
+        .level-price.tp1 {
+            color: var(--green);
+        }
+
+        .level-price.tp2 {
+            color: var(--green);
+            opacity: .75;
+        }
+
+        /* Patterns */
+        .patterns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .pattern-tag {
+            background: rgba(59, 130, 246, .1);
+            border: 1px solid rgba(59, 130, 246, .2);
+            color: #93c5fd;
+            border-radius: 4px;
+            font-size: 10px;
+            padding: 2px 8px;
+            font-weight: 500;
+        }
+
+        /* Timestamp */
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .session-tag {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: var(--purple);
+        }
+
+        .timestamp {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        /* ── Empty state ──────────────────────────────────── */
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 64px 20px;
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-sub {
+            font-size: 13px;
+            color: var(--sub);
+        }
+
+        /* ── Auto-refresh bar ─────────────────────────────── */
+        #refresh-hint {
+            position: fixed;
+            bottom: 16px;
+            right: 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 11px;
+            color: var(--sub);
+        }
+
+        /* ── Responsive ───────────────────────────────────── */
+        @media (max-width: 600px) {
+            .levels {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            header {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+        }
+    </style>
 </head>
+
 <body>
-<div class="shell">
+    <div class="shell">
 
-  <!-- ── Header ──────────────────────────────────────────────────────── -->
-  <header>
-    <div class="logo">
-      <div class="logo-icon">📈</div>
-      <div>
-        <div class="logo-text">AI Trading Bot</div>
-        <div class="logo-sub">Alpaca Paper Trading · Pattern Scanner</div>
-      </div>
-    </div>
-    <div style="display:flex; align-items:center; gap:14px;">
-      <div class="market-pill">
-        <span class="dot {{ market.color }}"></span>
-        {{ market.label }}
-      </div>
-      <div style="text-align:right;">
-        <div style="font-weight:600;">{{ market.time_et }}</div>
-        <div class="time-label">{{ market.date }}</div>
-      </div>
-    </div>
-  </header>
+        <!-- ── Header ──────────────────────────────────────────────────────── -->
+        <header>
+            <div class="logo">
+                <div class="logo-icon">📈</div>
+                <div>
+                    <div class="logo-text">AI Trading Bot</div>
+                    <div class="logo-sub">Alpaca Paper Trading · Pattern Scanner</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:14px;">
+                <div class="market-pill">
+                    <span class="dot {{ market.color }}"></span>
+                    {{ market.label }}
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-weight:600;">{{ market.time_et }}</div>
+                    <div class="time-label">{{ market.date }}</div>
+                </div>
+            </div>
+        </header>
 
-  <!-- ── Stats row ───────────────────────────────────────────────────── -->
-  <div class="stats-row">
-    <div class="stat-box">
-      <div class="stat-label">Total Alerts</div>
-      <div class="stat-value blue">{{ alerts | length }}</div>
-      <div class="stat-sub">Stored in session</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Long Setups</div>
-      <div class="stat-value green">{{ alerts | selectattr('side','eq','long') | list | length }}</div>
-      <div class="stat-sub">Bullish signals</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Short Setups</div>
-      <div class="stat-value" style="color:var(--red)">{{ alerts | selectattr('side','eq','short') | list | length }}</div>
-      <div class="stat-sub">Bearish signals</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Last Scan</div>
-      <div class="stat-value amber" style="font-size:15px; padding-top:4px;">
-        {% if last_scan == 'Never' %}—{% else %}{{ last_scan }}{% endif %}
-      </div>
-      <div class="stat-sub">Scans run: {{ scan_count }}</div>
-    </div>
-  </div>
-
-  <!-- ── Scan controls ───────────────────────────────────────────────── -->
-  <div class="scan-section">
-    <form method="POST" action="/scan">
-      {% if scanning %}
-        <button class="btn-scan" disabled>
-          <span class="spinner"></span> Scanning…
-        </button>
-      {% else %}
-        <button class="btn-scan" type="submit">⚡ Run Scan Now</button>
-      {% endif %}
-    </form>
-    <div>
-      {% if scan_error %}
-        <div class="scan-error">⚠ {{ scan_error }}</div>
-      {% elif scanning %}
-        <div class="scan-info">Scanning market… this may take 30–60 seconds. Page will auto-refresh.</div>
-      {% elif last_scan != 'Never' %}
-        <div class="scan-info">Last completed: {{ last_scan }}</div>
-      {% else %}
-        <div class="scan-info">No scan run yet. Click "Run Scan Now" to fetch live setups.</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- ── Alert cards ─────────────────────────────────────────────────── -->
-  <div class="section-header">
-    <div class="section-title">Recent Alerts</div>
-    <span class="badge-count">{{ alerts | length }}</span>
-  </div>
-
-  <div class="alert-grid">
-    {% if alerts %}
-      {% for a in alerts %}
-      <div class="card {{ a.side }}-card">
-        <!-- Top row -->
-        <div class="card-top">
-          <div class="card-symbol">{{ a.symbol }}</div>
-          <span class="side-badge {{ a.side }}">{{ a.side | upper }}</span>
+        <!-- ── Stats row ───────────────────────────────────────────────────── -->
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="stat-label">Total Alerts</div>
+                <div class="stat-value blue">{{ alerts | length }}</div>
+                <div class="stat-sub">Stored in session</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Long Setups</div>
+                <div class="stat-value green">{{ long_count }}</div>
+                <div class="stat-sub">Bullish signals</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Short Setups</div>
+                <div class="stat-value" style="color:var(--red)">{{ short_count }}</div>
+                <div class="stat-sub">Bearish signals</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Last Scan</div>
+                <div class="stat-value amber" style="font-size:15px; padding-top:4px;">
+                    {% if last_scan == 'Never' %}—{% else %}{{ last_scan }}{% endif %}
+                </div>
+                <div class="stat-sub">Scans run: {{ scan_count }}</div>
+            </div>
         </div>
 
-        <!-- Score bar -->
-        <div class="score-row">
-          <div class="score-bar-wrap">
-            <div class="score-bar-fill" style="width:{{ [a.score,100]|min }}%"></div>
-          </div>
-          <span class="score-num">{{ a.score }}</span>
+        <!-- ── Scan controls ───────────────────────────────────────────────── -->
+        <div class="scan-section">
+            <form method="POST" action="/scan">
+                {% if scanning %}
+                <button class="btn-scan" disabled>
+                    <span class="spinner"></span> Scanning…
+                </button>
+                {% else %}
+                <button class="btn-scan" type="submit">⚡ Run Scan Now</button>
+                {% endif %}
+            </form>
+            <div>
+                {% if scan_error %}
+                <div class="scan-error">⚠ {{ scan_error }}</div>
+                {% elif scanning %}
+                <div class="scan-info">Scanning market… this may take 30–60 seconds. Page will auto-refresh.</div>
+                {% elif last_scan != 'Never' %}
+                <div class="scan-info">Last completed: {{ last_scan }}</div>
+                {% else %}
+                <div class="scan-info">No scan run yet. Click "Run Scan Now" to fetch live setups.</div>
+                {% endif %}
+            </div>
         </div>
 
-        <!-- Price levels -->
-        <div class="levels">
-          <div class="level">
-            <div class="level-label">Entry</div>
-            <div class="level-price entry">${{ "%.2f"|format(a.entry) }}</div>
-          </div>
-          <div class="level">
-            <div class="level-label">Stop</div>
-            <div class="level-price stop">${{ "%.2f"|format(a.stop) }}</div>
-          </div>
-          <div class="level">
-            <div class="level-label">TP1</div>
-            <div class="level-price tp1">${{ "%.2f"|format(a.tp1) }}</div>
-          </div>
-          <div class="level">
-            <div class="level-label">TP2</div>
-            <div class="level-price tp2">${{ "%.2f"|format(a.tp2) }}</div>
-          </div>
+        <!-- ── Alert cards ─────────────────────────────────────────────────── -->
+        <div class="section-header">
+            <div class="section-title">Recent Alerts</div>
+            <span class="badge-count">{{ alerts | length }}</span>
         </div>
 
-        <!-- Pattern tags -->
-        {% if a.patterns %}
-        <div class="patterns">
-          {% for p in a.patterns %}
-          <span class="pattern-tag">{{ p | replace('_',' ') }}</span>
-          {% endfor %}
+        <div class="alert-grid">
+            {% if alerts %}
+            {% for a in alerts %}
+            <div class="card {{ a.side }}-card">
+                <!-- Top row -->
+                <div class="card-top">
+                    <div class="card-symbol">{{ a.symbol }}</div>
+                    <span class="side-badge {{ a.side }}">{{ a.side | upper }}</span>
+                </div>
+
+                <!-- Score bar -->
+                <div class="score-row">
+                    <div class="score-bar-wrap">
+                        <div class="score-bar-fill" style="width:{{ [a.score,100]|min }}%"></div>
+                    </div>
+                    <span class="score-num">{{ a.score }}</span>
+                </div>
+
+                <!-- Price levels -->
+                <div class="levels">
+                    <div class="level">
+                        <div class="level-label">Entry</div>
+                        <div class="level-price entry">${{ "%.2f"|format(a.entry) }}</div>
+                    </div>
+                    <div class="level">
+                        <div class="level-label">Stop</div>
+                        <div class="level-price stop">${{ "%.2f"|format(a.stop) }}</div>
+                    </div>
+                    <div class="level">
+                        <div class="level-label">TP1</div>
+                        <div class="level-price tp1">${{ "%.2f"|format(a.tp1) }}</div>
+                    </div>
+                    <div class="level">
+                        <div class="level-label">TP2</div>
+                        <div class="level-price tp2">${{ "%.2f"|format(a.tp2) }}</div>
+                    </div>
+                </div>
+
+                <!-- Pattern tags -->
+                {% if a.patterns %}
+                <div class="patterns">
+                    {% for p in a.patterns %}
+                    <span class="pattern-tag">{{ p | replace('_',' ') }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Footer -->
+                <div class="card-footer">
+                    <span class="session-tag">{{ a.session }}</span>
+                    <span class="timestamp">{{ a.timestamp }}</span>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <div class="empty-title">No alerts yet</div>
+                <div class="empty-sub">
+                    Click <strong>Run Scan Now</strong> to scan the market for high-confluence trade setups.<br />
+                    Alerts also arrive automatically from the scheduled worker and via Telegram.
+                </div>
+            </div>
+            {% endif %}
         </div>
-        {% endif %}
 
-        <!-- Footer -->
-        <div class="card-footer">
-          <span class="session-tag">{{ a.session }}</span>
-          <span class="timestamp">{{ a.timestamp }}</span>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-state">
-        <div class="empty-icon">🔍</div>
-        <div class="empty-title">No alerts yet</div>
-        <div class="empty-sub">
-          Click <strong>Run Scan Now</strong> to scan the market for high-confluence trade setups.<br/>
-          Alerts also arrive automatically from the scheduled worker and via Telegram.
-        </div>
-      </div>
-    {% endif %}
-  </div>
+    </div><!-- /shell -->
 
-</div><!-- /shell -->
+    <!-- ── Auto-refresh hint ──────────────────────────────────────────────── -->
+    <div id="refresh-hint">Auto-refresh in <span id="countdown">30</span>s</div>
 
-<!-- ── Auto-refresh hint ──────────────────────────────────────────────── -->
-<div id="refresh-hint">Auto-refresh in <span id="countdown">30</span>s</div>
+    <script>
+        // Auto-refresh every 30 s (useful while scanning)
+        let seconds = 30;
+        const cd = document.getElementById('countdown');
+        const interval = setInterval(() => {
+            seconds--;
+            if (cd) cd.textContent = seconds;
+            if (seconds <= 0) {
+                clearInterval(interval);
+                window.location.reload();
+            }
+        }, 1000);
 
-<script>
-  // Auto-refresh every 30 s (useful while scanning)
-  let seconds = 30;
-  const cd = document.getElementById('countdown');
-  const interval = setInterval(() => {
-    seconds--;
-    if (cd) cd.textContent = seconds;
-    if (seconds <= 0) {
-      clearInterval(interval);
-      window.location.reload();
-    }
-  }, 1000);
-
-  // If scan is in progress, refresh faster (every 5 s)
-  const scanning = {{ 'true' if scanning else 'false' }};
-  if (scanning) {
-    clearInterval(interval);
-    setTimeout(() => window.location.reload(), 5000);
-    if (cd) cd.textContent = '5';
-  }
-</script>
+        // If scan is in progress, refresh faster (every 5 s)
+        const scanning = {{ 'true' if scanning else 'false' }};
+        if (scanning) {
+            clearInterval(interval);
+            setTimeout(() => window.location.reload(), 5000);
+            if (cd) cd.textContent = '5';
+        }
+    </script>
 </body>
+
 </html>

@@ -100,6 +100,8 @@ def dashboard():
     status = _market_status()
     with _scan_lock:
         scanning = _scan_in_progress
+    long_count = sum(1 for a in alerts if a.get("side") == "long")
+    short_count = sum(1 for a in alerts if a.get("side") == "short")
     return render_template(
         "dashboard.html",
         alerts=alerts,
@@ -108,6 +110,8 @@ def dashboard():
         scan_error=_last_scan_error,
         scanning=scanning,
         scan_count=_scan_count,
+        long_count=long_count,
+        short_count=short_count,
     )
 
 
