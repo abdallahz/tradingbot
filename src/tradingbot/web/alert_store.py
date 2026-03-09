@@ -18,16 +18,24 @@ from typing import Any
 # Store up to this many alerts in the JSON file
 _MAX_RECORDS = 200
 
-# Allow override via env var; fall back to /tmp (safe on Heroku) or local outputs/
-_DEFAULT_PATH = os.getenv(
-    "ALERT_STORE_PATH",
-    str(Path(__file__).resolve().parents[4] / "outputs" / "alerts.jsonl"),
-)
-
-
+# Allow override via env var; fall back to /tmp (always writable, incl. Heroku)
+# parents[3] of src/tradingbot/web/alert_store.py = project root
+# Use /tmp as safe fallback so mkdir never hits a permission error
 def _store_path() -> Path:
-    p = Path(_DEFAULT_PATH)
-    p.parent.mkdir(parents=True, exist_ok=True)
+    custom = os.getenv("ALERT_STORE_PATH")
+    if custom:
+        p = Path(custom)
+    else:
+        try:
+            # project_root/outputs/alerts.jsonl  (parents[3] = project root)
+            p = Path(__file__).resolve().parents[3] / "outputs" / "alerts.jsonl"
+        except IndexError:
+            p = Path("/tmp/alerts.jsonl")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        p = Path("/tmp/alerts.jsonl")
+        p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
@@ -48,7 +56,10 @@ def save_alert(alert: dict[str, Any]) -> None:
 
 def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
     """Return the most recent alerts (newest first)."""
-    p = _store_path()
+    try:
+        p = _store_path()
+    except Exception:
+        return []
     if not p.exists():
         return []
     records: list[dict] = []
