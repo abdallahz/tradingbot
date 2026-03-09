@@ -38,12 +38,11 @@ _scan_count: int = 0          # how many scans have run since startup
 # ── Market hours helper ────────────────────────────────────────────────────────
 def _market_status() -> dict:
     """Return market open/pre/post/closed status in ET."""
-    try:
-        from zoneinfo import ZoneInfo
-    except ImportError:
-        from backports.zoneinfo import ZoneInfo  # type: ignore
-
-    now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+    # Convert UTC to ET manually (UTC-5 EST / UTC-4 EDT)
+    # pytz is already in requirements so use it
+    import pytz
+    et_tz = pytz.timezone("America/New_York")
+    now_et = datetime.now(timezone.utc).astimezone(et_tz)
     mins = now_et.hour * 60 + now_et.minute
     weekday = now_et.weekday()  # 0=Mon … 4=Fri
 
