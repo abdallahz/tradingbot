@@ -32,6 +32,7 @@ from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
+from tradingbot.web.alert_store import card_to_dict, save_alert
 
 
 class SessionRunner:
@@ -297,6 +298,7 @@ class SessionRunner:
             cards.append(card)
             risk_state.trades_taken += 1
             self.notifier.send_trade_alert(card)
+            save_alert(card_to_dict(card))
 
         return WatchlistRun(
             generated_at=datetime.utcnow(),
@@ -497,6 +499,7 @@ class SessionRunner:
             cards.append(card)
             risk_state.trades_taken += 1
             self.notifier.send_trade_alert(card)
+            save_alert(card_to_dict(card))
 
         return cards
 

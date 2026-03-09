@@ -9,6 +9,8 @@ python-dotenv>=1.0.0   # Load .env file for local dev
 ta>=0.11.0              # Free technical indicators (RSI, MACD, ATR, Bollinger Bands)
 mplfinance==0.12.10b0    # Candlestick chart generation (Phase 7)
 matplotlib>=3.7.0       # Required by mplfinance
+flask>=3.0.0            # Web dashboard
+gunicorn>=21.0.0        # Production WSGI server for Heroku
 
 # Optional: AI sentiment analysis (Phase 6) — free local model (FinBERT)
 # torch and transformers are NOT installed on Heroku (slug would exceed 1GB limit).
