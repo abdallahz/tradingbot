@@ -373,6 +373,8 @@ class CatalystScorerV2:
                 return {}
             
             # Get AI sentiment analysis
+            if self.ai_analyzer is None:
+                return {}
             ai_results = self.ai_analyzer.analyze_headlines_batch(headlines)
             
             # Aggregate scores by symbol
