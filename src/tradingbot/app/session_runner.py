@@ -29,6 +29,7 @@ from tradingbot.scanner.gap_scanner import GapScanner
 from tradingbot.signals.pullback_setup import has_valid_setup
 from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
+from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
 
 
@@ -275,6 +276,13 @@ class SessionRunner:
             )
             # Attach detected patterns from snapshot
             card.patterns = list(symbol.patterns)
+            # Confluence gating: drop alert if bearish signals dominate
+            confluence = score_confluence(card.patterns, side)
+            if confluence < MIN_CONFLUENCE_SCORE:
+                dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
+                continue
+            # Blend confluence bonus into the ranker score (30% weight, cap 100)
+            card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
             # Generate candlestick chart (returns None gracefully if mplfinance not installed)
             chart_path = generate_chart(
                 symbol=symbol.symbol,
@@ -468,6 +476,12 @@ class SessionRunner:
             )
             # Attach detected patterns from snapshot
             card.patterns = list(symbol.patterns)
+            # Confluence gating: skip if bearish signals dominate
+            confluence = score_confluence(card.patterns, side)
+            if confluence < MIN_CONFLUENCE_SCORE:
+                continue
+            # Blend confluence bonus into the ranker score (30% weight, cap 100)
+            card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
             # Generate candlestick chart (returns None gracefully if mplfinance not installed)
             chart_path = generate_chart(
                 symbol=symbol.symbol,

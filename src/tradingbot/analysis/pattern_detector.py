@@ -3,13 +3,16 @@ Chart pattern and candlestick pattern detection.
 
 Detects common patterns from OHLCV price data:
   - Bull flag       : Strong up move, then orderly pullback
-  - Breakout        : Price crossing above resistance
-  - Support bounce  : Price bouncing off a key support level
+  - Breakout        : Price crossing above resistance WITH volume confirmation
+  - Support bounce  : Price bouncing off a key support level WITH volume confirm
   - Hammer          : Bullish reversal candle (long lower wick)
   - Bullish engulfing: Current green candle engulfs previous red candle
   - Bearish engulfing: Current red candle engulfs previous green candle
   - Doji            : Open ≈ Close (indecision / potential reversal)
   - Above VWAP      : Price trading above volume-weighted average price
+
+Also provides confluence scoring:
+  score_confluence(patterns, side) -> 0-100 float indicating signal strength
 """
 from __future__ import annotations
 
@@ -53,15 +56,26 @@ def detect_patterns(
     if len(closes) >= 15 and _is_bull_flag(highs, lows, closes, vols):
         patterns.append("bull_flag")
 
+    avg_vol = _avg_volume(vols, n=20)
+    current_vol = vols[-1]
+
     resistance = indicators.get("resistance", 0.0)
     if resistance > 0 and current > resistance * 1.002:
-        patterns.append("breakout")
+        # Require volume surge to confirm breakout is real (not a low-vol drift)
+        if avg_vol <= 0 or current_vol >= avg_vol * 1.5:
+            patterns.append("breakout")
+        else:
+            logger.debug(
+                f"breakout filtered: vol {current_vol:.0f} < 1.5× avg {avg_vol:.0f}"
+            )
 
     support = indicators.get("support", 0.0)
     if support > 0:
         near_support = abs(current - support) / support < 0.015
         bouncing_up  = len(closes) >= 2 and closes[-1] > closes[-2]
-        if near_support and bouncing_up:
+        # Require mild volume uptick to confirm buyers stepping in at support
+        vol_confirming = avg_vol <= 0 or current_vol >= avg_vol * 1.2
+        if near_support and bouncing_up and vol_confirming:
             patterns.append("support_bounce")
 
     # ── VWAP bias ──────────────────────────────────────────────────────────
@@ -81,6 +95,14 @@ def detect_patterns(
             patterns.append("doji")
 
     return patterns
+
+
+# ── Volume helper ─────────────────────────────────────────────────────────────
+
+def _avg_volume(vols: list[float], n: int = 20) -> float:
+    """Return the simple average of the last *n* volume bars (or all if fewer)."""
+    sample = vols[-n:] if len(vols) >= n else vols
+    return sum(sample) / len(sample) if sample else 0.0
 
 
 # ── Individual pattern helpers ─────────────────────────────────────────────────
@@ -211,3 +233,61 @@ def format_patterns(patterns: list[str]) -> str:
     if not patterns:
         return "none detected"
     return " | ".join(PATTERN_LABELS.get(p, p) for p in patterns)
+
+
+# ── Confluence scoring ─────────────────────────────────────────────────────────
+#
+# Each pattern is weighted by how reliable it is as a signal.
+# For a LONG trade:   bullish patterns add points, bearish subtract.
+# For a SHORT trade:  weighting is inverted.
+# Score is clamped to 0-100.
+#
+# Use score_confluence() to decide:
+#   >= 20 → alert can fire        (at least one meaningful bullish signal)
+#   >= 50 → strong confluence     (multiple signals agree)
+#   <  0  → drop the alert        (bearish signal dominates on a long)
+
+_LONG_WEIGHTS: dict[str, int] = {
+    "bull_flag":          25,   # strong trend continuation
+    "breakout":           20,   # confirmed with volume
+    "bullish_engulfing":  20,   # powerful reversal candle
+    "support_bounce":     15,   # buyers defending a level
+    "hammer":             15,   # pin-bar reversal
+    "above_vwap":         10,   # institutional bias up
+    "doji":               -5,   # indecision — slight negative
+    "bearish_engulfing":  -30,  # strong bearish signal — kills long alert
+}
+
+_SHORT_WEIGHTS: dict[str, int] = {
+    "bearish_engulfing":  25,
+    "doji":               -5,
+    "bull_flag":          -20,
+    "breakout":           -20,
+    "bullish_engulfing":  -25,
+    "support_bounce":     -15,
+    "hammer":             -15,
+    "above_vwap":         -10,
+}
+
+# Minimum confluence score required to fire an alert
+MIN_CONFLUENCE_SCORE = 10
+
+
+def score_confluence(patterns: list[str], side: str = "long") -> float:
+    """
+    Return a confluence score (0–100) for the detected patterns.
+
+    A score below MIN_CONFLUENCE_SCORE means signals are too weak or
+    contradictory — the alert should be dropped.
+    A negative score means a strong opposing signal is present.
+
+    Args:
+        patterns: List of pattern strings from detect_patterns()
+        side:     "long" or "short"
+
+    Returns:
+        float in range -100 to 100 (clamped to 0..100 for practical use)
+    """
+    weights = _LONG_WEIGHTS if side == "long" else _SHORT_WEIGHTS
+    raw = sum(weights.get(p, 0) for p in patterns)
+    return max(-100.0, min(100.0, float(raw)))
