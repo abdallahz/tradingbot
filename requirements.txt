@@ -7,7 +7,7 @@ lxml>=4.9.0
 pytz>=2025.1
 python-dotenv>=1.0.0   # Load .env file for local dev
 ta>=0.11.0              # Free technical indicators (RSI, MACD, ATR, Bollinger Bands)
-mplfinance>=0.12.10     # Candlestick chart generation (Phase 7)
+mplfinance==0.12.10b0    # Candlestick chart generation (Phase 7)
 matplotlib>=3.7.0       # Required by mplfinance
 
 # Optional: AI sentiment analysis (Phase 6) — free local model (FinBERT)
