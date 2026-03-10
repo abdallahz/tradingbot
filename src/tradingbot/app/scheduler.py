@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from tradingbot.config import ConfigLoader
 from tradingbot.app.session_runner import SessionRunner
@@ -69,73 +71,42 @@ class Scheduler:
         
         return catalyst_scores
     
-    def run_morning_only(self) -> None:
-        """Run pre-market scan using saved catalyst_scores.json"""
-        runner = SessionRunner(self.root, use_real_data=self.use_real_data)
-        
-        # Load catalyst scores
-        import json
-        scores_path = self.root / "outputs" / "catalyst_scores.json"
-        if not scores_path.exists():
+    def run_morning_only(self) -> int:
+        """Run pre-market scan using saved catalyst_scores.json. Returns alert count."""
+        return self._run_scan_session("morning")
+
+    def run_midday_only(self) -> int:
+        """Run midday scan using saved catalyst_scores.json. Returns alert count."""
+        return self._run_scan_session("midday")
+
+    def run_close_only(self) -> int:
+        """Run close scan using saved catalyst_scores.json. Returns alert count."""
+        return self._run_scan_session("close")
+
+    # ── Private helpers ────────────────────────────────────────────────────
+
+    def _load_catalyst_scores(self) -> dict[str, float]:
+        """Load catalyst_scores.json. Raises FileNotFoundError if not present."""
+        path = self.root / "outputs" / "catalyst_scores.json"
+        if not path.exists():
             raise FileNotFoundError(
                 "catalyst_scores.json not found. Run 'run-news' command first."
             )
-        
-        with scores_path.open("r", encoding="utf-8") as f:
-            catalyst_scores = json.load(f)
-        
-        # Run morning session
-        results, card_count = runner.run_single_session("morning", catalyst_scores)
-        runner._write_single_session_output(results, "morning")
-        
-        # Archive the run
-        self.archive.archive_daily_run("morning")
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _run_scan_session(
+        self, session_type: Literal["morning", "midday", "close"]
+    ) -> int:
+        """Shared core for pre-market / midday / close scan jobs.
+
+        Loads catalyst scores, runs the session, writes outputs, archives the
+        run, and returns the number of trade alerts sent.
+        """
+        runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+        catalyst_scores = self._load_catalyst_scores()
+        results, card_count = runner.run_single_session(session_type, catalyst_scores)
+        runner._write_single_session_output(results, session_type)
+        self.archive.archive_daily_run(session_type)
         self.archive.create_daily_index()
         return card_count
-    
-    def run_midday_only(self) -> None:
-        """Run midday scan using saved catalyst_scores.json"""
-        runner = SessionRunner(self.root, use_real_data=self.use_real_data)
-        
-        # Load catalyst scores
-        import json
-        scores_path = self.root / "outputs" / "catalyst_scores.json"
-        if not scores_path.exists():
-            raise FileNotFoundError(
-                "catalyst_scores.json not found. Run 'run-news' command first."
-            )
-        
-        with scores_path.open("r", encoding="utf-8") as f:
-            catalyst_scores = json.load(f)
-        
-        # Run midday session
-        results, card_count = runner.run_single_session("midday", catalyst_scores)
-        runner._write_single_session_output(results, "midday")
-        
-        # Archive the run
-        self.archive.archive_daily_run("midday")
-        self.archive.create_daily_index()
-        return card_count
-    
-    def run_close_only(self) -> None:
-        """Run close scan using saved catalyst_scores.json"""
-        runner = SessionRunner(self.root, use_real_data=self.use_real_data)
-        
-        # Load catalyst scores
-        import json
-        scores_path = self.root / "outputs" / "catalyst_scores.json"
-        if not scores_path.exists():
-            raise FileNotFoundError(
-                "catalyst_scores.json not found. Run 'run-news' command first."
-            )
-        
-        with scores_path.open("r", encoding="utf-8") as f:
-            catalyst_scores = json.load(f)
-        
-        # Run close session
-        results, card_count = runner.run_single_session("close", catalyst_scores)
-        runner._write_single_session_output(results, "close")
-        
-        # Archive the run
-        self.archive.archive_daily_run("close")
-        self.archive.create_daily_index()        return card_count

@@ -88,17 +88,15 @@ class TelegramNotifier:
         return self._send_message(text)
 
     def send_session_summary(self, session: str, card_count: int) -> bool:
-        """Send a short session summary. Pass card_count=-1 if alerts already sent individually."""
+        """Send a short session summary after a scan completes."""
         if not self._enabled:
             return False
 
-        if card_count == -1:
-            text = f"✅ *{session} scan complete* — any alerts sent above."
-        elif card_count == 0:
-            text = f"📭 *{session} scan complete* — no qualifying setups found."
+        if card_count == 0:
+            text = f"\U0001f4ed *{session} scan complete* \u2014 no qualifying setups found."
         else:
             text = (
-                f"📋 *{session} scan complete* — "
+                f"\U0001f4cb *{session} scan complete* \u2014 "
                 f"{card_count} alert{'s' if card_count != 1 else ''} sent above."
             )
         return self._send_message(text)

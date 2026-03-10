@@ -44,6 +44,8 @@ class TradeCard:
     reason: list[str] = field(default_factory=list)
     chart_path: str = ""
     patterns: list[str] = field(default_factory=list)
+    risk_reward: float = 0.0   # TP2-to-stop ratio (reward ÷ risk)
+    generated_at: str = ""    # UTC timestamp when the alert was created
 
 
 @dataclass

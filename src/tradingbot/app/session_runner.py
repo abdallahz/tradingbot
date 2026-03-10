@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from tradingbot.config import ConfigLoader
 from tradingbot.data.alpaca_client import AlpacaClient
@@ -110,6 +112,7 @@ class SessionRunner:
         )
         self.market_analyzer = MarketConditionAnalyzer()
         self.notifier = TelegramNotifier.from_env()
+        self._alerts_sent_count: int = 0
         
         # Relaxed scanner for Option 2
         self.relaxed_scanner = GapScanner(
@@ -233,72 +236,27 @@ class SessionRunner:
         session_tag: Literal["morning", "midday"],
         stricter: bool = False,
     ) -> WatchlistRun:
+        """Legacy full-day session runner. Delegates card-building to _build_cards."""
         scan = self.scanner.run(snapshots)
         candidates = scan.candidates
-        dropped = list(scan.dropped)
+        dropped: list[tuple[str, str]] = list(scan.dropped)
 
         if stricter:
             filtered = []
             for item in candidates:
                 if item.relative_volume < self.midday_config["min_relative_volume"]:
                     dropped.append((item.symbol, "midday_rvol_too_low"))
-                    continue
-                if item.dollar_volume < self.midday_config["min_dollar_volume"]:
+                elif item.dollar_volume < self.midday_config["min_dollar_volume"]:
                     dropped.append((item.symbol, "midday_dollar_volume_too_low"))
-                    continue
-                if item.spread_pct > self.midday_config["max_spread_pct"]:
+                elif item.spread_pct > self.midday_config["max_spread_pct"]:
                     dropped.append((item.symbol, "midday_spread_too_wide"))
-                    continue
-                filtered.append(item)
+                else:
+                    filtered.append(item)
             candidates = filtered
 
-        ranked = self.midday_ranker.run(candidates) if stricter else self.ranker.run(candidates)
-
-        cards: list[TradeCard] = []
-        risk_state = RiskState()
-        for item in ranked:
-            if not self.risk_manager.allow_new_trade(risk_state):
-                dropped.append((item.snapshot.symbol, "risk_lockout"))
-                continue
-
-            symbol = item.snapshot
-            can_long = has_valid_setup(symbol, "long", self.volume_spike_midday if stricter else self.volume_spike_morning)
-            can_short = has_valid_setup(symbol, "short", self.volume_spike_midday if stricter else self.volume_spike_morning)
-
-            if not can_long and not can_short:
-                dropped.append((symbol.symbol, "indicator_confirmation_failed"))
-                continue
-
-            side: Side = "long" if can_long else "short"
-            card = build_trade_card(
-                stock=symbol,
-                side=side,
-                score=item.score,
-                fixed_stop_pct=self.fixed_stop_pct,
-                session_tag=cast(Literal["morning", "midday"], session_tag),
-            )
-            # Attach detected patterns from snapshot
-            card.patterns = list(symbol.patterns)
-            # Confluence gating: drop alert if bearish signals dominate
-            confluence = score_confluence(card.patterns, side)
-            if confluence < MIN_CONFLUENCE_SCORE:
-                dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
-                continue
-            # Blend confluence bonus into the ranker score (30% weight, cap 100)
-            card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
-            # Generate candlestick chart (returns None gracefully if mplfinance not installed)
-            chart_path = generate_chart(
-                symbol=symbol.symbol,
-                bars_data=symbol.raw_bars,
-                indicators=symbol.tech_indicators,
-                trade_card=card,
-            )
-            if chart_path:
-                card.chart_path = chart_path
-            cards.append(card)
-            risk_state.trades_taken += 1
-            self.notifier.send_trade_alert(card)
-            save_alert(card_to_dict(card))
+        volume_spike = self.volume_spike_midday if stricter else self.volume_spike_morning
+        ranked = (self.midday_ranker if stricter else self.ranker).run(candidates)
+        cards = self._build_cards(ranked, session_tag, volume_spike, dropped=dropped)
 
         return WatchlistRun(
             generated_at=datetime.utcnow(),
@@ -316,81 +274,8 @@ class SessionRunner:
     ) -> ThreeOptionWatchlist:
         """Run 3 different scan approaches and provide recommendation."""
         
-        # Option 1: Night Research - Top catalyst picks with smart money signals
-        night_picks = []
-        top_catalysts = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:10]
-        
-        # Fetch smart money signals for top catalysts
-        smart_money_signals = {}
-        try:
-            from tradingbot.research.insider_tracking import SmartMoneyTracker
-            tracker = SmartMoneyTracker()
-            top_symbols = [symbol for symbol, _ in top_catalysts if catalyst_scores.get(symbol, 0) >= 60]
-            if top_symbols:
-                smart_money_signals = tracker.get_smart_money_signals(top_symbols, days_lookback=7)
-                
-                # Save smart money signals to file for persistence
-                self._save_smart_money_signals(smart_money_signals, session_tag)
-        except Exception as e:
-            # If smart money tracking fails, continue without it
-            import logging
-            logging.warning(f"Could not fetch smart money signals: {e}")
-        
-        for symbol, score in top_catalysts:
-            if score >= 60:
-                # Get reasons from snapshots if available
-                matching = [s for s in snapshots if s.symbol == symbol]
-                if matching:
-                    snap = matching[0]
-                    reasons = []
-                    if snap.gap_pct and abs(snap.gap_pct) >= 2.0:
-                        reasons.append(f"Gap: {snap.gap_pct:+.1f}%")
-                    if snap.relative_volume >= 1.5:
-                        reasons.append(f"RelVol: {snap.relative_volume:.1f}x")
-                    
-                    # Add smart money data if available
-                    smart_money_score = 50.0
-                    insider_signal = ""
-                    institutional_signal = ""
-                    
-                    if symbol in smart_money_signals:
-                        sm_data = smart_money_signals[symbol]
-                        smart_money_score = sm_data.get("smart_money_score", 50.0)
-                        
-                        # Analyze insider trades
-                        insider_trades = sm_data.get("insider_trades", [])
-                        if insider_trades:
-                            purchases = sum(1 for t in insider_trades if "Purchase" in t.transaction_type)
-                            sales = sum(1 for t in insider_trades if "Sale" in t.transaction_type)
-                            if purchases > sales:
-                                insider_signal = "buying"
-                            elif sales > purchases:
-                                insider_signal = "selling"
-                            else:
-                                insider_signal = "neutral"
-                        
-                        # Analyze institutional positions
-                        inst_positions = sm_data.get("institutional_positions", [])
-                        if inst_positions:
-                            increasing = sum(1 for p in inst_positions 
-                                           if p.change_from_prior_quarter and p.change_from_prior_quarter > 0)
-                            decreasing = sum(1 for p in inst_positions
-                                           if p.change_from_prior_quarter and p.change_from_prior_quarter < 0)
-                            if increasing > decreasing:
-                                institutional_signal = "accumulating"
-                            elif decreasing > increasing:
-                                institutional_signal = "reducing"
-                            else:
-                                institutional_signal = "neutral"
-                    
-                    night_picks.append(NightResearchResult(
-                        symbol=symbol,
-                        catalyst_score=score,
-                        reasons=reasons or ["High catalyst score"],
-                        smart_money_score=smart_money_score,
-                        insider_signal=insider_signal,
-                        institutional_signal=institutional_signal,
-                    ))
+        # Option 1: Night Research — top catalyst picks with smart money overlay
+        night_picks = self._get_night_research_picks(snapshots, catalyst_scores, session_tag)
         
         # Option 2: Relaxed filters scan
         relaxed_scan = self.relaxed_scanner.run(snapshots)
@@ -404,14 +289,13 @@ class SessionRunner:
         # Option 3: Strict filters scan
         strict_scan = self.scanner.run(snapshots)
         if stricter:
-            # Apply midday filters
-            filtered = []
-            for item in strict_scan.candidates:
-                if (item.relative_volume >= self.midday_config["min_relative_volume"]
-                    and item.dollar_volume >= self.midday_config["min_dollar_volume"]
-                    and item.spread_pct <= self.midday_config["max_spread_pct"]):
-                    filtered.append(item)
-            strict_scan.candidates[:] = filtered
+            cfg = self.midday_config
+            strict_scan.candidates = [
+                c for c in strict_scan.candidates
+                if c.relative_volume >= cfg["min_relative_volume"]
+                and c.dollar_volume >= cfg["min_dollar_volume"]
+                and c.spread_pct <= cfg["max_spread_pct"]
+            ]
         
         strict_ranked = (self.midday_ranker if stricter else self.ranker).run(strict_scan.candidates)
         strict_cards = self._build_cards(
@@ -455,39 +339,51 @@ class SessionRunner:
         ranked: list,
         session_tag: Literal["morning", "midday"],
         volume_spike: float,
+        dropped: list[tuple[str, str]] | None = None,
     ) -> list[TradeCard]:
-        """Build trade cards from ranked candidates."""
+        """Build trade cards from ranked candidates.
+
+        Args:
+            ranked: Scored candidates from the ranker.
+            session_tag: Session label for each trade card.
+            volume_spike: Volume multiplier threshold for setup validation.
+            dropped: Optional list updated in-place with (symbol, reason) pairs
+                for every candidate that does not produce a trade card.
+        """
         cards: list[TradeCard] = []
         risk_state = RiskState()
-        
+
         for item in ranked:
             if not self.risk_manager.allow_new_trade(risk_state):
+                if dropped is not None:
+                    dropped.append((item.snapshot.symbol, "risk_lockout"))
                 break
-            
+
             symbol = item.snapshot
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
-            
+
             if not can_long and not can_short:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, "indicator_confirmation_failed"))
                 continue
-            
+
             side: Side = "long" if can_long else "short"
             card = build_trade_card(
                 stock=symbol,
                 side=side,
                 score=item.score,
                 fixed_stop_pct=self.fixed_stop_pct,
-                session_tag=cast(Literal["morning", "midday"], session_tag),
+                session_tag=session_tag,
             )
-            # Attach detected patterns from snapshot
             card.patterns = list(symbol.patterns)
-            # Confluence gating: skip if bearish signals dominate
             confluence = score_confluence(card.patterns, side)
             if confluence < MIN_CONFLUENCE_SCORE:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
                 continue
             # Blend confluence bonus into the ranker score (30% weight, cap 100)
             card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
-            # Generate candlestick chart (returns None gracefully if mplfinance not installed)
             chart_path = generate_chart(
                 symbol=symbol.symbol,
                 bars_data=symbol.raw_bars,
@@ -500,7 +396,7 @@ class SessionRunner:
             risk_state.trades_taken += 1
             self.notifier.send_trade_alert(card)
             save_alert(card_to_dict(card))
-            self._alerts_sent_count = getattr(self, '_alerts_sent_count', 0) + 1
+            self._alerts_sent_count += 1
 
         return cards
 
@@ -545,57 +441,110 @@ class SessionRunner:
             night_universe = self.fallback_catalyst.filter(get_night_universe())
             return {item.symbol: item.catalyst_score for item in night_universe}
     
+    def _fetch_snapshots(
+        self,
+        session_type: Literal["morning", "midday", "close"],
+        universe_str: list[str],
+        catalyst_scores: dict[str, float],
+    ) -> list[SymbolSnapshot]:
+        """Fetch market snapshots and annotate each with its catalyst score."""
+        universe_set = set(universe_str)
+        if self.use_real_data and self.alpaca_client:
+            snapshots = self.alpaca_client.get_premarket_snapshots(universe_str)
+        elif session_type == "morning":
+            snapshots = [s for s in get_premarket_snapshots() if s.symbol in universe_set]
+        else:
+            snapshots = [s for s in get_midday_snapshots() if s.symbol in universe_set]
+        for snap in snapshots:
+            snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
+        return snapshots
+
+    def _get_night_research_picks(
+        self,
+        snapshots: list[SymbolSnapshot],
+        catalyst_scores: dict[str, float],
+        session_tag: str,
+    ) -> list[NightResearchResult]:
+        """Build Option-1 night-research picks with optional smart money signals."""
+        top_catalysts = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:10]
+        snap_by_symbol = {s.symbol: s for s in snapshots}
+
+        # Attempt to enrich with smart money data (gracefully degraded if unavailable)
+        smart_money_signals: dict = {}
+        try:
+            from tradingbot.research.insider_tracking import SmartMoneyTracker
+            tracker = SmartMoneyTracker()
+            top_symbols = [sym for sym, score in top_catalysts if score >= 60]
+            if top_symbols:
+                smart_money_signals = tracker.get_smart_money_signals(top_symbols, days_lookback=7)
+                self._save_smart_money_signals(smart_money_signals, session_tag)
+        except Exception as exc:
+            logging.warning(f"Could not fetch smart money signals: {exc}")
+
+        picks: list[NightResearchResult] = []
+        for symbol, score in top_catalysts:
+            if score < 60:
+                continue
+            snap = snap_by_symbol.get(symbol)
+            if snap is None:
+                continue
+
+            reasons: list[str] = []
+            if snap.gap_pct and abs(snap.gap_pct) >= 2.0:
+                reasons.append(f"Gap: {snap.gap_pct:+.1f}%")
+            if snap.relative_volume >= 1.5:
+                reasons.append(f"RelVol: {snap.relative_volume:.1f}x")
+
+            sm_score, insider_signal, institutional_signal = 50.0, "", ""
+            if symbol in smart_money_signals:
+                sm = smart_money_signals[symbol]
+                sm_score = sm.get("smart_money_score", 50.0)
+
+                trades = sm.get("insider_trades", [])
+                if trades:
+                    buys = sum(1 for t in trades if "Purchase" in t.transaction_type)
+                    sells = sum(1 for t in trades if "Sale" in t.transaction_type)
+                    insider_signal = "buying" if buys > sells else "selling" if sells > buys else "neutral"
+
+                positions = sm.get("institutional_positions", [])
+                if positions:
+                    inc = sum(1 for p in positions if p.change_from_prior_quarter and p.change_from_prior_quarter > 0)
+                    dec = sum(1 for p in positions if p.change_from_prior_quarter and p.change_from_prior_quarter < 0)
+                    institutional_signal = "accumulating" if inc > dec else "reducing" if dec > inc else "neutral"
+
+            picks.append(NightResearchResult(
+                symbol=symbol,
+                catalyst_score=score,
+                reasons=reasons or ["High catalyst score"],
+                smart_money_score=sm_score,
+                insider_signal=insider_signal,
+                institutional_signal=institutional_signal,
+            ))
+
+        return picks
+
     def run_single_session(
         self,
         session_type: Literal["morning", "midday", "close"],
         catalyst_scores: dict[str, float],
-    ) -> ThreeOptionWatchlist:
-        """
-        Run a single scan session with pre-computed catalyst scores.
-        
+    ) -> tuple[ThreeOptionWatchlist, int]:
+        """Run a single scan session with pre-computed catalyst scores.
+
         Args:
-            session_type: Which session to run ("morning", "midday", or "close")
-            catalyst_scores: Pre-computed catalyst scores from run_news_research()
-            
+            session_type: Which session to run ("morning", "midday", or "close").
+            catalyst_scores: Pre-computed catalyst scores from run_news_research().
+
         Returns:
-            ThreeOptionWatchlist with all 3 trading options
+            Tuple of (ThreeOptionWatchlist, alert_count) where alert_count is
+            the number of individual trade alerts sent during this session.
         """
-        # Filter universe to symbols with score >= 60
-        night_universe_str = [s for s, score in catalyst_scores.items() if score >= 60]
-        
-        # Determine if this session uses stricter filters
+        universe_str = [s for s, sc in catalyst_scores.items() if sc >= 60]
         stricter = session_type in ["midday", "close"]
-        
-        # Determine session_tag for trade cards (map "close" to "midday" for now)
         session_tag: Literal["morning", "midday"] = "midday" if stricter else "morning"
-        
-        # Fetch market snapshots
-        if self.use_real_data and self.alpaca_client:
-            snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
-            # Apply catalyst scores
-            for snap in snapshots:
-                snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
-        else:
-            # Mock data
-            if session_type == "morning":
-                snapshots = [item for item in get_premarket_snapshots() if item.symbol in set(night_universe_str)]
-            else:
-                snapshots = [item for item in get_midday_snapshots() if item.symbol in set(night_universe_str)]
-            # Apply catalyst scores
-            for snap in snapshots:
-                snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
-        
-        # Run the 3-option session
+        snapshots = self._fetch_snapshots(session_type, universe_str, catalyst_scores)
         self._alerts_sent_count = 0
-        results = self._run_three_option_session(
-            snapshots=snapshots,
-            catalyst_scores=catalyst_scores,
-            session_tag=session_tag,
-            stricter=stricter,
-        )
-        total_alerts = getattr(self, '_alerts_sent_count', 0)
-        
-        return results, total_alerts
+        results = self._run_three_option_session(snapshots, catalyst_scores, session_tag, stricter)
+        return results, self._alerts_sent_count
     
     def _write_single_session_output(self, results: ThreeOptionWatchlist, session_name: str) -> None:
         """Write outputs for a single session."""
@@ -622,11 +571,9 @@ class SessionRunner:
     
     def _save_smart_money_signals(self, signals: dict, session_tag: str) -> None:
         """Save smart money signals to JSON file for historical reference."""
-        import json
-        
         output_dir = self.root / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Convert dataclass objects to dictionaries
         serializable_signals = {}
         for symbol, data in signals.items():
@@ -689,13 +636,10 @@ class SessionRunner:
                 "signals": serializable_signals,
             }, f, indent=2)
         
-        import logging
         logging.info(f"Saved smart money signals to {signals_path}")
 
     def _save_social_proxy_signals(self, signals: dict[str, dict[str, float | int | str]], session_tag: str) -> None:
         """Save social proxy signals to JSON file for historical reference."""
-        import json
-
         output_dir = self.root / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -711,5 +655,4 @@ class SessionRunner:
                 indent=2,
             )
 
-        import logging
         logging.info(f"Saved social proxy signals to {signals_path}")

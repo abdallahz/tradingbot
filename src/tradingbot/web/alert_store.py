@@ -76,6 +76,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
 
 def card_to_dict(card) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
+    generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return {
         "symbol": card.symbol,
         "side": card.side,
@@ -88,5 +89,6 @@ def card_to_dict(card) -> dict[str, Any]:
         "session": card.session_tag,
         "patterns": list(card.patterns),
         "reasons": list(card.reason),
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "risk_reward": round(float(getattr(card, "risk_reward", 0.0)), 2),
+        "timestamp": generated,
     }

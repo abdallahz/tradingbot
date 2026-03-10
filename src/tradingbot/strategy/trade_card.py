@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
 from tradingbot.models import Side, SymbolSnapshot, TradeCard
@@ -29,6 +30,9 @@ def build_trade_card(
         invalidation = round(stock.pullback_high, 2)
         reasons = ["volume_spike", "ema9_20_reject", "vwap_break", "pullback_entry"]
 
+    # Risk-reward = distance to TP2 ÷ distance to stop (always positive)
+    rr = round((2 * risk) / risk, 2) if risk > 0 else 0.0  # TP2 is always 2R
+
     return TradeCard(
         symbol=stock.symbol,
         side=side,
@@ -40,4 +44,6 @@ def build_trade_card(
         invalidation_price=invalidation,
         session_tag=session_tag,
         reason=reasons,
+        risk_reward=rr,
+        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     )
