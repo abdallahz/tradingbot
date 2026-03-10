@@ -11,6 +11,7 @@ except ImportError:
     pass
 
 from tradingbot.app.scheduler import Scheduler
+from tradingbot.notifications.telegram_notifier import TelegramNotifier
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -51,7 +52,8 @@ def main() -> None:
         return
     
     if args.command == "run-morning":
-        scheduler.run_morning_only()
+        card_count = scheduler.run_morning_only()
+        TelegramNotifier().send_session_summary("Pre-Market", card_count)
         print(f"\n{mode_str} Morning Pre-Market Scan Complete")
         print(f">> Watchlist: outputs/morning_watchlist.csv")
         print(f">> Playbook:  outputs/morning_playbook.md")
@@ -61,7 +63,8 @@ def main() -> None:
         return
     
     if args.command == "run-midday":
-        scheduler.run_midday_only()
+        card_count = scheduler.run_midday_only()
+        TelegramNotifier().send_session_summary("Midday", card_count)
         print(f"\n{mode_str} Midday Scan Complete")
         print(f">> Watchlist: outputs/midday_watchlist.csv")
         print(f">> Playbook:  outputs/midday_playbook.md")
@@ -71,7 +74,8 @@ def main() -> None:
         return
     
     if args.command == "run-close":
-        scheduler.run_close_only()
+        card_count = scheduler.run_close_only()
+        TelegramNotifier().send_session_summary("Close", card_count)
         print(f"\n{mode_str} Close Scan Complete")
         print(f">> Watchlist: outputs/close_watchlist.csv")
         print(f">> Playbook:  outputs/close_playbook.md")
