@@ -162,22 +162,29 @@ def main() -> None:
             now = _now_et()
             today = now.date()
             current_hhmm = _hhmm(now)
+            now_minutes = now.hour * 60 + now.minute
 
             schedule = _load_schedule()
 
             for job_name, scheduled_time in schedule.items():
+                if ran_today.get(job_name) == today:
+                    continue  # already ran today — skip
+
                 sh, sm = _parse_hhmm(scheduled_time)
-                nh, nm = now.hour, now.minute
+                scheduled_minutes = sh * 60 + sm
 
-                # Fire if within the same minute window and not already run today
-                if nh == sh and nm == sm:
-                    last_ran = ran_today.get(job_name)
-                    if last_ran != today:
-                        log.info(f"Triggering job: {job_name} at {current_hhmm} ET")
-                        ran_today[job_name] = today
-                        _HANDLERS[job_name]()
+                # Fire if past the scheduled time but within a 30-minute catch-up
+                # window. This means a worker restart never silently drops a job.
+                minutes_late = now_minutes - scheduled_minutes
+                if 0 <= minutes_late <= 30:
+                    log.info(
+                        f"Triggering job: {job_name} at {current_hhmm} ET "
+                        f"(scheduled {scheduled_time}, {minutes_late}m late)"
+                    )
+                    ran_today[job_name] = today
+                    _HANDLERS[job_name]()
 
-            # Reset ran_today at midnight ET
+            # Purge stale entries from previous days
             for job_name in list(ran_today.keys()):
                 if ran_today[job_name] != today:
                     del ran_today[job_name]
