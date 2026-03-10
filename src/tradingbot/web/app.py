@@ -27,6 +27,15 @@ except ImportError:
 
 app = Flask(__name__, template_folder="templates")
 
+
+def _find_root() -> Path:
+    """Walk up from this file until we find config/scanner.yaml (project root)."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "config" / "scanner.yaml").exists():
+            return parent
+    return Path.cwd()  # fallback: gunicorn cwd is /app on Heroku
+
+
 # ── In-process scan state ──────────────────────────────────────────────────────
 _scan_lock = threading.Lock()
 _scan_in_progress = False
@@ -74,7 +83,7 @@ def _run_scan_in_background() -> None:
         from tradingbot.app.session_runner import SessionRunner
         from tradingbot.web.alert_store import card_to_dict, save_alert
 
-        root = Path(__file__).resolve().parents[3]
+        root = _find_root()
         use_real = bool(os.getenv("ALPACA_API_KEY") or os.getenv("ALPACA_KEY_ID"))
         runner = SessionRunner(root, use_real_data=use_real)
         morning, _ = runner.run_day()

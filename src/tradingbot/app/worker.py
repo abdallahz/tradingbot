@@ -34,7 +34,15 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[3]   # project root (src/../..)
+def _find_root() -> Path:
+    """Walk up from this file until we find config/scanner.yaml."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "config" / "scanner.yaml").exists():
+            return parent
+    return Path.cwd()
+
+
+ROOT = _find_root()
 ET = pytz.timezone("America/New_York")
 
 
@@ -64,6 +72,11 @@ def _load_schedule() -> dict[str, str]:
     }
 
 
+def _notifier():
+    from tradingbot.notifications.telegram_notifier import TelegramNotifier
+    return TelegramNotifier.from_env()
+
+
 def _run_news() -> None:
     log.info("Running news research…")
     try:
@@ -71,8 +84,23 @@ def _run_news() -> None:
         scheduler = Scheduler(ROOT, use_real_data=True)
         scores = scheduler.run_news_only()
         log.info(f"News research complete — {len(scores)} symbols scored.")
+        _notifier().send_news_summary("Night Research", scores)
     except Exception as e:
         log.error(f"News research failed: {e}")
+        _notifier().send_text(f"⚠️ *Night Research failed*\n`{e}`")
+
+
+def _run_morning_news() -> None:
+    log.info("Running morning news update…")
+    try:
+        from tradingbot.app.scheduler import Scheduler
+        scheduler = Scheduler(ROOT, use_real_data=True)
+        scores = scheduler.run_news_only()
+        log.info(f"Morning news complete — {len(scores)} symbols scored.")
+        _notifier().send_news_summary("Morning News", scores)
+    except Exception as e:
+        log.error(f"Morning news failed: {e}")
+        _notifier().send_text(f"⚠️ *Morning News failed*\n`{e}`")
 
 
 def _run_morning() -> None:
@@ -82,8 +110,11 @@ def _run_morning() -> None:
         scheduler = Scheduler(ROOT, use_real_data=True)
         scheduler.run_morning_only()
         log.info("Pre-market scan complete.")
+        # individual trade alerts sent inside session_runner; send summary
+        _notifier().send_session_summary("Pre-Market", -1)
     except Exception as e:
         log.error(f"Pre-market scan failed: {e}")
+        _notifier().send_text(f"⚠️ *Pre-Market scan failed*\n`{e}`")
 
 
 def _run_midday() -> None:
@@ -93,8 +124,10 @@ def _run_midday() -> None:
         scheduler = Scheduler(ROOT, use_real_data=True)
         scheduler.run_midday_only()
         log.info("Midday scan complete.")
+        _notifier().send_session_summary("Midday", -1)
     except Exception as e:
         log.error(f"Midday scan failed: {e}")
+        _notifier().send_text(f"⚠️ *Midday scan failed*\n`{e}`")
 
 
 def _run_close() -> None:
@@ -104,14 +137,16 @@ def _run_close() -> None:
         scheduler = Scheduler(ROOT, use_real_data=True)
         scheduler.run_close_only()
         log.info("Close scan complete.")
+        _notifier().send_session_summary("Close", -1)
     except Exception as e:
         log.error(f"Close scan failed: {e}")
+        _notifier().send_text(f"⚠️ *Close scan failed*\n`{e}`")
 
 
 # Map job name → handler
 _HANDLERS = {
     "night_research": _run_news,
-    "morning_news":   _run_news,
+    "morning_news":   _run_morning_news,
     "premarket_scan": _run_morning,
     "midday_scan":    _run_midday,
     "close_scan":     _run_close,

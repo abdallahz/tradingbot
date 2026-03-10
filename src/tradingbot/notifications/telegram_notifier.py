@@ -81,18 +81,42 @@ class TelegramNotifier:
 
         return ok
 
+    def send_text(self, text: str) -> bool:
+        """Send a plain Markdown text message."""
+        if not self._enabled:
+            return False
+        return self._send_message(text)
+
     def send_session_summary(self, session: str, card_count: int) -> bool:
-        """Send a short session-start summary (no cards = warn, cards = info)."""
+        """Send a short session summary. Pass card_count=-1 if alerts already sent individually."""
         if not self._enabled:
             return False
 
-        if card_count == 0:
+        if card_count == -1:
+            text = f"✅ *{session} scan complete* — any alerts sent above."
+        elif card_count == 0:
             text = f"📭 *{session} scan complete* — no qualifying setups found."
         else:
             text = (
                 f"📋 *{session} scan complete* — "
                 f"{card_count} alert{'s' if card_count != 1 else ''} sent above."
             )
+        return self._send_message(text)
+
+    def send_news_summary(self, session: str, scores: dict) -> bool:
+        """Send top catalyst symbols from news research."""
+        if not self._enabled:
+            return False
+        top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:10]
+        if not top:
+            text = f"📰 *{session} research complete* — no catalyst symbols found."
+        else:
+            lines = [f"📰 *{session} Research Complete*", ""]
+            lines.append(f"Top {len(top)} catalyst symbols:")
+            for sym, score in top:
+                bar = "🟢" if score >= 75 else "🟡" if score >= 60 else "⚪"
+                lines.append(f"{bar} `{sym}` — score {score:.0f}")
+            text = "\n".join(lines)
         return self._send_message(text)
 
     # ── Message formatters ─────────────────────────────────────────────────
