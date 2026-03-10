@@ -128,14 +128,27 @@ class AlpacaClient:
                         atr  = tech.get("atr",  0.0)
                         print(f"[DEBUG] {symbol} indicators: RSI={rsi:.1f}, MACD={macd:.3f}, ATR={atr:.2f}, signals={tech_signals}")
 
-                    # Get recent volume for volume spike detection
-                    recent_volume = snap.minute_bar.volume if snap.minute_bar else 0
-                    avg_volume_20 = daily_volume // 390 if daily_volume > 0 else 1  # Rough estimate
+                    # Get recent volume for volume spike detection.
+                    # Pre-market (before open): snap.minute_bar is None — Alpaca only
+                    # returns a minute bar during regular market hours. Fall back to
+                    # the accumulated pre-market volume so the volume-spike check works.
+                    recent_minute_vol = snap.minute_bar.volume if (snap.minute_bar and snap.minute_bar.volume) else 0
+                    recent_volume = recent_minute_vol if recent_minute_vol > 0 else daily_volume
+                    # Baseline: previous day's avg-per-minute volume is a stable reference.
+                    # Avoid dividing current partial-day volume by 390 (wildly off pre-market).
+                    avg_vol_base = prev_volume if prev_volume and prev_volume > 0 else daily_volume * 5
+                    avg_volume_20 = avg_vol_base // 390 if avg_vol_base > 0 else 1
+                    if DEBUG:
+                        mode = "minute-bar" if recent_minute_vol > 0 else "premarket-fallback"
+                        print(f"[DEBUG] {symbol} volume: recent={recent_volume:,} ({mode}), avg_per_min={avg_volume_20:,}, spike_ratio={recent_volume/max(1,avg_volume_20):.1f}x")
 
                     # Pullback levels derived from ATR if available, else % fallback
                     atr_val = tech.get("atr", current_price * 0.005)
                     pullback_low  = current_price - atr_val
-                    reclaim_level = tech.get("support", current_price)
+                    # Reclaim level = current price: for pre-market we enter just above
+                    # where the stock is holding, not at a historical daily-bar support
+                    # which is often far below VWAP and always fails vwap_reclaim_long.
+                    reclaim_level = current_price
                     pullback_high = current_price + atr_val * 0.5
                     
                     snapshots.append(
