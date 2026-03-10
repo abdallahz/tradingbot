@@ -1,37 +1,69 @@
-# TradingBot MVP (Alert-Only)
+# TradingBot
 
-Your day trading assistant that generates 2-3 stock opportunities daily targeting 3-5% gains. Designed for traders who make quick entries on pullbacks and cash out same-day.
+An automated day-trading alert system that scans for high-probability intraday setups, sends real-time Telegram notifications, and exposes a live web dashboard — all running on Heroku with zero manual intervention.
 
 ## What This Tool Does
 
-**Daily Workflow:**
-1. **Night Research** (20:00 ET): Scores stocks based on news catalysts (SEC filings, earnings, press releases)
-2. **Pre-Market Scan** (08:45 ET): Finds gappers with strong momentum (gap ≥4%, volume ≥500k)
-3. **Signal Confirmation**: Validates setups using 3 indicators (Volume spike + EMA9/EMA20 + VWAP)
-4. **Pullback Entry**: Waits for healthy pullback to support before triggering entry
-5. **Trade Cards**: Outputs exact entry price, TP1, TP2, and 1% stop-loss for each setup
-6. **Midday Re-Scan** (11:00 ET): Finds fresh opportunities with stricter filters
-7. **Risk Management**: Enforces max 2-3 trades/day, 1.5% daily loss lockout, consecutive loss limits
+**Five scheduled jobs run every trading day (all times ET):**
 
-**Outputs Generated:**
-- `outputs/morning_watchlist.csv` - Pre-market opportunities
-- `outputs/midday_watchlist.csv` - Mid-session opportunities  
-- `outputs/daily_playbook.md` - Human-readable summary
+| Time | Job | Description |
+|------|-----|-------------|
+| 20:00 | Night Research | Score stocks on news catalysts; send top-10 list to Telegram |
+| 08:00 | Morning News | Refresh catalyst scores; send updated list to Telegram |
+| 08:45 | Pre-Market Scan | Find gappers ≥4%; send individual trade-card alerts |
+| 12:00 | Midday Scan | Re-scan with stricter volume/spread filters |
+| 15:50 | Close Scan | Final sweep for late-session setups |
 
-**Implementation:**
-- **Phase 1**: Config-driven scanner with mock data (complete)
-- **Phase 2**: Alpaca API + multi-source news aggregation (complete, tested)
-- **Phase 3**: 3-option trading system with intelligent recommendations (complete)
-- **Phase 4**: CLI split + real news sources + Windows Task Scheduler automation (complete)
-- **Phase 5**: Render cloud deployment with 4 cron jobs (complete, validated)
-- **Phase 6**: Enhanced technical indicators (RSI, MACD, ATR, Bollinger Bands, VWAP) via `ta` library (complete)
+**For every qualifying setup the bot produces a `TradeCard` containing:**
+- Symbol, side (LONG/SHORT), score (0–100), risk/reward ratio
+- Exact entry, stop, TP1, TP2, and invalidation price
+- Detected chart patterns and signal reasons
+- Optional candlestick chart image
 
-See [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) for cloud setup.
-See [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) for AI/ML enhancement roadmap.
+**Outputs:**
+- Real-time Telegram alerts (individual trade cards + session summaries)
+- Web dashboard at `https://aztradingbot-c8a5462555f3.herokuapp.com`
+- `outputs/catalyst_scores.json` — scored symbol universe
+- `outputs/{session}_watchlist.csv` — machine-readable cards
+- `outputs/{session}_playbook.md` — human-readable summary
+- `outputs/archive/` — timestamped daily archive
 
-## Quick start
+## Architecture
 
-1. Create and activate virtual environment:
+```
+Heroku (web dyno)                 Heroku (worker dyno)
+─────────────────                 ────────────────────
+Flask dashboard  ◄── /api/alerts  worker.py (60 s loop)
+gunicorn                              ├─ 20:00 night_research
+                                      ├─ 08:00 morning_news
+                                      ├─ 08:45 premarket_scan
+                                      ├─ 12:00 midday_scan
+                                      └─ 15:50 close_scan
+                                              │
+                              ┌───────────────┴───────────────┐
+                         Scheduler                      TelegramNotifier
+                              │                               │
+                         SessionRunner               send_trade_alert()
+                         ├─ run_news_research()      send_news_summary()
+                         ├─ run_single_session()     send_session_summary()
+                         ├─ _fetch_snapshots()
+                         ├─ _get_night_research_picks()
+                         └─ _build_cards()
+```
+
+**Implementation phases (all complete):**
+- **Phase 1**: Config-driven scanner, 3-indicator confirmation, risk management, mock data
+- **Phase 2**: Alpaca API integration, multi-source news aggregation, catalyst scoring
+- **Phase 3**: 3-option trading system with intelligent market-condition recommendations
+- **Phase 4**: CLI split (5 commands), SEC EDGAR + RSS + social proxy news, smart money tracking
+- **Phase 5**: ~~Render~~ → **Heroku** cloud deployment, persistent worker scheduler
+- **Phase 6**: Free technical indicators via `ta` library (RSI, MACD, ATR, Bollinger Bands, VWAP, OBV)
+- **Phase 7**: Telegram bot alerts — individual trade cards, news summaries, session summaries, error notifications
+- **Phase 8**: Flask web dashboard (dark theme, alert cards, live scan trigger, auto-refresh)
+
+## Quick Start (Local Dev)
+
+1. Create and activate a virtual environment:
 
 ```bash
 # Windows
@@ -50,9 +82,9 @@ pip install -e .
 pip install pytest PyYAML
 ```
 
-3. Configure API credentials (optional for real data):
+3. Configure API credentials (optional — required only for real data):
 
-Edit `config/broker.yaml` and add your Alpaca credentials:
+Edit `config/broker.yaml` using `config/broker.example.yaml` as a template:
 ```yaml
 alpaca:
   api_key: "YOUR_ALPACA_API_KEY"
@@ -62,393 +94,292 @@ alpaca:
 
 Get free paper trading credentials at https://alpaca.markets
 
-4. Generate today's watchlists:
+4. Run the bot:
 
 ```bash
-# Option A: All-in-one command (legacy)
-python -m tradingbot.cli run-day              # Mock data
-python -m tradingbot.cli run-day --real-data  # Real Alpaca data
+# Mock data (no credentials needed)
+python -m tradingbot.cli run-day
 
-# Option B: Split commands for scheduled runs (Phase 4A)
-# Step 1: Run news research (8 PM night / 8 AM morning)
-python -m tradingbot.cli run-news
+# Real data — split commands matching the live schedule
+python -m tradingbot.cli run-news       # Night research / morning news
+python -m tradingbot.cli run-morning    # 08:45 AM pre-market scan
+python -m tradingbot.cli run-midday     # 12:00 PM midday scan
+python -m tradingbot.cli run-close      # 15:50 PM close scan
 
-# Step 2: Run individual scans using cached news scores
-python -m tradingbot.cli run-morning  # 8:45 AM pre-market
-python -m tradingbot.cli run-midday   # 12:00 PM midday
-python -m tradingbot.cli run-close    # 3:50 PM close
-
-# Check schedule configuration
+# Show the configured schedule
 python -m tradingbot.cli schedule
 ```
 
-5. Optional: cloud cron deployment (Phase 5)
-
-Set environment variables (instead of committing secrets):
-```bash
-ALPACA_API_KEY=...
-ALPACA_API_SECRET=...
-ALPACA_PAPER=true
-SEC_USER_AGENT="TradingBot/1.0 (you@example.com)"
-```
-
-Use the included cloud files:
-- `render.yaml` (Render cron blueprint)
-- `Procfile` (Heroku-style scheduler command)
-- `.env.example` (variable template)
-
-See [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) for full setup.
-
-**Outputs:**
-- `run-news`: `outputs/catalyst_scores.json`
-- `run-morning`: `outputs/morning_watchlist.csv`, `outputs/morning_playbook.md`
-- `run-midday`: `outputs/midday_watchlist.csv`, `outputs/midday_playbook.md`
-- `run-close`: `outputs/close_watchlist.csv`, `outputs/close_playbook.md`
-- `run-day`: `outputs/morning_watchlist.csv`, `outputs/midday_watchlist.csv`, `outputs/daily_playbook.md`
-
-6. Run tests:
+5. Run the test suite:
 
 ```bash
 pytest tests/ -v
+# Expected: 18 passed
 ```
 
-Outputs are written to:
--  See outputs listed above based on command used
+## Cloud Deployment (Heroku)
+
+The bot runs on Heroku with **two dynos** — `web` (Flask dashboard) and
+`worker` (persistent 60-second scheduler loop).
+
+**Live dashboard:** `https://aztradingbot-c8a5462555f3.herokuapp.com`
+
+### Required env vars (Heroku → Settings → Config Vars)
+
+| Variable | Description |
+|---|---|
+| `ALPACA_API_KEY` | Alpaca paper/live key |
+| `ALPACA_API_SECRET` | Alpaca secret |
+| `ALPACA_PAPER` | `true` for paper trading |
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
+| `TELEGRAM_CHAT_ID` | Your numeric Telegram chat ID |
+| `SEC_USER_AGENT` | e.g. `TradingBot/1.0 (you@example.com)` |
+
+### Procfile
+
+```
+web:    PYTHONPATH=src gunicorn --workers 2 --bind 0.0.0.0:$PORT tradingbot.web.app:app
+worker: PYTHONPATH=src python -m tradingbot.app.worker
+```
+
+### Deploy
+
+```bash
+git push heroku main   # or trigger via Heroku dashboard → Deploy tab
+```
+
+Both dynos must be **ON** in Heroku → Resources for automated jobs and the
+dashboard to function.
 
 ## 3-Option Trading System
 
-The bot now provides **3 different trading approaches** in every session with an intelligent recommendation:
+Every scan session produces **three parallel views** with an intelligent recommendation:
 
-### 🔍 Option 1: Night Research - Catalyst-Driven Picks
-- **Strategy**: Focus on stocks with strong news catalysts (SEC filings, earnings, press releases)
-- **Best for**: Low volatility days when patience and catalyst-driven momentum are key
-- **Filters**: Top 10 stocks with catalyst score ≥60
+### Option 1 — Night Research (Catalyst-Driven)
+Focuses on the top-10 stocks with catalyst score ≥ 60 from news research.  
+Best on **low-volatility days** when momentum is news-driven.  
+Enriched with smart money signals (insider trades, 13F filings, congressional disclosures).
 
-### 📊 Option 2: Relaxed Filters - More Opportunities
-- **Strategy**: Lower thresholds to find more setups (gap≥1%, volume≥100k)
-- **Best for**: Testing the pipeline or medium volatility days
-- **Filters**: Relaxed from strict to capture more potential trades
+### Option 2 — Relaxed Filters (More Opportunities)
+Gap ≥ 1%, premarket volume ≥ 100k, dollar volume ≥ $10M.  
+Best on **medium-volatility days** or when the strict scanner comes up empty.
 
-### ✅ Option 3: Strict Filters - High Probability Setups
-- **Strategy**: Conservative approach with strict filters (gap≥4%, volume≥500k)
-- **Best for**: High volatility days, capital protection on slow days
-- **Filters**: Only highest-quality setups pass
+### Option 3 — Strict Filters (High Probability)
+Gap ≥ 4%, premarket volume ≥ 500k, dollar volume ≥ $20M, spread ≤ 0.35%.  
+Best on **high-volatility days** with strong pre-market activity.
 
-### Intelligent Recommendations
+### Intelligent Recommendation
 
-The bot analyzes market conditions each session and recommends the optimal option:
+The `MarketConditionAnalyzer` reads the live snapshot universe and picks:
 
-- **High Volatility** (avg gap ≥3%, 5+ gappers) → **Option 3 (Strict Filters)**
-  - "High volatility with X strong gappers. Focus on premarket setups with quick entries."
-  
-- **Low Volatility** (avg gap <1.5%) → **Option 1 (Night Research)**
-  - "Low volatility market. Focus on catalyst-driven picks. Wait for news-driven momentum."
-  
-- **Medium Volatility** → **Option 2 (Relaxed Filters)** or **Option 3**
-  - Adapts based on available signals and market dynamics
+| Market | Avg Gap | Recommendation |
+|---|---|---|
+| High volatility | ≥ 3%, 5+ gappers | Option 3 — Strict Filters |
+| Low volatility | < 1.5% | Option 1 — Night Research |
+| Medium volatility | 1.5–3% | Option 2 or 3 based on signal count |
 
-**Example Output:**
-```
-MORNING PRE-MARKET (LOW volatility)
-Market: Avg gap 0.61% | 0 gappers
+## Telegram Alerts
 
-✅ RECOMMENDED: NIGHT RESEARCH
-   Low volatility market. Focus on catalyst-driven picks from night research.
+The bot sends the following message types to `@aitradingazbot`:
 
-Option 1 - Night Research: 3 catalyst picks
-Option 2 - Relaxed Filters: 0 setups
-Option 3 - Strict Filters:  0 setups
-```
+| Event | Message |
+|---|---|
+| News research complete | Top-10 catalyst symbols with score bars |
+| Trade card found | Full card: direction, levels, patterns, score |
+| Session complete (trades found) | `📋 Pre-Market scan complete — 2 alerts sent above.` |
+| Session complete (no trades) | `📭 Midday scan complete — no qualifying setups found.` |
+| Job error | `⚠️ Close scan failed — <exception>` |
+
+Configure in Heroku Config Vars: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`.  
+For local dev, add them to a `.env` file (loaded automatically via `python-dotenv`).
+
+## Web Dashboard
+
+Live at `https://aztradingbot-c8a5462555f3.herokuapp.com`
+
+Features:
+- Market status pill (pre-market / market hours / closed)
+- Stats row: total alerts, long count, short count, last scan time
+- **Run Scan Now** button — triggers an on-demand scan in the background
+- Alert cards grid: symbol, LONG/SHORT badge, score bar, entry/stop/TP1/TP2, patterns, timestamp
+- Auto-refreshes every 30 s (every 5 s while a scan is in progress)
+
+API endpoints:
+- `GET /api/health` — `{"status":"ok"}`
+- `GET /api/alerts` — last 100 alerts as JSON
+- `GET /api/status` — scanner running state + last scan timestamp
+- `POST /scan` — trigger on-demand scan
+
+> **Note:** The web and worker dynos have separate ephemeral filesystems on Heroku.
+> Alerts from scheduled worker jobs appear in Telegram; alerts from on-demand scans
+> appear on the dashboard. A shared Postgres store is a planned future improvement.
 
 ## Configuration
 
-### Scanner Settings (`config/scanner.yaml`)
+All config lives in `config/` YAML files. Every value can be overridden with environment variables (see `config.py`).
 
-Pre-market filters:
-- **Gap**: ≥4% (strong momentum signal)
-- **Volume**: ≥500k premarket shares
-- **Price**: $2-$30 range (excludes penny stocks and high-priced shares)
-- **Dollar Volume**: ≥$20M (ensures liquidity)
-- **Spread**: ≤0.35% (tight bid-ask for clean entries)
+### `config/scanner.yaml`
 
-Midday filters (stricter):
-- **Relative Volume**: ≥1.8x average
-- **Dollar Volume**: ≥$35M
-- **Spread**: ≤0.25%
+| Setting | Default | Notes |
+|---|---|---|
+| `price_min` / `price_max` | $2 / $30 | Excludes penny stocks and expensive names |
+| `min_gap_pct` | 4.0% | Strict scanner; relaxed scanner uses 1% |
+| `min_premarket_volume` | 500 000 | Relaxed scanner: 100 000 |
+| `min_dollar_volume` | $20M | Relaxed scanner: $10M |
+| `max_spread_pct` | 0.35% | Relaxed scanner: 0.50% |
+| `min_score` | 70 | Ranker threshold |
+| `max_candidates` | 5 | Max cards per session |
 
-### Risk Settings (`config/risk.yaml`)
+Midday stricter filters:
+- `min_relative_volume`: 1.8×
+- `min_dollar_volume`: $35M
+- `max_spread_pct`: 0.25%
 
-- **Max Trades/Day**: 3
-- **Daily Loss Lockout**: 1.5% of account
-- **Consecutive Loss Limit**: 2 trades
-- **Stop Loss**: Fixed 1% from entry
-- **Risk Per Trade**: 0.5% of account
+### `config/risk.yaml`
 
-### Indicator Settings (`config/indicators.yaml`)
+| Setting | Default |
+|---|---|
+| `max_trades_per_day` | 3 |
+| `daily_loss_lockout_pct` | 1.5% |
+| `max_consecutive_losses` | 2 |
+| `fixed_stop_pct` | 1.0% |
 
-- **EMA Fast**: 9-period
-- **EMA Slow**: 20-period
-- **Volume Spike**: 1.8x for morning, 2.2x for midday
-- **VWAP Hold**: 1 bar confirmation
+### `config/indicators.yaml`
+
+| Setting | Default |
+|---|---|
+| `ema_fast` | 9 |
+| `ema_slow` | 20 |
+| `volume_spike_multiplier_morning` | 1.8× |
+| `volume_spike_multiplier_midday` | 2.2× |
+
+### `config/schedule.yaml`
+
+```yaml
+schedule:
+  timezone: "America/New_York"
+  night_research:  "20:00"
+  morning_news:    "08:00"
+  premarket_scan:  "08:45"
+  midday_scan:     "12:00"
+  close_scan:      "15:50"
+```
 
 ## Usage
 
-### Basic Commands
+### CLI Commands
 
-**Run with mock data (no API needed):**
 ```bash
+# Full-day run (legacy, mock data)
 python -m tradingbot.cli run-day
-# Output: [MOCK DATA] Morning cards: 1 | Midday cards: 0
-```
 
-**Run with real Alpaca data:**
-```bash
+# Full-day run (real Alpaca data)
 python -m tradingbot.cli --real-data run-day
-# Output: [REAL DATA] Morning cards: X | Midday cards: Y
-```
 
-**Check schedule:**
-```bash
+# Split commands (matches the live Heroku schedule)
+python -m tradingbot.cli run-news       # Night / morning news research
+python -m tradingbot.cli run-morning    # Pre-market scan
+python -m tradingbot.cli run-midday     # Midday scan
+python -m tradingbot.cli run-close      # Close scan
+
+# Print scheduled times
 python -m tradingbot.cli schedule
-# Output: TZ=America/New_York | night=20:00 | premarket=08:45 | midday=11:00 | eod=15:50
 ```
 
 ### Understanding Results
 
-**The 3-option system adapts to market conditions:**
+Each session report shows all three options side-by-side.  
+**Zero results in Option 3 on a quiet day is expected** — strict filters protect capital, and the recommendation will point you to Option 1 or 2 instead.
 
-Each daily run shows results from **all 3 options** side-by-side:
-1. **Night Research**: Catalyst-driven picks (always shown, even on quiet days)
-2. **Relaxed Filters**: More opportunities with lower thresholds (gap≥1%, vol≥100k)
-3. **Strict Filters**: High-probability setups only (gap≥4%, vol≥500k)
+### TradeCard Fields
 
-The bot analyzes market volatility and **recommends which option to focus on** for that session.
-
-**When you see 0 setups in Option 3 (Strict):**
-This is **normal and expected** on low-volatility days. Your strict filters protect capital:
-- Only stocks with ≥4% gaps qualify (not common on quiet days)
-- Volume must exceed 500k premarket (eliminates low-liquidity names)
-- Catalyst score must be ≥60 (requires recent meaningful news)
-
-✅ **Zero strict-filter trades = Capital protection mode working correctly**
-
-On these days, the bot will recommend **Option 1 (Night Research)** or **Option 2 (Relaxed Filters)** instead.
-
-**Example output with qualified setups:**
 ```csv
-symbol,side,score,entry_price,stop_price,tp1_price,tp2_price,invalidation_price
-NVDA,long,84.5,892.50,883.57,901.43,910.36,888.20
+symbol, side, score, entry_price, stop_price, tp1_price, tp2_price,
+invalidation_price, session_tag, reason, patterns, risk_reward, generated_at
 ```
 
-## Using the 3-Option System
+`risk_reward` is always 2.0 (TP2 = entry ± 2 × risk), confirming a 1R:2R structure.
 
-### Recommended Workflow
-
-1. **Run the bot daily** (before market open or midday):
-   ```bash
-   python -m tradingbot.cli --real-data run-day
-   ```
-
-2. **Check the recommendation** in the terminal output:
-   - HIGH volatility → Focus on **Option 3 (Strict Filters)**
-   - LOW volatility → Focus on **Option 1 (Night Research)**
-   - MEDIUM volatility → Check **Option 2 (Relaxed Filters)**
-
-3. **Review the daily playbook** (`outputs/daily_playbook.md`):
-   - All 3 options are shown with complete details
-   - Recommended option is clearly marked with ✅
-   - Each option explains the strategy and best use case
-
-4. **Trade according to your risk tolerance**:
-   - Conservative: Only trade **Option 3** setups
-   - Moderate: Follow the **recommended option**
-   - Aggressive: Review all options and choose based on your read
-
-### Additional Tools
-
-### Run Diagnostic
-
-Check what data Alpaca is returning and why stocks are filtered out:
+### Diagnostics
 
 ```bash
-python diagnostic.py
+python diagnostic.py   # Shows raw Alpaca data and per-symbol filter decisions
 ```
 
-Output shows:
-- How many symbols passed catalyst scoring
-- Real-time prices, gaps, and volume
-- Which filters eliminated each stock
+## Project Status (March 10, 2026)
 
-### Manually Adjust Filters (Advanced)
+| Phase | Status | Description |
+|---|---|---|
+| Phase 1 | ✅ Complete | Scanner, indicators, risk manager, mock data |
+| Phase 2 | ✅ Complete | Alpaca API, news aggregation, catalyst scoring |
+| Phase 3 | ✅ Complete | 3-option system, market-condition recommendations |
+| Phase 4 | ✅ Complete | CLI split, SEC/RSS/social news, smart money tracking |
+| Phase 5 | ✅ Complete | Heroku deployment (web + worker dynos) |
+| Phase 6 | ✅ Complete | Technical indicators: RSI, MACD, ATR, Bollinger, OBV |
+| Phase 7 | ✅ Complete | Telegram bot — trade cards, news summaries, error alerts |
+| Phase 8 | ✅ Complete | Flask web dashboard, on-demand scan, alert card UI |
 
-If you want to permanently change filter thresholds, edit `config/scanner.yaml`:
-```yaml
-scanner:
-  min_gap_pct: 4.0  # Increase for stricter, decrease for more signals
-  min_premarket_volume: 500000  # Higher = better liquidity
-  min_score: 70  # Ranking threshold
-```
+**Current state:**
+- 18/18 tests passing
+- Heroku live: `aztradingbot-c8a5462555f3.herokuapp.com`
+- Both web and worker dynos ON and running
+- All 5 jobs send Telegram alerts on completion (including "no setups found")
+- `TradeCard` carries `risk_reward` and `generated_at` fields
 
-**Note:** The 3-option system already provides relaxed (1%/100k) and strict (4%/500k) variants,
-so manual adjustments are rarely needed.
+## Planned Future Work
 
-Then run:
-```bash
-python -m tradingbot.cli --real-data run-day
-```
+| | Feature |
+|---|---|
+| Shared alert store | Heroku Postgres so worker alerts appear on the dashboard |
+| Alert cooldown | Suppress duplicate alerts for the same symbol within a session |
+| Daily trend filter | Confirm daily timeframe before acting on a 15-min signal |
+| P&L journal | Track trade outcomes against generated cards; compute win rate and avg R |
+| Backtesting | Replay historical data through the scanner to validate filter thresholds |
+| Semi-automated orders | Optional bracket-order placement via Alpaca (paper trading only) |
 
-### Best Times to Run
-
-For optimal results with any option, run during:
-- **Pre-market hours** (6:00-9:30 AM ET) when gappers are most active
-- **Earnings season** (more catalyst-driven moves)
-- **High volatility days** (market news, Fed announcements, major economic data)
-
-The 3-option system will detect high volatility and automatically recommend Option 3 (Strict Filters).
-
-### Expand Universe (Advanced)
-
-Edit `src/tradingbot/data/alpaca_client.py` to add more symbols to scan:
-```python
-def get_tradable_universe(self) -> list[str]:
-    return [
-        # Add more high-volume stocks here
-        "AAPL", "MSFT", "GOOGL", ...
-    ]
-```
-
-Larger universe = higher chance of finding gappers daily.
-
-## Project Status
-
-✅ **Phase 1 Complete:** Config-driven scanner, 3-indicator confirmation, risk management, mock data mode
-
-✅ **Phase 2 Complete:** Alpaca API integration, multi-source news aggregation, catalyst scoring, dual-mode operation
-
-✅ **Phase 3 Complete:** 3-option trading system, market condition analyzer, intelligent recommendations
-
-✅ **Phase 4 Complete:** CLI split (5 commands), SEC EDGAR + RSS + social proxy news, Windows Task Scheduler automation, smart money tracking
-
-✅ **Phase 5 Complete:** Render cloud deployment, 4 cron jobs running (news/morning/midday/close), env-var config, data quality validation
-
-✅ **Phase 6 Complete:** Free technical indicators via `ta` library (RSI, MACD, ATR, Bollinger Bands, VWAP, OBV), ATR-based dynamic stop levels, keyword-based news sentiment
-
-✅ **Validated (March 2026):**
-- 18/18 tests pass
-- All 4 Render cron jobs confirmed working
-- Real Alpaca data pipeline functional
-- Technical indicators computing correctly with ATR-based stops
-
-## Next Steps
-
-### 📋 Phase 4: Automation & Real News
-
-#### ✅ Phase 4A: CLI Split (Complete)
-
-The bot now supports 5 separate commands for scheduled execution:
-- `run-news` - News research only (saves catalyst_scores.json)
-- `run-morning` - Pre-market scan (8:45 AM)
-- `run-midday` - Midday scan (12:00 PM)
-- `run-close` - After-hours scan (3:50 PM)
-- `run-day` - Legacy all-in-one command
-
-Each command supports `--real-data` flag and generates independent output files.
-
-#### ✅ Phase 4B-4E: Real News & Automation (Complete)
-
-See **[PHASE4_IMPLEMENTATION_PLAN.md](PHASE4_IMPLEMENTATION_PLAN.md)** for the complete implementation roadmap.
-
-**Goals:**
-- ✅ SEC EDGAR API integration for real filings (8-K, 10-K, 10-Q)
-- ✅ Multi-source RSS feeds (Yahoo Finance, MarketWatch, Benzinga)
-- ✅ Social proxy fallback (Stocktwits + Reddit) - free alternative to paid X API
-- ✅ Windows Task Scheduler automation with 4 daily scheduled runs
-- ✅ File persistence and archiving system with timestamps
-- ✅ Smart money tracking (13F filings, congressional trades)
-
-**Schedule:**
-```
-12:00 AM → Night news research (SEC + RSS + social proxy)
-8:45 AM  → Pre-market scan (gap analysis + volume)
-12:00 PM → Midday scan
-3:50 PM  → Close scan (late opportunities)
-```
-
-**Documentation:**
-- [TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Automation setup and troubleshooting
-- [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) - File management and archiving
-
-**Status:** Phase 4 complete! Ready for Phase 5 (Cloud Deployment)
-
----
-
-### Future Phases
-
-**Phase 7: Alerts & Notifications**
-- Email or Telegram alerts when a trade card is generated
-- No action needed from you — the alert arrives on your phone
-
-**Phase 8: P&L Journal**
-- Track trade outcomes against generated cards
-- Win rate, average R, best setups
-
-**Phase 9: Backtesting**
-- Replay historical data through the scanner
-- Validate filter thresholds against past results
-
-**Phase 10: Semi-Automated Orders**
-- Optional bracket order placement via Alpaca paper trading
-- Full review before any live trading
-
-**⚠️ Never use for live trading without extensive paper trading validation first.**
+⚠️ **Never use for live trading without extensive paper-trading validation first.**
 
 ## Troubleshooting
 
-**"No setups in Option 3 (Strict Filters)":**
-- **This is normal and expected** on low-volatility days
-- ✅ Check the bot's recommendation - it will suggest Option 1 (Night Research) or Option 2 (Relaxed Filters) instead
-- All 3 options are shown; focus on the recommended one
-- Run during pre-market hours (6-9:30 AM ET) or earnings season for best Option 3 signals
+**"No setups found" in all options:**
+- Normal on extremely quiet days
+- Run `python diagnostic.py` to inspect raw Alpaca data
+- Check that `catalyst_scores.json` exists (run `run-news` first before scan commands)
 
-**"No setups in ANY option":**
-- Very rare, indicates extremely quiet market
-- Run diagnostic: `python diagnostic.py`
-- Check if universe has enough symbols (see "Expand Universe" section)
-- Verify Alpaca data is being fetched correctly
+**Telegram alerts not arriving:**
+- Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in Heroku Config Vars
+- Check worker dyno logs: `heroku logs --tail --dyno worker`
+- Confirm worker dyno is ON in Heroku → Resources
+
+**"Run Scan Now" errors on dashboard:**
+- Check `heroku logs --tail --dyno web`
+- Ensure `catalyst_scores.json` exists in the worker dyno's `outputs/` directory
 
 **API errors:**
-- Verify credentials in `config/broker.yaml`
-- Ensure `paper: true` is set
+- Verify credentials in `config/broker.yaml` (local) or Heroku Config Vars (cloud)
+- Ensure `ALPACA_PAPER=true` is set
 - Check Alpaca account status at https://alpaca.markets
-
-**Unicode errors in diagnostic:**
-- Windows terminal issue with special characters
-- Run: `python diagnostic.py 2>&1 | Select-Object -First 50`
-
-## Next Steps
-
-All phases through Phase 6 are complete. See [Future Phases](#future-phases) above for what comes next.
-
----
 
 ## Security
 
-**Never commit credentials:**
-- `config/broker.yaml` is in `.gitignore`
-- Use `config/broker.example.yaml` as template
-- Keep API keys secure and rotate periodically
+- `config/broker.yaml` is in `.gitignore` — never commit live credentials
+- Use `config/broker.example.yaml` as a template
+- All secrets live in Heroku Config Vars in production
 
 ## Documentation
 
-- [README.md](README.md) - This file (overview + usage)
-- [docs/TASK_SCHEDULER.md](docs/TASK_SCHEDULER.md) - Windows Task Scheduler automation guide
-- [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) - Render cloud deployment runbook
-- [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) - Free & paid AI/ML enhancement roadmap
-- [config/broker.example.yaml](config/broker.example.yaml) - API credential template
+| File | Contents |
+|---|---|
+| [README.md](README.md) | This file |
+| [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) | Output file structure and archiving |
+| [SCORING_METHODOLOGY.md](SCORING_METHODOLOGY.md) | Catalyst and confluence scoring logic |
+| [SMART_MONEY_TRACKING.md](SMART_MONEY_TRACKING.md) | Insider/13F/congressional signal enrichment |
+| [RSS_FEEDS_SUMMARY.md](RSS_FEEDS_SUMMARY.md) | News feed sources and configuration |
+| [config/broker.example.yaml](config/broker.example.yaml) | API credential template |
 
 ## Notes
 
 - Mock mode works without any API credentials
-- Real data mode tested and validated with Alpaca paper trading
-- 4 cron jobs running on Render cloud (free tier)
-- 18/18 tests passing
+- All tests pass (`pytest tests/ -v` → 18 passed)
+- Heroku slug is under 1 GB (torch/transformers excluded; FinBERT degrades gracefully)
+- Python version pinned to 3.10 via `.python-version`

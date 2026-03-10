@@ -1,183 +1,166 @@
-# Pre-Push Checklist ✅
+﻿# Pre-Push Checklist
 
-## Status: READY TO PUSH
+## Status: CURRENT  March 10, 2026
 
-All checks completed successfully on March 5, 2026.
-
----
-
-## ✅ Code Quality
-
-- [x] **No Type Errors**: All type checking passes (0 errors)
-- [x] **All Tests Pass**: 7/7 tests passing
-- [x] **No TODO/FIXME**: Code is complete and production-ready
-- [x] **Debug Logging**: Conditional (only with DEBUG=1 environment variable)
-- [x] **Windows Compatibility**: Unicode issues fixed (no emoji crashes)
+All checks verified against commit `2d63601`.
 
 ---
 
-## ✅ Security
+##  Tests
 
-- [x] **No Hardcoded Credentials**: All API keys are in config files
-- [x] **Proper .gitignore**: `config/broker.yaml` is excluded
-- [x] **Example Config Provided**: `config/broker.example.yaml` for template
+```
+pytest tests/ -v
+18 passed, 1 warning in ~9s
+```
 
-### ⚠️ IMPORTANT: Before First Commit
+Tests cover:
+- `test_config_env.py`  env-var override of broker config
+- `test_risk_manager.py`  trade gating, consecutive loss lockout
+- `test_trade_card.py`  long/short price levels (entry > stop, TP2 > TP1 > entry)
+- `test_session_runner.py`  mock-mode full run + real-mode init
+- `test_news_aggregator.py`  catalyst scoring pipeline
+- `test_insider_tracking.py`  smart money signal parsing
+
+---
+
+##  Code Quality
+
+- [x] **No syntax errors**  `pytest` imports every module on startup; 0 import errors
+- [x] **No dead code**  `cast()` removed from session_runner; `card_count=-1` branch removed from notifier
+- [x] **DRY scheduler**  `_load_catalyst_scores()` + `_run_scan_session()` replace 3x duplicate methods
+- [x] **Clean imports**  `json` and `logging` at module level in session_runner; no inline imports left
+- [x] **Type annotations correct**  `run_morning/midday/close_only` return `int` (not `None`)
+- [x] **`TradeCard` enhanced**  `risk_reward: float` and `generated_at: str` fields added
+- [x] **`_alerts_sent_count`** initialized in `__init__` (not via fragile `getattr` fallback)
+
+---
+
+##  Security
+
+- [x] `config/broker.yaml` is in `.gitignore`  not tracked
+- [x] No API keys hardcoded anywhere in source
+- [x] All secrets in Heroku Config Vars (production)
+- [x] `config/broker.example.yaml` provides a safe template
+
+**Verify before every push:**
+```bash
+git status   # broker.yaml must NOT appear
+git diff --cached --name-only   # same check for staged files
+```
+
+---
+
+##  Functionality
+
+### Local mock mode
+```bash
+python -m tradingbot.cli run-day
+# [MOCK DATA] Morning cards: 1 | Midday cards: 0
+```
+
+### Heroku live
+- Web dyno: `https://aztradingbot-c8a5462555f3.herokuapp.com/api/health` -> `{"status":"ok"}`
+- Worker dyno: fires 5 jobs per day at scheduled ET times
+- Telegram: trade alerts, news summaries, "no setups found" messages all confirmed working
+
+---
+
+##  Architecture Reference
+
+```
+src/tradingbot/
+ app/
+    scheduler.py       Scheduler; _load_catalyst_scores + _run_scan_session helpers
+    session_runner.py  SessionRunner; _fetch_snapshots, _get_night_research_picks, _build_cards
+    worker.py          Persistent 60-second loop; 5 job handlers; _find_root()
+ analysis/
+    chart_generator.py
+    market_conditions.py
+    pattern_detector.py
+    technical_indicators.py
+ data/
+    alpaca_client.py
+    mock_data.py
+ models.py              SymbolSnapshot, TradeCard (+ risk_reward, generated_at), RiskState, ...
+ notifications/
+    telegram_notifier.py    send_trade_alert, send_text, send_news_summary, send_session_summary
+ ranking/ranker.py
+ reports/
+    archive_manager.py
+    watchlist_report.py
+ research/
+    catalyst_scorer.py
+    insider_tracking.py
+    news_aggregator.py
+    ...
+ risk/risk_manager.py
+ scanner/gap_scanner.py
+ signals/
+    indicators.py
+    pullback_setup.py
+ strategy/trade_card.py     build_trade_card; sets risk_reward + generated_at
+ web/
+    alert_store.py         JSONL persistence; card_to_dict includes risk_reward
+    app.py                 Flask routes; _find_root()
+    templates/dashboard.html
+ cli.py
+ config.py
+```
+
+---
+
+##  Heroku Deployment
+
+**Procfile:**
+```
+web:    PYTHONPATH=src gunicorn --workers 2 --bind 0.0.0.0:$PORT tradingbot.web.app:app
+worker: PYTHONPATH=src python -m tradingbot.app.worker
+```
+
+**Required Config Vars:**
+```
+ALPACA_API_KEY
+ALPACA_API_SECRET
+ALPACA_PAPER=true
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+SEC_USER_AGENT
+```
+
+**Python version:** `3.10` (pinned via `.python-version`)
+
+**Known Heroku constraints:**
+- `torch` / `transformers` excluded from `requirements.txt` (slug size limit)
+- FinBERT degrades gracefully to keyword-based sentiment
+- Alert store (`alerts.jsonl`) is ephemeral per dyno  web and worker have separate files
+
+---
+
+##  Files NOT to Commit
+
+```
+config/broker.yaml        # live API credentials
+venv/                     # virtual environment
+__pycache__/              # Python cache
+*.pyc
+.pytest_cache/
+outputs/*.csv             # generated reports (auto-archived)
+```
+
+---
+
+## Push Command
 
 ```bash
-# Verify broker.yaml is NOT tracked
-git status
-
-# If broker.yaml appears, it's NOT in .gitignore - DO NOT COMMIT IT!
-# Double check .gitignore contains:
-# config/broker.yaml
+git add -A
+git status   # verify broker.yaml absent
+git commit -m "feat: <description>"
+git push
 ```
+
+Heroku auto-deploys from `main` if GitHub integration is enabled,
+or trigger manually: Heroku dashboard -> Deploy tab -> Deploy Branch.
 
 ---
 
-## ✅ Functionality
-
-- [x] **Mock Mode Works**: Generates watchlists without API credentials
-- [x] **Real Data Mode Works**: Alpaca integration tested and functional
-- [x] **3-Option System Works**: All 3 trading approaches display correctly
-- [x] **Smart Recommendations**: Market analyzer correctly identifies volatility
-- [x] **Output Files Generated**: CSV and Markdown reports working
-
-### Test Results
-
-```
-Mock Data Test:
-✓ HIGH volatility detected (avg gap 5.83%, 6 gappers)
-✓ Recommended: STRICT FILTERS
-✓ All 3 options displayed correctly
-
-Real Data Test (March 5, 2026):
-✓ LOW volatility detected (avg gap 0.70%, 0 gappers)
-✓ Recommended: NIGHT RESEARCH
-✓ 3 catalyst picks shown (MSFT, GOOGL, AMD)
-✓ Capital protection mode active (0 strict setups)
-```
-
----
-
-## ✅ Documentation
-
-- [x] **README.md Updated**: Comprehensive guide with 3-option system
-- [x] **Configuration Documented**: All YAML settings explained
-- [x] **Usage Examples**: Mock and real data commands documented
-- [x] **Troubleshooting Guide**: Common issues and solutions included
-- [x] **Phase 3 Status**: Project status updated with new features
-
----
-
-## 📦 Files to Commit
-
-### New Files
-```
-src/tradingbot/analysis/__init__.py
-src/tradingbot/analysis/market_conditions.py
-PRE_PUSH_CHECKLIST.md (this file)
-```
-
-### Modified Files
-```
-src/tradingbot/models.py
-src/tradingbot/app/session_runner.py
-src/tradingbot/app/scheduler.py
-src/tradingbot/reports/watchlist_report.py
-src/tradingbot/cli.py
-src/tradingbot/data/alpaca_client.py
-README.md
-```
-
----
-
-## 🚫 Files to EXCLUDE
-
-```
-config/broker.yaml          # Contains real API credentials
-venv/                       # Virtual environment
-outputs/*.csv               # Generated reports
-outputs/*.md                # Generated reports
-__pycache__/                # Python cache
-*.pyc                       # Compiled Python
-.pytest_cache/              # Test cache
-```
-
-**These are already in `.gitignore` - just verify they're not showing in `git status`**
-
----
-
-## 🎯 Ready to Push
-
-### Initialize Git (if not already done)
-
-```bash
-git init
-git add .
-git status  # VERIFY config/broker.yaml is NOT listed!
-```
-
-### Create First Commit
-
-```bash
-git commit -m "feat: Add 3-option trading system with intelligent recommendations
-
-- Implement market condition analyzer for volatility detection
-- Add night research (catalyst-driven) option
-- Add relaxed filter option (gap≥1%, vol≥100k)  
-- Add strict filter option (gap≥4%, vol≥500k)
-- Smart recommendation engine based on market conditions
-- Fix Windows Unicode issues in CLI output
-- Conditional debug logging (DEBUG=1 to enable)
-- All tests passing (7/7)
-- Production-ready"
-```
-
-### Push to GitHub
-
-```bash
-# Create repo on GitHub first, then:
-git remote add origin https://github.com/YOUR_USERNAME/tradingbot.git
-git branch -M main
-git push -u origin main
-```
-
----
-
-## 🔒 Post-Push Security Check
-
-After pushing, visit your GitHub repo and verify:
-
-1. **config/broker.yaml is NOT visible** in the repo
-2. **Your API keys are NOT visible** anywhere in the code
-3. **Only broker.example.yaml is visible** (template with placeholders)
-
-If you accidentally pushed credentials:
-```bash
-# Immediately invalidate the API keys at https://alpaca.markets
-# Then follow GitHub's guide to remove sensitive data from history
-```
-
----
-
-## 📊 Summary
-
-**Project**: TradingBot MVP with 3-Option System  
-**Status**: ✅ Production-Ready  
-**Tests**: 7/7 Passing  
-**Type Errors**: 0  
-**Security**: ✅ Protected  
-**Documentation**: ✅ Complete  
-
-**Next Steps**:
-1. Initialize git repository
-2. Verify .gitignore is working (broker.yaml excluded)
-3. Make first commit
-4. Push to GitHub
-5. Celebrate! 🎉
-
----
-
-**Generated**: March 5, 2026  
-**Ready for**: Production deployment (paper trading validation recommended)
+**Last verified:** March 10, 2026 | Commit `2d63601` | 18/18 tests passing
