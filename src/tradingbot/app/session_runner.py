@@ -500,6 +500,7 @@ class SessionRunner:
             risk_state.trades_taken += 1
             self.notifier.send_trade_alert(card)
             save_alert(card_to_dict(card))
+            self._alerts_sent_count = getattr(self, '_alerts_sent_count', 0) + 1
 
         return cards
 
@@ -585,14 +586,16 @@ class SessionRunner:
                 snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
         
         # Run the 3-option session
+        self._alerts_sent_count = 0
         results = self._run_three_option_session(
             snapshots=snapshots,
             catalyst_scores=catalyst_scores,
             session_tag=session_tag,
             stricter=stricter,
         )
+        total_alerts = getattr(self, '_alerts_sent_count', 0)
         
-        return results
+        return results, total_alerts
     
     def _write_single_session_output(self, results: ThreeOptionWatchlist, session_name: str) -> None:
         """Write outputs for a single session."""
