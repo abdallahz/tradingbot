@@ -53,7 +53,7 @@ def main() -> None:
     
     if args.command == "run-morning":
         card_count = scheduler.run_morning_only()
-        TelegramNotifier().send_session_summary("Pre-Market", card_count)
+        TelegramNotifier.from_env().send_session_summary("Pre-Market", card_count)
         print(f"\n{mode_str} Morning Pre-Market Scan Complete")
         print(f">> Watchlist: outputs/morning_watchlist.csv")
         print(f">> Playbook:  outputs/morning_playbook.md")
@@ -64,7 +64,7 @@ def main() -> None:
     
     if args.command == "run-midday":
         card_count = scheduler.run_midday_only()
-        TelegramNotifier().send_session_summary("Midday", card_count)
+        TelegramNotifier.from_env().send_session_summary("Midday", card_count)
         print(f"\n{mode_str} Midday Scan Complete")
         print(f">> Watchlist: outputs/midday_watchlist.csv")
         print(f">> Playbook:  outputs/midday_playbook.md")
@@ -75,7 +75,7 @@ def main() -> None:
     
     if args.command == "run-close":
         card_count = scheduler.run_close_only()
-        TelegramNotifier().send_session_summary("Close", card_count)
+        TelegramNotifier.from_env().send_session_summary("Close", card_count)
         print(f"\n{mode_str} Close Scan Complete")
         print(f">> Watchlist: outputs/close_watchlist.csv")
         print(f">> Playbook:  outputs/close_playbook.md")
