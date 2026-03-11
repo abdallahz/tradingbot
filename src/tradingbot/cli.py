@@ -6,7 +6,7 @@ from pathlib import Path
 # Load .env file for local development (no-op if python-dotenv not installed)
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 except ImportError:
     pass
 
