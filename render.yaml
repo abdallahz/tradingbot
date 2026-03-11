@@ -1,6 +1,6 @@
 services:
   - type: cron
-    name: tradingbot-news
+    name: tradingbot-news-night
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
@@ -19,12 +19,31 @@ services:
         sync: false
 
   - type: cron
+    name: tradingbot-news-premarket
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news
+    schedule: "0 12 * * *"
+    envVars:
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_API_SECRET
+        sync: false
+      - key: ALPACA_PAPER
+        value: "true"
+      - key: NEWS_SOCIAL_PROXY_ENABLED
+        value: "true"
+      - key: SEC_USER_AGENT
+        sync: false
+
+  - type: cron
     name: tradingbot-morning
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-morning
-    schedule: "45 13 * * *"
+    schedule: "45 12 * * *"
     envVars:
       - key: ALPACA_API_KEY
         sync: false
@@ -39,7 +58,7 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-midday
-    schedule: "0 17 * * *"
+    schedule: "0 16 * * *"
     envVars:
       - key: ALPACA_API_KEY
         sync: false
@@ -54,7 +73,7 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-close
-    schedule: "50 20 * * *"
+    schedule: "50 19 * * *"
     envVars:
       - key: ALPACA_API_KEY
         sync: false
