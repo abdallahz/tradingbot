@@ -17,6 +17,10 @@ services:
         value: "true"
       - key: SEC_USER_AGENT
         sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
 
   - type: cron
     name: tradingbot-news-premarket
@@ -35,6 +39,10 @@ services:
       - key: NEWS_SOCIAL_PROXY_ENABLED
         value: "true"
       - key: SEC_USER_AGENT
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
         sync: false
 
   - type: cron

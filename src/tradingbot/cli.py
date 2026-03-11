@@ -49,6 +49,12 @@ def main() -> None:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         print(f">> Archived to: outputs/archive/{today}/")
         print(f">> View index: outputs/archive/{today}/INDEX.md\n")
+        _notifier = TelegramNotifier.from_env()
+        if _notifier._enabled:
+            _ok = _notifier.send_news_summary("News Research", catalyst_scores)
+            print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
+        else:
+            print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
         return
     
     if args.command == "run-morning":
