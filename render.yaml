@@ -51,6 +51,10 @@ services:
         sync: false
       - key: ALPACA_PAPER
         value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
 
   - type: cron
     name: tradingbot-midday
@@ -66,6 +70,10 @@ services:
         sync: false
       - key: ALPACA_PAPER
         value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
 
   - type: cron
     name: tradingbot-close
@@ -81,3 +89,7 @@ services:
         sync: false
       - key: ALPACA_PAPER
         value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
