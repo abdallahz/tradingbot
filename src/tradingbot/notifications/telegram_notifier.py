@@ -54,8 +54,8 @@ class TelegramNotifier:
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
         instance = cls(token, chat_id)
         if not instance._enabled:
-            logger.info(
-                "TelegramNotifier: env vars not set — notifications disabled"
+            logger.warning(
+                "TelegramNotifier: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — notifications disabled"
             )
         return instance
 
