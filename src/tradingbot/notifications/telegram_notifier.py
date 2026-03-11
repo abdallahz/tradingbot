@@ -200,8 +200,12 @@ class TelegramNotifier:
             with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
                 result = json.loads(resp.read())
                 if not result.get("ok"):
-                    logger.warning(f"Telegram API error: {result}")
+                    msg = f"Telegram API error: {result}"
+                    logger.warning(msg)
+                    print(f"[TelegramNotifier] ERROR: {msg}", flush=True)
                 return bool(result.get("ok"))
         except Exception as e:
-            logger.warning(f"Telegram send failed: {e}")
+            msg = f"Telegram send failed: {e}"
+            logger.warning(msg)
+            print(f"[TelegramNotifier] ERROR: {msg}", flush=True)
             return False
