@@ -7,16 +7,40 @@ services:
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news
     schedule: "0 5 * * *"
     envVars:
+      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      - key: NEWS_SOCIAL_PROXY_ENABLED
-        value: "true"
+      # News sources
       - key: SEC_USER_AGENT
         sync: false
+      - key: NEWS_SOCIAL_PROXY_ENABLED
+        value: "true"
+      - key: NEWS_SEC_FILINGS
+        value: "true"
+      - key: NEWS_RSS_FEEDS
+        value: "true"
+      - key: NEWS_EARNINGS_CALENDAR
+        value: "true"
+      - key: NEWS_PRESS_RELEASES
+        value: "true"
+      - key: NEWS_TWITTER_ENABLED
+        value: "false"
+      - key: NEWS_REDDIT_ENABLED
+        value: "false"
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: NEWS_MAX_AGE_HOURS
+        value: "24"
+      # AI sentiment (optional)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -30,16 +54,40 @@ services:
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news
     schedule: "0 12 * * *"
     envVars:
+      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      - key: NEWS_SOCIAL_PROXY_ENABLED
-        value: "true"
+      # News sources
       - key: SEC_USER_AGENT
         sync: false
+      - key: NEWS_SOCIAL_PROXY_ENABLED
+        value: "true"
+      - key: NEWS_SEC_FILINGS
+        value: "true"
+      - key: NEWS_RSS_FEEDS
+        value: "true"
+      - key: NEWS_EARNINGS_CALENDAR
+        value: "true"
+      - key: NEWS_PRESS_RELEASES
+        value: "true"
+      - key: NEWS_TWITTER_ENABLED
+        value: "false"
+      - key: NEWS_REDDIT_ENABLED
+        value: "false"
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: NEWS_MAX_AGE_HOURS
+        value: "24"
+      # AI sentiment (optional)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -53,12 +101,14 @@ services:
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-morning
     schedule: "45 12 * * *"
     envVars:
+      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
+      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -72,12 +122,14 @@ services:
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-midday
     schedule: "0 16 * * *"
     envVars:
+      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
+      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -91,12 +143,14 @@ services:
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-close
     schedule: "50 19 * * *"
     envVars:
+      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
+      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
