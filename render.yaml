@@ -1,19 +1,19 @@
 services:
+  # -- News Research ----------------------------------------------------------
   - type: cron
     name: tradingbot-news-night
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news --label "Night Research"
-    schedule: "0 5 * * *"
-      # Alpaca broker
+    schedule: "0 5 * * 1-5"
+    envVars:
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      # News sources
       - key: SEC_USER_AGENT
         sync: false
       - key: NEWS_SOCIAL_PROXY_ENABLED
@@ -34,12 +34,10 @@ services:
         sync: false
       - key: NEWS_MAX_AGE_HOURS
         value: "24"
-      # AI sentiment (optional)
       - key: OPENAI_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -51,15 +49,14 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news --label "Pre-Market Research"
-    schedule: "0 12 * * *"
-      # Alpaca broker
+    schedule: "0 12 * * 1-5"
+    envVars:
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      # News sources
       - key: SEC_USER_AGENT
         sync: false
       - key: NEWS_SOCIAL_PROXY_ENABLED
@@ -80,75 +77,89 @@ services:
         sync: false
       - key: NEWS_MAX_AGE_HOURS
         value: "24"
-      # AI sentiment (optional)
       - key: OPENAI_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
 
+  # -- Pre-Market Scan --------------------------------------------------------
   - type: cron
     name: tradingbot-morning
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-morning
-    schedule: "45 12 * * *"
+    schedule: "45 12 * * 1-5"
     envVars:
-      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      # Telegram notifications
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+
+  # -- Intraday Scans (every 30 min, 9:30 AM to 3:30 PM EDT, weekdays) --------
+  - type: cron
+    name: tradingbot-intraday-a
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-midday
+    schedule: "30 13-19 * * 1-5"
+    envVars:
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_API_SECRET
+        sync: false
+      - key: ALPACA_PAPER
+        value: "true"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
 
   - type: cron
-    name: tradingbot-midday
+    name: tradingbot-intraday-b
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-midday
-    schedule: "0 16 * * *"
+    schedule: "0 14-19 * * 1-5"
     envVars:
-      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
 
+  # -- Close Scan -------------------------------------------------------------
   - type: cron
     name: tradingbot-close
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-close
-    schedule: "50 19 * * *"
+    schedule: "50 19 * * 1-5"
     envVars:
-      # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_API_SECRET
         sync: false
       - key: ALPACA_PAPER
         value: "true"
-      # Telegram notifications
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
