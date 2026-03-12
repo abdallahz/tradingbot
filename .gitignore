@@ -37,11 +37,14 @@ ENV/
 .coverage
 htmlcov/
 
-# Outputs (exclude generated files but keep JSON data and archives)
+# Logs (local only, not needed in repo)
+logs/
+
+# Outputs (generated files - exclude all)
+outputs/archive/
 outputs/*.csv
 outputs/*.md
-# Note: JSON files (catalyst_scores.json, smart_money_signals_*.json) ARE tracked
-# Note: outputs/archive/ folder IS tracked for historical data
+outputs/*.json
 
 # Configuration with secrets
 config/broker.yaml
