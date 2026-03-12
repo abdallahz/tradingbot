@@ -99,6 +99,10 @@ class SessionRunner:
             min_score=scanner_defaults["min_score"],
             max_candidates=scanner_defaults["max_candidates"],
         )
+        self.relaxed_ranker = Ranker(
+            min_score=25,  # Very permissive — Option 2 should always show results
+            max_candidates=scanner_defaults["max_candidates"],
+        )
         self.midday_ranker = Ranker(
             min_score=self.midday_config["min_score"],
             max_candidates=scanner_defaults["max_candidates"],
@@ -118,10 +122,10 @@ class SessionRunner:
         self.relaxed_scanner = GapScanner(
             price_min=scanner_defaults["price_min"],
             price_max=scanner_defaults["price_max"],
-            min_gap_pct=1.0,  # Relaxed from 4%
-            min_premarket_volume=100_000,  # Relaxed from 500k
-            min_dollar_volume=10_000_000,  # Relaxed from 20M
-            max_spread_pct=0.5,  # Relaxed from 0.35%
+            min_gap_pct=0.0,   # Accept any move direction (down-market coverage)
+            min_premarket_volume=50_000,   # Very relaxed volume floor
+            min_dollar_volume=1_000_000,   # $1M min dollar volume
+            max_spread_pct=1.0,            # Wide spread tolerance
         )
 
     def run_day(self) -> tuple[WatchlistRun, WatchlistRun]:
@@ -279,7 +283,7 @@ class SessionRunner:
         
         # Option 2: Relaxed filters scan
         relaxed_scan = self.relaxed_scanner.run(snapshots)
-        relaxed_ranked = self.ranker.run(relaxed_scan.candidates)
+        relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
         relaxed_cards = self._build_cards(
             ranked=relaxed_ranked,
             session_tag=session_tag,
