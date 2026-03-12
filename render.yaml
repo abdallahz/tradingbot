@@ -4,9 +4,8 @@ services:
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news
+    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news --label "Night Research"
     schedule: "0 5 * * *"
-    envVars:
       # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false
@@ -51,9 +50,8 @@ services:
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news
+    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news --label "Pre-Market Research"
     schedule: "0 12 * * *"
-    envVars:
       # Alpaca broker
       - key: ALPACA_API_KEY
         sync: false

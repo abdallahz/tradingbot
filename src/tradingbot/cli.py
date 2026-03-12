@@ -20,7 +20,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("schedule", help="Show configured schedule")
     sub.add_parser("run-day", help="Run night research + morning + midday scans")
-    sub.add_parser("run-news", help="Run news research only (morning or night)")
+    news_parser = sub.add_parser("run-news", help="Run news research only (morning or night)")
+    news_parser.add_argument("--label", default="News Research", help="Label for Telegram notification (e.g. 'Night Research')")
     sub.add_parser("run-morning", help="Run pre-market scan (8:45 AM)")
     sub.add_parser("run-midday", help="Run midday scan (12:00 PM)")
     sub.add_parser("run-close", help="Run close scan (3:50 PM)")
@@ -41,7 +42,8 @@ def main() -> None:
 
     if args.command == "run-news":
         catalyst_scores = scheduler.run_news_only()
-        print(f"\n{mode_str} News Research Complete")
+        label = getattr(args, "label", "News Research")
+        print(f"\n{mode_str} {label} Complete")
         print(f">> Saved {len(catalyst_scores)} catalyst scores to outputs/catalyst_scores.json")
         high_scores = {s: score for s, score in catalyst_scores.items() if score >= 60}
         print(f">> {len(high_scores)} symbols with catalyst score >= 60")
@@ -51,7 +53,7 @@ def main() -> None:
         print(f">> View index: outputs/archive/{today}/INDEX.md\n")
         _notifier = TelegramNotifier.from_env()
         if _notifier._enabled:
-            _ok = _notifier.send_news_summary("News Research", catalyst_scores)
+            _ok = _notifier.send_news_summary(label, catalyst_scores)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
