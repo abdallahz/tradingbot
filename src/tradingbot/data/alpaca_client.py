@@ -281,11 +281,45 @@ class AlpacaClient:
 
     def get_tradable_universe(self) -> list[str]:
         """Get list of tradable symbols matching basic criteria."""
-        # For MVP, return a curated list of high-volume stocks
-        # In production, this would query Alpaca's assets API
         return [
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META",
-            "AMD", "NFLX", "DIS", "BABA", "PYPL", "INTC", "QCOM",
-            "PLTR", "RIVN", "LCID", "SOFI", "NIO", "BBBY", "GME",
-            "AMC", "SPCE", "COIN", "RBLX", "UBER", "LYFT", "SNAP"
+            # ── Mega-cap Tech ──────────────────────────────────────────────
+            "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA",
+            "AVGO", "ORCL", "CRM", "AMD", "INTC", "QCOM", "TXN", "MU",
+            "AMAT", "LRCX", "KLAC", "MRVL", "SMCI", "ARM", "DELL", "HPQ",
+            "IBM", "NOW", "SNOW", "PLTR", "PANW", "CRWD", "ZS", "NET",
+            "DDOG", "MDB", "GTLB", "TEAM", "SHOP", "ADBE", "INTU", "ANSS",
+
+            # ── Financials ─────────────────────────────────────────────────
+            "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW",
+            "AXP", "V", "MA", "COF", "PYPL", "SQ", "HOOD", "COIN",
+            "ICE", "CME", "SPGI", "MCO", "BX", "KKR", "APO",
+
+            # ── Healthcare & Biotech ───────────────────────────────────────
+            "LLY", "UNH", "JNJ", "ABBV", "MRK", "PFE", "TMO", "ABT",
+            "DHR", "ISRG", "BSX", "MDT", "SYK", "EW", "REGN", "BIIB",
+            "GILD", "MRNA", "BNTX", "VRTX", "IDXX", "ZBH", "HUM", "CVS",
+
+            # ── Consumer ──────────────────────────────────────────────────
+            "WMT", "COST", "TGT", "HD", "LOW", "NKE", "SBUX",
+            "MCD", "YUM", "CMG", "DPZ", "ABNB", "BKNG", "EXPE", "LYFT",
+            "UBER", "DASH", "RBLX", "SNAP", "PINS", "MTCH",
+
+            # ── Energy ────────────────────────────────────────────────────
+            "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "VLO", "PSX",
+            "OXY", "DVN", "HAL", "BKR",
+
+            # ── Industrials & EV ──────────────────────────────────────────
+            "GE", "HON", "MMM", "CAT", "DE", "BA", "LMT", "RTX",
+            "NOC", "GD", "RIVN", "LCID", "NIO", "LI", "XPEV", "F", "GM",
+
+            # ── Communications & Media ────────────────────────────────────
+            "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "PARA", "WBD",
+            "SPOT", "TTWO", "EA", "ATVI",
+
+            # ── High-momentum / Retail favorites ──────────────────────────
+            "GME", "AMC", "BBBY", "SPCE", "SOFI", "IONQ", "QUBT", "RGTI",
+            "SOUN", "BBAI", "LUNR", "RKT", "OPEN", "CLOV", "WISH",
+
+            # ── ETFs (for market context) ─────────────────────────────────
+            "SPY", "QQQ", "IWM", "DIA", "ARKK", "SOXS", "SOXL", "TQQQ",
         ]
