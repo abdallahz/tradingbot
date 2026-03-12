@@ -262,45 +262,100 @@ class NewsAggregator:
         return max(0.0, min(100.0, relevance))  # Clamp between 0-100
 
     def _fetch_earnings_calendar(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
-        """Fetch earnings announcements and guidance updates."""
+        """Fetch upcoming/recent earnings from Yahoo Finance calendar API."""
+        import json as _json
         news: dict[str, list[NewsItem]] = {symbol: [] for symbol in symbols}
-        
-        # Mock implementation - in production would use earnings calendar API
-        # Example: Alpha Vantage, Financial Modeling Prep, or Alpaca News API
-        
+
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        }
+
         for symbol in symbols:
-            if symbol in ["NVDA", "AMD", "MSFT", "GOOGL"]:
-                news[symbol].append(
-                    NewsItem(
-                        symbol=symbol,
-                        headline=f"Earnings Beat Estimates - Strong Guidance",
-                        source="Earnings",
-                        published_at=datetime.utcnow() - timedelta(hours=8),
-                        relevance_score=90.0,
-                    )
+            try:
+                url = (
+                    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
+                    f"?modules=calendarEvents"
                 )
-        
+                import urllib.request as _urlreq
+                req = _urlreq.Request(url, headers=headers)
+                with _urlreq.urlopen(req, timeout=8) as resp:
+                    data = _json.loads(resp.read())
+
+                result = data.get("quoteSummary", {}).get("result") or []
+                if not result:
+                    continue
+
+                calendar = result[0].get("calendarEvents", {})
+                earnings = calendar.get("earnings", {})
+                earnings_date_list = earnings.get("earningsDate", [])
+
+                for ed in earnings_date_list[:1]:  # next earnings date only
+                    ts = ed.get("raw")
+                    if not ts:
+                        continue
+                    earnings_dt = datetime.utcfromtimestamp(ts)
+                    days_away = (earnings_dt - datetime.utcnow()).days
+                    if -1 <= days_away <= 14:  # within 2 weeks
+                        label = "📅 Earnings today" if days_away == 0 else f"📅 Earnings in {days_away}d"
+                        relevance = 90.0 if days_away <= 1 else 75.0 if days_away <= 5 else 65.0
+                        news[symbol].append(NewsItem(
+                            symbol=symbol,
+                            headline=label,
+                            source="Yahoo Finance Earnings",
+                            published_at=datetime.utcnow(),
+                            relevance_score=relevance,
+                        ))
+                        logger.info(f"Earnings alert for {symbol}: {label}")
+            except Exception as e:
+                logger.debug(f"Earnings calendar fetch failed for {symbol}: {e}")
+                continue
+
         return news
 
     def _fetch_press_releases(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
-        """Fetch company press releases and wire news."""
+        """Fetch recent 8-K press releases from SEC EDGAR full-text search."""
+        import json as _json
+        import urllib.request as _urlreq
+        import urllib.parse as _urlparse
         news: dict[str, list[NewsItem]] = {symbol: [] for symbol in symbols}
-        
-        # Mock implementation - in production would use newswire APIs
-        # Example: Business Wire, PR Newswire, or Alpaca News API
-        
+
+        cutoff_str = (datetime.utcnow() - timedelta(hours=self.max_age_hours)).strftime("%Y-%m-%d")
+
         for symbol in symbols:
-            if symbol in ["TSLA", "RIVN", "LCID", "PLTR"]:
-                news[symbol].append(
-                    NewsItem(
+            try:
+                params = _urlparse.urlencode({
+                    "q": f'"{symbol}"',
+                    "dateRange": "custom",
+                    "startdt": cutoff_str,
+                    "forms": "8-K",
+                })
+                url = f"https://efts.sec.gov/LATEST/search-index?{params}"
+                req = _urlreq.Request(url, headers={"User-Agent": "TradingBot/1.0 (bot@tradingbot.local)"})
+                with _urlreq.urlopen(req, timeout=8) as resp:
+                    data = _json.loads(resp.read())
+
+                hits = data.get("hits", {}).get("hits", [])
+                for hit in hits[:3]:  # max 3 per symbol
+                    src = hit.get("_source", {})
+                    filed = src.get("file_date", "")
+                    description = src.get("display_names", [{}])
+                    headline = src.get("form_type", "8-K") + ": " + (description[0].get("name", symbol) if description else symbol)
+                    try:
+                        published_dt = datetime.strptime(filed, "%Y-%m-%d")
+                    except Exception:
+                        published_dt = datetime.utcnow()
+                    news[symbol].append(NewsItem(
                         symbol=symbol,
-                        headline=f"New Product Launch Announced",
-                        source="PR Wire",
-                        published_at=datetime.utcnow() - timedelta(hours=6),
-                        relevance_score=75.0,
-                    )
-                )
-        
+                        headline=headline,
+                        source="SEC 8-K",
+                        published_at=published_dt,
+                        relevance_score=70.0,
+                    ))
+            except Exception as e:
+                logger.debug(f"Press release fetch failed for {symbol}: {e}")
+                continue
+
         return news
 
 

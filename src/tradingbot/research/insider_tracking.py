@@ -107,7 +107,9 @@ class InsiderTracker:
         self.user_agent = user_agent
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
-    
+        self._consecutive_failures = 0
+        self._max_failures = 5  # Stop fetching if SEC repeatedly times out
+
     def fetch_insider_trades(
         self,
         symbols: list[str],
@@ -116,41 +118,60 @@ class InsiderTracker:
     ) -> list[InsiderTrade]:
         """
         Fetch recent insider trades from Form 4 filings.
-        
+
         Args:
             symbols: List of stock tickers
             days_lookback: Only trades from last N days
             min_transaction_value: Minimum trade value to include
-            
+
         Returns:
             List of InsiderTrade objects sorted by transaction date (newest first)
         """
+        import time
         trades = []
         cutoff_date = datetime.utcnow() - timedelta(days=days_lookback)
-        
+
         for symbol in symbols:
+            if self._consecutive_failures >= self._max_failures:
+                logger.warning("InsiderTracker: too many SEC timeouts — skipping remaining symbols")
+                break
             try:
                 cik = get_cik(symbol)
                 if not cik:
                     continue
-                
-                # Fetch Form 4 filings
+
+                time.sleep(0.15)  # SEC rate limit: max 10 req/sec
                 symbol_trades = self._fetch_form4_filings(
-                    symbol,
-                    cik,
-                    cutoff_date,
-                    min_transaction_value
+                    symbol, cik, cutoff_date, min_transaction_value
                 )
                 trades.extend(symbol_trades)
-                
+                self._consecutive_failures = 0  # reset on success
+
             except Exception as e:
+                self._consecutive_failures += 1
                 logger.warning(f"Failed to fetch insider trades for {symbol}: {e}")
                 continue
-        
-        # Sort by transaction date (most recent first)
+
         trades.sort(key=lambda x: x.transaction_date, reverse=True)
         return trades
-    
+
+    def _fetch_with_retry(self, url: str, retries: int = 3) -> requests.Response:
+        """GET request with exponential back-off retry on timeout."""
+        import time
+        for attempt in range(retries):
+            try:
+                response = self.session.get(url, timeout=30)
+                response.raise_for_status()
+                return response
+            except requests.exceptions.Timeout:
+                wait = 2 ** attempt
+                logger.warning(f"SEC timeout (attempt {attempt+1}/{retries}), retrying in {wait}s…")
+                time.sleep(wait)
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"SEC request error: {e}")
+                raise
+        raise requests.exceptions.Timeout(f"SEC still timing out after {retries} retries")
+
     def _fetch_form4_filings(
         self,
         symbol: str,
@@ -160,22 +181,20 @@ class InsiderTracker:
     ) -> list[InsiderTrade]:
         """Fetch and parse Form 4 filings for a symbol."""
         trades = []
-        
+
         try:
-            # Query SEC EDGAR for Form 4 filings
             params = {
                 "action": "getcompany",
                 "CIK": cik,
-                "type": "4",  # Form 4
-                "dateb": "",  # All dates
-                "owner": "include",  # Include insider transactions
-                "count": 40,  # Recent filings
+                "type": "4",
+                "dateb": "",
+                "owner": "include",
+                "count": 40,
                 "output": "atom",
             }
-            
+
             url = f"{self.BASE_URL}?{urlencode(params)}"
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
+            response = self._fetch_with_retry(url)
             
             # Parse XML response to extract Form 4 data
             # NOTE: Full XML parsing would require xmltodict or BeautifulSoup

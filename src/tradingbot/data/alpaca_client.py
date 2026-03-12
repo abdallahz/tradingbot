@@ -53,7 +53,24 @@ class AlpacaClient:
             )
             bars = self.client.get_stock_bars(bars_request)
             if DEBUG:
-                print(f"[DEBUG] Got bars data")
+                print(f"[DEBUG] Got daily bars data")
+
+            # Get 15-minute intraday bars for better technical signals (last 2 days)
+            intraday_start = end - timedelta(days=2)
+            try:
+                from alpaca.data.timeframe import TimeFrameUnit
+                intraday_tf = TimeFrame(15, TimeFrameUnit.Minute)  # type: ignore[call-arg]
+                intraday_request = StockBarsRequest(
+                    symbol_or_symbols=universe,
+                    timeframe=intraday_tf,
+                    start=intraday_start,
+                    end=end
+                )
+                intraday_bars = self.client.get_stock_bars(intraday_request)
+            except Exception as e:
+                if DEBUG:
+                    print(f"[DEBUG] Intraday bars fetch failed: {e}, falling back to daily bars")
+                intraday_bars = bars
             
             for symbol in universe:
                 try:
@@ -112,8 +129,10 @@ class AlpacaClient:
                     prev_volume = self._get_previous_volume(bars, symbol)
                     relative_volume = daily_volume / prev_volume if prev_volume and prev_volume > 0 else 1.0
                     
-                    # Compute enhanced technical indicators
-                    symbol_bars = self._get_bars_list(bars, symbol)
+                    # Compute enhanced technical indicators from 15-min intraday bars
+                    symbol_bars = self._get_bars_list(intraday_bars, symbol)
+                    if not symbol_bars:  # fall back to daily if intraday unavailable
+                        symbol_bars = self._get_bars_list(bars, symbol)
                     tech = compute_indicators(symbol_bars)
                     ema9  = tech.get("ema9",  current_price)
                     ema20 = tech.get("ema20", current_price * 0.99)
