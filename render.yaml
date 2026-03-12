@@ -43,6 +43,49 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
 
+  - type: cron
+    name: tradingbot-news-premarket
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-news --label "Pre-Market Research"
+    schedule: "0 12 * * 1-5"
+    envVars:
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_API_SECRET
+        sync: false
+      - key: ALPACA_PAPER
+        value: "true"
+      - key: SEC_USER_AGENT
+        sync: false
+      - key: NEWS_SOCIAL_PROXY_ENABLED
+        value: "true"
+      - key: NEWS_SEC_FILINGS
+        value: "true"
+      - key: NEWS_RSS_FEEDS
+        value: "true"
+      - key: NEWS_EARNINGS_CALENDAR
+        value: "true"
+      - key: NEWS_PRESS_RELEASES
+        value: "true"
+      - key: NEWS_TWITTER_ENABLED
+        value: "false"
+      - key: NEWS_REDDIT_ENABLED
+        value: "false"
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: NEWS_MAX_AGE_HOURS
+        value: "24"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+
   # -- Pre-Market Scan --------------------------------------------------------
   - type: cron
     name: tradingbot-morning
