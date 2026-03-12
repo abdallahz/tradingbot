@@ -86,14 +86,21 @@ class Scheduler:
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _load_catalyst_scores(self) -> dict[str, float]:
-        """Load catalyst_scores.json. Raises FileNotFoundError if not present."""
+        """Load catalyst_scores.json, or run news research inline if missing.
+
+        On ephemeral filesystems (e.g. Render cron jobs) the file written by
+        run-news won't persist to the next job, so we regenerate it on demand.
+        """
         path = self.root / "outputs" / "catalyst_scores.json"
-        if not path.exists():
-            raise FileNotFoundError(
-                "catalyst_scores.json not found. Run 'run-news' command first."
-            )
-        with path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+
+        import logging
+        logging.getLogger(__name__).warning(
+            "catalyst_scores.json not found — running news research inline."
+        )
+        return self.run_news_only()
 
     def _run_scan_session(
         self, session_type: Literal["morning", "midday", "close"]
