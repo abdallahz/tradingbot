@@ -72,7 +72,7 @@ class TelegramNotifier:
             return False
 
         text = self._format_alert(card)
-        ok   = self._send_message(text)
+        ok   = self._send_alert_message(text)
 
         # Send chart image if available
         chart = getattr(card, "chart_path", "")
@@ -133,36 +133,41 @@ class TelegramNotifier:
         side_emoji = "🟢 LONG" if card.side == "long" else "🔴 SHORT"
         patterns   = format_patterns(getattr(card, "patterns", []))
         confluence = getattr(card, "score", 0.0)
+        signals    = ", ".join(card.reason) if card.reason else "—"
 
         lines = [
-            f"🚨 *TRADE ALERT — {card.symbol}*",
-            f"",
+            f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
+            "",
             f"Direction : {side_emoji}",
             f"Session   : {card.session_tag.upper()}",
             f"Score     : {confluence:.0f} / 100",
-            f"",
-            f"📍 *Levels*",
-            f"Entry  : `${card.entry_price:.2f}`",
-            f"Stop   : `${card.stop_price:.2f}`",
-            f"TP 1   : `${card.tp1_price:.2f}`",
-            f"TP 2   : `${card.tp2_price:.2f}`",
-            f"",
-            f"📊 *Patterns* : {patterns}",
-            f"📝 *Signals*  : {', '.join(card.reason)}",
+            "",
+            "📍 <b>Levels</b>",
+            f"Entry  : <code>${card.entry_price:.2f}</code>",
+            f"Stop   : <code>${card.stop_price:.2f}</code>",
+            f"TP 1   : <code>${card.tp1_price:.2f}</code>",
+            f"TP 2   : <code>${card.tp2_price:.2f}</code>",
+            "",
+            f"📊 <b>Patterns</b> : {patterns}",
+            f"📝 <b>Signals</b>  : {signals}",
         ]
         return "\n".join(lines)
 
     # ── Low-level HTTP helpers ─────────────────────────────────────────────
 
-    def _send_message(self, text: str) -> bool:
-        """Send a Markdown-formatted text message."""
+    def _send_message(self, text: str, parse_mode: str = "Markdown") -> bool:
+        """Send a formatted text message. Defaults to Markdown for summary messages."""
         url = _API_BASE.format(token=self._token, method="sendMessage")
         payload = json.dumps({
             "chat_id":    self._chat_id,
             "text":       text,
-            "parse_mode": "Markdown",
+            "parse_mode": parse_mode,
         }).encode()
         return self._post(url, payload, content_type="application/json")
+
+    def _send_alert_message(self, text: str) -> bool:
+        """Send a trade alert using HTML parse mode (safe for dynamic content)."""
+        return self._send_message(text, parse_mode="HTML")
 
     def _send_photo(self, photo_path: Path, caption: str = "") -> bool:
         """Upload and send a photo file with an optional caption."""
@@ -179,7 +184,7 @@ class TelegramNotifier:
 
         body += field("chat_id", self._chat_id)
         body += field("caption", caption)
-        body += field("parse_mode", "Markdown")
+        body += field("parse_mode", "HTML")
 
         # File part
         photo_bytes = photo_path.read_bytes()
