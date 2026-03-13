@@ -26,21 +26,18 @@ class AlpacaClient:
         """Fetch premarket data for candidate symbols."""
         snapshots: list[SymbolSnapshot] = []
         
-        if DEBUG:
-            print(f"[DEBUG] Fetching data for {len(universe)} symbols: {universe[:5]}...")
+        print(f"[ALPACA] Fetching data for {len(universe)} symbols: {universe[:5]}...")
         
         try:
             # Get latest quotes
             quote_request = StockLatestQuoteRequest(symbol_or_symbols=universe)
             quotes = self.client.get_stock_latest_quote(quote_request)
-            if DEBUG:
-                print(f"[DEBUG] Got {len(quotes) if quotes else 0} quotes")
+            print(f"[ALPACA] Got {len(quotes) if quotes else 0} quotes")
             
             # Get snapshot data with VWAP and volume
             snapshot_request = StockSnapshotRequest(symbol_or_symbols=universe)
             snapshot_data = self.client.get_stock_snapshot(snapshot_request)
-            if DEBUG:
-                print(f"[DEBUG] Got {len(snapshot_data) if snapshot_data else 0} snapshots")
+            print(f"[ALPACA] Got {len(snapshot_data) if snapshot_data else 0} snapshots")
             
             # Get 1-day bars for gap calculation
             end = datetime.now()
@@ -52,8 +49,16 @@ class AlpacaClient:
                 end=end
             )
             bars = self.client.get_stock_bars(bars_request)
-            if DEBUG:
-                print(f"[DEBUG] Got daily bars data")
+            # Count bars returned
+            bar_count = 0
+            try:
+                if hasattr(bars, 'data'):
+                    bar_count = len(bars.data)
+                elif hasattr(bars, '__len__'):
+                    bar_count = len(bars)
+            except Exception:
+                pass
+            print(f"[ALPACA] Got daily bars for {bar_count} symbols")
 
             # Get 15-minute intraday bars for better technical signals (last 2 days)
             intraday_start = end - timedelta(days=2)
@@ -67,16 +72,18 @@ class AlpacaClient:
                     end=end
                 )
                 intraday_bars = self.client.get_stock_bars(intraday_request)
+                print(f"[ALPACA] Got intraday bars ok")
             except Exception as e:
-                if DEBUG:
-                    print(f"[DEBUG] Intraday bars fetch failed: {e}, falling back to daily bars")
+                print(f"[ALPACA] Intraday bars fetch failed: {e}, falling back to daily bars")
                 intraday_bars = bars
+
+            # Tally drop reasons for summary
+            drop_counts: dict[str, int] = {}
             
             for symbol in universe:
                 try:
                     if symbol not in snapshot_data or symbol not in quotes:
-                        if DEBUG:
-                            print(f"[DEBUG] {symbol}: Missing in snapshot_data or quotes")
+                        drop_counts["missing_snapshot_or_quote"] = drop_counts.get("missing_snapshot_or_quote", 0) + 1
                         continue
                     
                     snap = snapshot_data[symbol]
@@ -85,8 +92,7 @@ class AlpacaClient:
                     # Calculate gap from previous close
                     prev_close = self._get_previous_close(bars, symbol)
                     if prev_close is None or prev_close == 0:
-                        if DEBUG:
-                            print(f"[DEBUG] {symbol}: No previous close (prev_close={prev_close})")
+                        drop_counts["no_prev_close"] = drop_counts.get("no_prev_close", 0) + 1
                         continue
                     
                     # Get current price safely
@@ -96,6 +102,7 @@ class AlpacaClient:
                         current_price = float(quote.ask_price) if quote.ask_price else 0.0
                     
                     if not current_price:
+                        drop_counts["no_price"] = drop_counts.get("no_price", 0) + 1
                         continue
                     
                     gap_pct = ((current_price - prev_close) / prev_close) * 100
@@ -116,8 +123,7 @@ class AlpacaClient:
                     if data_warning and any(
                         flag in data_warning for flag in ["extreme_gap", "wide_spread"]
                     ):
-                        if DEBUG:
-                            print(f"[DEBUG] {symbol}: Skipping due to suspicious data quality")
+                        drop_counts["data_quality"] = drop_counts.get("data_quality", 0) + 1
                         continue
                     
                     # Get volume metrics
@@ -194,18 +200,19 @@ class AlpacaClient:
                         )
                     )
                 except Exception as e:
-                    if DEBUG:
-                        print(f"[DEBUG] Error processing {symbol}: {e}")
+                    print(f"[ALPACA] Error processing {symbol}: {type(e).__name__}: {e}")
+                    drop_counts["exception"] = drop_counts.get("exception", 0) + 1
                     continue
+
+            if drop_counts:
+                print(f"[ALPACA] Drop reasons: {drop_counts}")
                     
         except Exception as e:
-            if DEBUG:
-                print(f"[DEBUG] Error fetching Alpaca data: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
+            import traceback
+            print(f"[ALPACA] FATAL: {type(e).__name__}: {e}")
+            traceback.print_exc()
             
-        if DEBUG:
-            print(f"[DEBUG] Returning {len(snapshots)} snapshots")
+        print(f"[ALPACA] Returning {len(snapshots)} snapshots")
         return snapshots
     
     def _get_previous_close(self, bars: Any, symbol: str) -> float | None:
