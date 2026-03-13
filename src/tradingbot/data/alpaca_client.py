@@ -25,13 +25,12 @@ class AlpacaClient:
     def _fetch_batch(self, symbols: list[str]) -> tuple[dict, dict, Any, Any]:
         """
         Fetch quotes, snapshots, daily bars, and intraday bars for a batch of symbols.
-        Returns (quotes, snapshot_data, bars, intraday_bars).
-        Raises on failure so the caller can log and skip.
+        Uses IEX feed (free-tier compatible). Raises on failure so the caller can log and skip.
         """
-        quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbols)
+        quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbols, feed="iex")
         quotes = self.client.get_stock_latest_quote(quote_request)
 
-        snapshot_request = StockSnapshotRequest(symbol_or_symbols=symbols)
+        snapshot_request = StockSnapshotRequest(symbol_or_symbols=symbols, feed="iex")
         snapshot_data = self.client.get_stock_snapshot(snapshot_request)
 
         end = datetime.now()
@@ -41,6 +40,7 @@ class AlpacaClient:
             timeframe=TimeFrame.Day,  # type: ignore[arg-type]
             start=start,
             end=end,
+            feed="iex",
         )
         bars = self.client.get_stock_bars(bars_request)
 
@@ -54,6 +54,7 @@ class AlpacaClient:
                     timeframe=intraday_tf,
                     start=intraday_start,
                     end=end,
+                    feed="iex",
                 )
             )
         except Exception as e:
