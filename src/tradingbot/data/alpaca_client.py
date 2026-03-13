@@ -68,17 +68,13 @@ class AlpacaClient:
         snapshots: list[SymbolSnapshot] = []
         BATCH_SIZE = 50
 
-        print(f"[ALPACA] Fetching data for {len(universe)} symbols (batch_size={BATCH_SIZE}): {universe[:5]}...")
-
         batches = [universe[i:i + BATCH_SIZE] for i in range(0, len(universe), BATCH_SIZE)]
         for batch_idx, batch in enumerate(batches):
-            print(f"[ALPACA] Processing batch {batch_idx + 1}/{len(batches)} ({len(batch)} symbols)")
             try:
                 quotes, snapshot_data, bars, intraday_bars = self._fetch_batch(batch)
-                print(f"[ALPACA]   quotes={len(quotes) if quotes else 0} snapshots={len(snapshot_data) if snapshot_data else 0}")
             except Exception as e:
                 import traceback
-                print(f"[ALPACA] FATAL batch {batch_idx + 1}: {type(e).__name__}: {e}")
+                print(f"[ALPACA] ERROR batch {batch_idx + 1}: {type(e).__name__}: {e}")
                 traceback.print_exc()
                 continue  # skip this batch, try next
 
@@ -209,10 +205,7 @@ class AlpacaClient:
                     drop_counts["exception"] = drop_counts.get("exception", 0) + 1
                     continue
 
-            if drop_counts:
-                print(f"[ALPACA] Drop reasons: {drop_counts}")
-
-        print(f"[ALPACA] Returning {len(snapshots)} snapshots")
+        print(f"[ALPACA] {len(snapshots)} snapshots ready")
         return snapshots
     
     def _get_previous_close(self, bars: Any, symbol: str) -> float | None:

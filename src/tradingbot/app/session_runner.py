@@ -282,37 +282,20 @@ class SessionRunner:
     ) -> ThreeOptionWatchlist:
         """Run 3 different scan approaches and provide recommendation."""
 
-        print(f"\n[PIPELINE] ===== {session_tag.upper()} SESSION =====")
-        print(f"[PIPELINE] Step 1 — Snapshots entering pipeline: {len(snapshots)}")
-        if snapshots:
-            sample = snapshots[0]
-            print(f"[PIPELINE]   Sample: {sample.symbol} price=${sample.price:.2f} gap={sample.gap_pct:.2f}% rvol={sample.relative_volume:.2f}x dv=${sample.dollar_volume:,.0f} spread={sample.spread_pct:.3f}%")
-
         # Option 1: Night Research — top catalyst picks with smart money overlay
         night_picks = self._get_night_research_picks(snapshots, catalyst_scores, session_tag)
-        print(f"[PIPELINE] Step 2 — Option 1 (night research picks): {len(night_picks)}")
 
         # Option 2: Relaxed filters scan
         relaxed_scan = self.relaxed_scanner.run(snapshots)
-        print(f"[PIPELINE] Step 3 — Option 2 relaxed scanner: {len(relaxed_scan.candidates)} pass, {len(relaxed_scan.dropped)} dropped")
-        if relaxed_scan.dropped[:5]:
-            print(f"[PIPELINE]   Dropped sample: {relaxed_scan.dropped[:5]}")
         relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
-        print(f"[PIPELINE] Step 4 — Option 2 relaxed ranker (min_score={self.relaxed_ranker.min_score}): {len(relaxed_ranked)} qualified")
-        if relaxed_ranked:
-            print(f"[PIPELINE]   Scores: {[(r.snapshot.symbol, round(r.score,1)) for r in relaxed_ranked[:5]]}")
         relaxed_cards = self._build_cards(
             ranked=relaxed_ranked,
             session_tag=session_tag,
             volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
         )
-        print(f"[PIPELINE] Step 5 — Option 2 trade cards built: {len(relaxed_cards)}")
 
         # Option 3: Strict filters scan
         strict_scan = self.scanner.run(snapshots)
-        print(f"[PIPELINE] Step 6 — Option 3 strict scanner: {len(strict_scan.candidates)} pass, {len(strict_scan.dropped)} dropped")
-        if strict_scan.dropped[:5]:
-            print(f"[PIPELINE]   Dropped sample: {strict_scan.dropped[:5]}")
         if stricter:
             cfg = self.midday_config
             strict_scan.candidates = [
@@ -321,17 +304,15 @@ class SessionRunner:
                 and c.dollar_volume >= cfg["min_dollar_volume"]
                 and c.spread_pct <= cfg["max_spread_pct"]
             ]
-            print(f"[PIPELINE] Step 6b — After midday extra filters: {len(strict_scan.candidates)} remain")
 
         strict_ranked = (self.midday_ranker if stricter else self.ranker).run(strict_scan.candidates)
-        print(f"[PIPELINE] Step 7 — Option 3 ranker: {len(strict_ranked)} qualified")
         strict_cards = self._build_cards(
             ranked=strict_ranked,
             session_tag=session_tag,
             volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
         )
-        print(f"[PIPELINE] Step 8 — Option 3 trade cards built: {len(strict_cards)}")
-        print(f"[PIPELINE] ===== DONE: O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)} =====")
+
+        print(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
         
         # Analyze market conditions and make recommendation
         market_condition = self.market_analyzer.analyze(
@@ -391,12 +372,10 @@ class SessionRunner:
             symbol = item.snapshot
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
-            print(f"[CARDS] {symbol.symbol}: score={item.score:.1f} gap={symbol.gap_pct:.2f}% price={symbol.price:.2f} vwap={symbol.vwap:.2f} ema9={symbol.ema9:.2f} ema20={symbol.ema20:.2f} pullback_low={symbol.pullback_low:.2f} can_long={can_long} can_short={can_short}")
 
             if not can_long and not can_short:
                 if dropped is not None:
                     dropped.append((symbol.symbol, "indicator_confirmation_failed"))
-                print(f"[CARDS] {symbol.symbol}: DROPPED - no valid setup")
                 continue
 
             # Prefer direction that matches the gap; fall back to whichever side is valid
@@ -413,12 +392,10 @@ class SessionRunner:
             )
             card.patterns = list(symbol.patterns)
             confluence = score_confluence(card.patterns, side)
-            print(f"[CARDS] {symbol.symbol}: side={side} patterns={card.patterns} confluence={confluence:.0f}")
             # Only block if there's an actively opposing signal (e.g. bearish_engulfing on a long).
             if confluence < 0:
                 if dropped is not None:
                     dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
-                print(f"[CARDS] {symbol.symbol}: DROPPED - negative confluence")
                 continue
             # Blend confluence bonus into the ranker score (30% weight, cap 100)
             card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
@@ -491,7 +468,6 @@ class SessionRunner:
             # Sort by catalyst score and cap at 50 to avoid Alpaca batch-size limits
             sorted_universe = sorted(universe_str, key=lambda s: catalyst_scores.get(s, 0), reverse=True)
             fetch_universe = sorted_universe[:50]
-            print(f"[FETCH] Sending {len(fetch_universe)} symbols to Alpaca (capped from {len(universe_str)})")
             snapshots = self.alpaca_client.get_premarket_snapshots(fetch_universe)
         elif session_type == "morning":
             snapshots = [s for s in get_premarket_snapshots() if s.symbol in universe_set]
@@ -570,23 +546,15 @@ class SessionRunner:
         session_type: Literal["morning", "midday", "close"],
         catalyst_scores: dict[str, float],
     ) -> tuple[ThreeOptionWatchlist, int]:
-        print(f"\n[PIPELINE] === run_single_session: {session_type} ===")
-        print(f"[PIPELINE] Catalyst scores received: {len(catalyst_scores)} symbols")
-        if catalyst_scores:
-            sample_scores = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:5]
-            print(f"[PIPELINE] Top scores: {sample_scores}")
-
         # Build universe: prefer symbols with catalyst score >= 40.
         # Fall back to top-50 by score so we always have something to scan.
         universe_str = [s for s, sc in catalyst_scores.items() if sc >= 40]
         if not universe_str:
             sorted_scores = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)
             universe_str = [s for s, _ in sorted_scores[:50]]
-        print(f"[PIPELINE] Universe for scanning: {len(universe_str)} symbols (e.g. {universe_str[:5]})") 
         stricter = session_type in ["midday", "close"]
         session_tag: Literal["morning", "midday"] = "midday" if stricter else "morning"
         snapshots = self._fetch_snapshots(session_type, universe_str, catalyst_scores)
-        print(f"[PIPELINE] Snapshots fetched from Alpaca: {len(snapshots)}")
         self._alerts_sent_count = 0
         results = self._run_three_option_session(snapshots, catalyst_scores, session_tag, stricter)
         return results, self._alerts_sent_count

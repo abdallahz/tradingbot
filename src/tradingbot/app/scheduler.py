@@ -96,14 +96,12 @@ class Scheduler:
         if path.exists():
             with path.open("r", encoding="utf-8") as f:
                 scores = json.load(f)
-            print(f"[SCHEDULER] Loaded catalyst_scores.json: {len(scores)} symbols")
             return scores
 
-        print("catalyst_scores.json not found \u2014 running news research inline.")
+        print("catalyst_scores.json not found — running news research inline.")
         scores = self.run_news_only()
-        nonzero = sum(1 for v in scores.values() if v > 0)
         above40 = sum(1 for v in scores.values() if v >= 40)
-        print(f"[SCHEDULER] Inline news research complete: {len(scores)} symbols, {nonzero} non-zero, {above40} with score>=40")
+        print(f"News research complete: {len(scores)} symbols scored, {above40} with score>=40")
         return scores
 
     def _run_scan_session(
