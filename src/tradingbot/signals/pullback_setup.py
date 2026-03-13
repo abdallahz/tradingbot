@@ -13,13 +13,12 @@ from tradingbot.signals.indicators import (
 def has_valid_setup(stock: SymbolSnapshot, side: Side, volume_multiplier: float) -> bool:
     """Return True if the stock has at least one confirming signal.
 
-    Requires a volume spike OR the EMA/VWAP technical alignment — not all
-    three simultaneously, which is too strict for pre-market / intraday data.
+    volume_multiplier=0.0 disables the volume gate (always passes).
+    A non-zero multiplier requires a volume spike OR EMA/VWAP alignment.
     """
-    has_vol = volume_spike(stock, volume_multiplier)
+    has_vol = volume_multiplier == 0.0 or volume_spike(stock, volume_multiplier)
     if side == "long":
         has_tech = ema_hold_long(stock) and vwap_reclaim_long(stock)
-        # Pass if either signal is present
         return has_vol or has_tech
     has_tech = ema_hold_short(stock) and vwap_reclaim_short(stock)
     return has_vol or has_tech
