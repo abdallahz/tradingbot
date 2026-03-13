@@ -137,7 +137,9 @@ class SessionRunner:
             # Real data flow
             universe = self.alpaca_client.get_tradable_universe()
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
-            night_universe_str = [s for s, score in catalyst_scores.items() if score >= 60]
+            night_universe_str = [s for s, score in catalyst_scores.items() if score >= 40]
+            if not night_universe_str:
+                night_universe_str = [s for s, _ in sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:50]]
             
             premarket_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
             # Apply catalyst scores
@@ -185,7 +187,9 @@ class SessionRunner:
             # Real data flow
             universe = self.alpaca_client.get_tradable_universe()
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
-            night_universe_str = [s for s, score in catalyst_scores.items() if score >= 60]
+            night_universe_str = [s for s, score in catalyst_scores.items() if score >= 40]
+            if not night_universe_str:
+                night_universe_str = [s for s, _ in sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:50]]
             
             premarket_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
             # Apply catalyst scores
@@ -382,7 +386,9 @@ class SessionRunner:
             )
             card.patterns = list(symbol.patterns)
             confluence = score_confluence(card.patterns, side)
-            if confluence < MIN_CONFLUENCE_SCORE:
+            # Only block if there's an actively opposing signal (e.g. bearish_engulfing on a long).
+            # An empty pattern list (confluence=0) is fine — no confirmation needed to alert.
+            if confluence < 0:
                 if dropped is not None:
                     dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
                 continue
@@ -478,7 +484,7 @@ class SessionRunner:
         try:
             from tradingbot.research.insider_tracking import SmartMoneyTracker
             tracker = SmartMoneyTracker()
-            top_symbols = [sym for sym, score in top_catalysts if score >= 60]
+            top_symbols = [sym for sym, score in top_catalysts if score >= 40]
             if top_symbols:
                 smart_money_signals = tracker.get_smart_money_signals(top_symbols, days_lookback=7)
                 self._save_smart_money_signals(smart_money_signals, session_tag)
@@ -487,7 +493,7 @@ class SessionRunner:
 
         picks: list[NightResearchResult] = []
         for symbol, score in top_catalysts:
-            if score < 60:
+            if score < 40:
                 continue
             snap = snap_by_symbol.get(symbol)
             if snap is None:
@@ -542,7 +548,12 @@ class SessionRunner:
             Tuple of (ThreeOptionWatchlist, alert_count) where alert_count is
             the number of individual trade alerts sent during this session.
         """
-        universe_str = [s for s, sc in catalyst_scores.items() if sc >= 60]
+        # Build universe: prefer symbols with catalyst score >= 40.
+        # Fall back to top-50 by score so we always have something to scan.
+        universe_str = [s for s, sc in catalyst_scores.items() if sc >= 40]
+        if not universe_str:
+            sorted_scores = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)
+            universe_str = [s for s, _ in sorted_scores[:50]]
         stricter = session_type in ["midday", "close"]
         session_tag: Literal["morning", "midday"] = "midday" if stricter else "morning"
         snapshots = self._fetch_snapshots(session_type, universe_str, catalyst_scores)
