@@ -488,7 +488,11 @@ class SessionRunner:
         """Fetch market snapshots and annotate each with its catalyst score."""
         universe_set = set(universe_str)
         if self.use_real_data and self.alpaca_client:
-            snapshots = self.alpaca_client.get_premarket_snapshots(universe_str)
+            # Sort by catalyst score and cap at 50 to avoid Alpaca batch-size limits
+            sorted_universe = sorted(universe_str, key=lambda s: catalyst_scores.get(s, 0), reverse=True)
+            fetch_universe = sorted_universe[:50]
+            print(f"[FETCH] Sending {len(fetch_universe)} symbols to Alpaca (capped from {len(universe_str)})")
+            snapshots = self.alpaca_client.get_premarket_snapshots(fetch_universe)
         elif session_type == "morning":
             snapshots = [s for s in get_premarket_snapshots() if s.symbol in universe_set]
         else:

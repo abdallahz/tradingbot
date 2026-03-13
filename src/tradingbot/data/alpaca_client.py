@@ -22,65 +22,69 @@ class AlpacaClient:
         self.client = StockHistoricalDataClient(api_key, api_secret)
         self.paper = paper
 
-    def get_premarket_snapshots(self, universe: list[str]) -> list[SymbolSnapshot]:
-        """Fetch premarket data for candidate symbols."""
-        snapshots: list[SymbolSnapshot] = []
-        
-        print(f"[ALPACA] Fetching data for {len(universe)} symbols: {universe[:5]}...")
-        
-        try:
-            # Get latest quotes
-            quote_request = StockLatestQuoteRequest(symbol_or_symbols=universe)
-            quotes = self.client.get_stock_latest_quote(quote_request)
-            print(f"[ALPACA] Got {len(quotes) if quotes else 0} quotes")
-            
-            # Get snapshot data with VWAP and volume
-            snapshot_request = StockSnapshotRequest(symbol_or_symbols=universe)
-            snapshot_data = self.client.get_stock_snapshot(snapshot_request)
-            print(f"[ALPACA] Got {len(snapshot_data) if snapshot_data else 0} snapshots")
-            
-            # Get 1-day bars for gap calculation
-            end = datetime.now()
-            start = end - timedelta(days=5)
-            bars_request = StockBarsRequest(
-                symbol_or_symbols=universe,
-                timeframe=TimeFrame.Day,  # type: ignore[arg-type]
-                start=start,
-                end=end
-            )
-            bars = self.client.get_stock_bars(bars_request)
-            # Count bars returned
-            bar_count = 0
-            try:
-                if hasattr(bars, 'data'):
-                    bar_count = len(bars.data)
-                elif hasattr(bars, '__len__'):
-                    bar_count = len(bars)
-            except Exception:
-                pass
-            print(f"[ALPACA] Got daily bars for {bar_count} symbols")
+    def _fetch_batch(self, symbols: list[str]) -> tuple[dict, dict, Any, Any]:
+        """
+        Fetch quotes, snapshots, daily bars, and intraday bars for a batch of symbols.
+        Returns (quotes, snapshot_data, bars, intraday_bars).
+        Raises on failure so the caller can log and skip.
+        """
+        quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbols)
+        quotes = self.client.get_stock_latest_quote(quote_request)
 
-            # Get 15-minute intraday bars for better technical signals (last 2 days)
-            intraday_start = end - timedelta(days=2)
-            try:
-                from alpaca.data.timeframe import TimeFrameUnit
-                intraday_tf = TimeFrame(15, TimeFrameUnit.Minute)  # type: ignore[call-arg]
-                intraday_request = StockBarsRequest(
-                    symbol_or_symbols=universe,
+        snapshot_request = StockSnapshotRequest(symbol_or_symbols=symbols)
+        snapshot_data = self.client.get_stock_snapshot(snapshot_request)
+
+        end = datetime.now()
+        start = end - timedelta(days=5)
+        bars_request = StockBarsRequest(
+            symbol_or_symbols=symbols,
+            timeframe=TimeFrame.Day,  # type: ignore[arg-type]
+            start=start,
+            end=end,
+        )
+        bars = self.client.get_stock_bars(bars_request)
+
+        intraday_start = end - timedelta(days=2)
+        try:
+            from alpaca.data.timeframe import TimeFrameUnit
+            intraday_tf = TimeFrame(15, TimeFrameUnit.Minute)  # type: ignore[call-arg]
+            intraday_bars = self.client.get_stock_bars(
+                StockBarsRequest(
+                    symbol_or_symbols=symbols,
                     timeframe=intraday_tf,
                     start=intraday_start,
-                    end=end
+                    end=end,
                 )
-                intraday_bars = self.client.get_stock_bars(intraday_request)
-                print(f"[ALPACA] Got intraday bars ok")
+            )
+        except Exception as e:
+            print(f"[ALPACA] Intraday bars fetch failed: {e}, falling back to daily bars")
+            intraday_bars = bars
+
+        return quotes, snapshot_data, bars, intraday_bars
+
+    def get_premarket_snapshots(self, universe: list[str]) -> list[SymbolSnapshot]:
+        """Fetch premarket data for candidate symbols, batched in groups of 50."""
+        snapshots: list[SymbolSnapshot] = []
+        BATCH_SIZE = 50
+
+        print(f"[ALPACA] Fetching data for {len(universe)} symbols (batch_size={BATCH_SIZE}): {universe[:5]}...")
+
+        batches = [universe[i:i + BATCH_SIZE] for i in range(0, len(universe), BATCH_SIZE)]
+        for batch_idx, batch in enumerate(batches):
+            print(f"[ALPACA] Processing batch {batch_idx + 1}/{len(batches)} ({len(batch)} symbols)")
+            try:
+                quotes, snapshot_data, bars, intraday_bars = self._fetch_batch(batch)
+                print(f"[ALPACA]   quotes={len(quotes) if quotes else 0} snapshots={len(snapshot_data) if snapshot_data else 0}")
             except Exception as e:
-                print(f"[ALPACA] Intraday bars fetch failed: {e}, falling back to daily bars")
-                intraday_bars = bars
+                import traceback
+                print(f"[ALPACA] FATAL batch {batch_idx + 1}: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                continue  # skip this batch, try next
 
             # Tally drop reasons for summary
             drop_counts: dict[str, int] = {}
-            
-            for symbol in universe:
+
+            for symbol in batch:
                 try:
                     if symbol not in snapshot_data or symbol not in quotes:
                         drop_counts["missing_snapshot_or_quote"] = drop_counts.get("missing_snapshot_or_quote", 0) + 1
@@ -206,12 +210,7 @@ class AlpacaClient:
 
             if drop_counts:
                 print(f"[ALPACA] Drop reasons: {drop_counts}")
-                    
-        except Exception as e:
-            import traceback
-            print(f"[ALPACA] FATAL: {type(e).__name__}: {e}")
-            traceback.print_exc()
-            
+
         print(f"[ALPACA] Returning {len(snapshots)} snapshots")
         return snapshots
     
