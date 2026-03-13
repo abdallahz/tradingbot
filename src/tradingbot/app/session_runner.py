@@ -122,10 +122,10 @@ class SessionRunner:
         self.relaxed_scanner = GapScanner(
             price_min=scanner_defaults["price_min"],
             price_max=scanner_defaults["price_max"],
-            min_gap_pct=0.0,   # Accept any move direction (down-market coverage)
-            min_premarket_volume=50_000,   # Very relaxed volume floor
-            min_dollar_volume=1_000_000,   # $1M min dollar volume
-            max_spread_pct=1.0,            # Wide spread tolerance
+            min_gap_pct=0.0,   # abs(gap) >= 0 — accepts all moves (up or down)
+            min_premarket_volume=0,
+            min_dollar_volume=0,
+            max_spread_pct=5.0,
         )
 
     def run_day(self) -> tuple[WatchlistRun, WatchlistRun]:
@@ -376,7 +376,11 @@ class SessionRunner:
                     dropped.append((symbol.symbol, "indicator_confirmation_failed"))
                 continue
 
-            side: Side = "long" if can_long else "short"
+            # Prefer direction that matches the gap; fall back to whichever side is valid
+            if symbol.gap_pct >= 0:
+                side: Side = "long" if can_long else "short"
+            else:
+                side = "short" if can_short else "long"
             card = build_trade_card(
                 stock=symbol,
                 side=side,
