@@ -7,6 +7,7 @@ from typing import Literal
 
 from tradingbot.config import ConfigLoader
 from tradingbot.app.session_runner import SessionRunner
+from tradingbot.models import ThreeOptionWatchlist
 from tradingbot.reports.archive_manager import ArchiveManager
 
 
@@ -71,16 +72,16 @@ class Scheduler:
         
         return catalyst_scores
     
-    def run_morning_only(self) -> int:
-        """Run pre-market scan using saved catalyst_scores.json. Returns alert count."""
+    def run_morning_only(self) -> tuple[int, ThreeOptionWatchlist]:
+        """Run pre-market scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("morning")
 
-    def run_midday_only(self) -> int:
-        """Run midday scan using saved catalyst_scores.json. Returns alert count."""
+    def run_midday_only(self) -> tuple[int, ThreeOptionWatchlist]:
+        """Run midday scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("midday")
 
-    def run_close_only(self) -> int:
-        """Run close scan using saved catalyst_scores.json. Returns alert count."""
+    def run_close_only(self) -> tuple[int, ThreeOptionWatchlist]:
+        """Run close scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("close")
 
     # ── Private helpers ────────────────────────────────────────────────────
@@ -94,21 +95,24 @@ class Scheduler:
         path = self.root / "outputs" / "catalyst_scores.json"
         if path.exists():
             with path.open("r", encoding="utf-8") as f:
-                return json.load(f)
+                scores = json.load(f)
+            print(f"[SCHEDULER] Loaded catalyst_scores.json: {len(scores)} symbols")
+            return scores
 
-        import logging
-        logging.getLogger(__name__).warning(
-            "catalyst_scores.json not found — running news research inline."
-        )
-        return self.run_news_only()
+        print("catalyst_scores.json not found \u2014 running news research inline.")
+        scores = self.run_news_only()
+        nonzero = sum(1 for v in scores.values() if v > 0)
+        above40 = sum(1 for v in scores.values() if v >= 40)
+        print(f"[SCHEDULER] Inline news research complete: {len(scores)} symbols, {nonzero} non-zero, {above40} with score>=40")
+        return scores
 
     def _run_scan_session(
         self, session_type: Literal["morning", "midday", "close"]
-    ) -> int:
+    ) -> tuple[int, ThreeOptionWatchlist]:
         """Shared core for pre-market / midday / close scan jobs.
 
         Loads catalyst scores, runs the session, writes outputs, archives the
-        run, and returns the number of trade alerts sent.
+        run, and returns (alert_count, results).
         """
         runner = SessionRunner(self.root, use_real_data=self.use_real_data)
         catalyst_scores = self._load_catalyst_scores()
@@ -116,4 +120,4 @@ class Scheduler:
         runner._write_single_session_output(results, session_type)
         self.archive.archive_daily_run(session_type)
         self.archive.create_daily_index()
-        return card_count
+        return card_count, results

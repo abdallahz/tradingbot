@@ -87,7 +87,12 @@ class TelegramNotifier:
             return False
         return self._send_message(text)
 
-    def send_session_summary(self, session: str, card_count: int) -> bool:
+    def send_session_summary(
+        self,
+        session: str,
+        card_count: int,
+        pipeline_info: str = "",
+    ) -> bool:
         """Send a short session summary after a scan completes."""
         if not self._enabled:
             return False
@@ -99,6 +104,8 @@ class TelegramNotifier:
                 f"\U0001f4cb *{session} scan complete* \u2014 "
                 f"{card_count} alert{'s' if card_count != 1 else ''} sent above."
             )
+        if pipeline_info:
+            text += f"\n\n\U0001f50e Pipeline: {pipeline_info}"
         return self._send_message(text)
 
     def send_news_summary(self, session: str, scores: dict) -> bool:

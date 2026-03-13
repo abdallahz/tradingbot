@@ -17,8 +17,8 @@ class Ranker:
         self.max_candidates = max_candidates
 
     def _normalize_gap(self, stock: SymbolSnapshot) -> float:
-        # Normalize over 5% range: a 5% gap = full score, 1% gap = 20/100
-        return min(max(stock.gap_pct, 0.0) / 5.0, 1.0) * 100
+        # Normalize over 5% range using absolute gap — works for both longs (up) and shorts (down)
+        return min(abs(stock.gap_pct) / 5.0, 1.0) * 100
 
     def _normalize_rel_vol(self, stock: SymbolSnapshot) -> float:
         # Normalize over 2x range: 2x relative volume = full score

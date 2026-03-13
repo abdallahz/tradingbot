@@ -60,10 +60,16 @@ def main() -> None:
         return
     
     if args.command == "run-morning":
-        card_count = scheduler.run_morning_only()
+        card_count, results = scheduler.run_morning_only()
         _notifier = TelegramNotifier.from_env()
+        pipeline_info = (
+            f"O1={len(results.night_research_picks)} picks | "
+            f"O2={len(results.relaxed_filter_cards)} cards | "
+            f"O3={len(results.strict_filter_cards)} cards"
+        )
+        print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Pre-Market", card_count)
+            _ok = _notifier.send_session_summary("Pre-Market", card_count, pipeline_info)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
@@ -76,10 +82,16 @@ def main() -> None:
         return
     
     if args.command == "run-midday":
-        card_count = scheduler.run_midday_only()
+        card_count, results = scheduler.run_midday_only()
         _notifier = TelegramNotifier.from_env()
+        pipeline_info = (
+            f"O1={len(results.night_research_picks)} picks | "
+            f"O2={len(results.relaxed_filter_cards)} cards | "
+            f"O3={len(results.strict_filter_cards)} cards"
+        )
+        print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Midday", card_count)
+            _ok = _notifier.send_session_summary("Midday", card_count, pipeline_info)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
@@ -92,10 +104,16 @@ def main() -> None:
         return
     
     if args.command == "run-close":
-        card_count = scheduler.run_close_only()
+        card_count, results = scheduler.run_close_only()
         _notifier = TelegramNotifier.from_env()
+        pipeline_info = (
+            f"O1={len(results.night_research_picks)} picks | "
+            f"O2={len(results.relaxed_filter_cards)} cards | "
+            f"O3={len(results.strict_filter_cards)} cards"
+        )
+        print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Close", card_count)
+            _ok = _notifier.send_session_summary("Close", card_count, pipeline_info)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
