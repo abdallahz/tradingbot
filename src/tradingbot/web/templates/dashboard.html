@@ -484,13 +484,13 @@
 
     <div class="shell">
         <!-- ── Filters ─────────────────────────────────────────────── -->
-        <form method="get" style="margin-bottom:24px; display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;">
-            <div>
-                <label for="date">Date:</label>
+        <form method="get" class="filter-bar">
+            <div class="filter-group">
+                <label for="date">Date</label>
                 <input type="date" id="date" name="date" value="{{ date_filter }}">
             </div>
-            <div>
-                <label for="symbol">Symbol:</label>
+            <div class="filter-group">
+                <label for="symbol">Symbol</label>
                 <select id="symbol" name="symbol">
                     <option value="">All</option>
                     {% for s in all_symbols %}
@@ -498,19 +498,44 @@
                     {% endfor %}
                 </select>
             </div>
-            <div>
-                <label for="session">Session:</label>
-                <select id="session" name="session">
+            <div class="filter-group">
+                <label for="session_time">Session Time</label>
+                <select id="session_time" name="session_time">
                     <option value="">All</option>
-                    {% for sess in all_sessions %}
-                    <option value="{{ sess }}" {% if sess==session_filter %}selected{% endif %}>{{ sess }}</option>
+                    {% for st in all_session_times %}
+                    <option value="{{ st }}" {% if st==session_time_filter %}selected{% endif %}>{{ st }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <button type="submit"
-                style="padding:6px 18px; border-radius:6px; background:var(--blue); color:#fff; border:none; font-weight:600;">Apply
-                Filters</button>
+            <button type="submit" class="filter-btn">Filter</button>
         </form>
+
+        <style>
+            .filter-bar {
+                display: flex;
+                gap: 18px;
+                align-items: flex-end;
+                margin-bottom: 28px;
+                flex-wrap: wrap;
+            }
+
+            .filter-group {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .filter-btn {
+                padding: 8px 22px;
+                border-radius: 7px;
+                background: var(--blue);
+                color: #fff;
+                border: none;
+                font-weight: 600;
+                font-size: 14px;
+                margin-top: 18px;
+            }
+        </style>
 
         <!-- ── Header ──────────────────────────────────────────────────────── -->
         <header>
