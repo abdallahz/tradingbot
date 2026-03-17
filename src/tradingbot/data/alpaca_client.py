@@ -175,14 +175,35 @@ class AlpacaClient:
                         mode = "minute-bar" if recent_minute_vol > 0 else "premarket-fallback"
                         print(f"[DEBUG] {symbol} volume: recent={recent_volume:,} ({mode}), avg_per_min={avg_volume_20:,}, spike_ratio={recent_volume/max(1,avg_volume_20):.1f}x")
 
-                    # Pullback levels derived from ATR if available, else % fallback
-                    atr_val = tech.get("atr", current_price * 0.005)
-                    pullback_low  = current_price - atr_val
-                    # Reclaim level = current price: for pre-market we enter just above
-                    # where the stock is holding, not at a historical daily-bar support
-                    # which is often far below VWAP and always fails vwap_reclaim_long.
-                    reclaim_level = current_price
-                    pullback_high = current_price + atr_val * 0.5
+                    # ATR for volatility sizing
+                    atr_val = tech.get("atr", current_price * 0.02)
+
+                    # ── reclaim_level: pre-market session high ─────────────────
+                    # This is the key structural level momentum traders watch.
+                    # Long setups: entry = just above PM high (breakout of PM range)
+                    # Short setups: entry = just below PM high (failed breakout)
+                    # Fallback chain: PM high → VWAP → current_price
+                    pm_high = float(snap.daily_bar.high) if snap.daily_bar else 0.0
+                    pm_low  = float(snap.daily_bar.low)  if snap.daily_bar else 0.0
+                    if pm_high and pm_high > current_price * 0.9:
+                        reclaim_level = pm_high
+                    else:
+                        reclaim_level = vwap if vwap > 0 else current_price
+
+                    # ── pullback_low: bull invalidation level ──────────────────
+                    # If the stock falls back to prev_close the gap-up thesis fails.
+                    # Use the highest of (prev_close, ema20) so we don't set stop
+                    # below both meaningful supports, but cap at current_price - ATR.
+                    bull_anchor = max(
+                        prev_close,
+                        ema20 if ema20 > 0 else 0.0,
+                        pm_low if pm_low > 0 else 0.0,
+                    )
+                    pullback_low = min(bull_anchor, current_price - atr_val * 0.5)
+
+                    # ── pullback_high: bear invalidation level ─────────────────
+                    # Above PM high + ATR buffer = too much upside, short fails.
+                    pullback_high = reclaim_level + atr_val
                     
                     snapshots.append(
                         SymbolSnapshot(
