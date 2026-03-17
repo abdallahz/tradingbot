@@ -42,6 +42,10 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      - key: SUPABASE_URL
+        value: "https://cgkogwtlrxhbexdifsge.supabase.co"
+      - key: SUPABASE_KEY
+        sync: false
 
   - type: cron
     name: tradingbot-news-premarket
@@ -85,6 +89,10 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      - key: SUPABASE_URL
+        value: "https://cgkogwtlrxhbexdifsge.supabase.co"
+      - key: SUPABASE_KEY
+        sync: false
 
   # -- Pre-Market Scan --------------------------------------------------------
   - type: cron
@@ -104,6 +112,10 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: SUPABASE_URL
+        value: "https://cgkogwtlrxhbexdifsge.supabase.co"
+      - key: SUPABASE_KEY
         sync: false
 
   # -- Intraday Scans (every 30 min, 9:30 AM to 3:30 PM EDT, weekdays) --------
@@ -125,6 +137,10 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      - key: SUPABASE_URL
+        value: "https://cgkogwtlrxhbexdifsge.supabase.co"
+      - key: SUPABASE_KEY
+        sync: false
 
   # -- Close Scan -------------------------------------------------------------
   - type: cron
@@ -144,4 +160,7 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
+        sync: false      - key: SUPABASE_URL
+        value: "https://cgkogwtlrxhbexdifsge.supabase.co"
+      - key: SUPABASE_KEY
         sync: false

@@ -118,4 +118,24 @@ class Scheduler:
         runner._write_single_session_output(results, session_type)
         self.archive.archive_daily_run(session_type)
         self.archive.create_daily_index()
+
+        # Persist session summary to Supabase (BUG-1 fix)
+        try:
+            from datetime import date as _date
+            from tradingbot.web.alert_store import save_session
+            save_session({
+                "trade_date":         _date.today().isoformat(),
+                "session":            session_type,
+                "avg_gap":            results.average_gap,
+                "gappers_count":      results.gappers_count,
+                "cards_sent":         card_count,
+                "recommended_option": results.recommended_option,
+                "o1_pick_count":      len(results.night_research_picks),
+                "o2_card_count":      len(results.relaxed_filter_cards),
+                "o3_card_count":      len(results.strict_filter_cards),
+            })
+        except Exception as _exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(f"[scheduler] save_session failed: {_exc}")
+
         return card_count, results
