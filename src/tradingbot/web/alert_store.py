@@ -143,6 +143,7 @@ def save_alert(alert: dict[str, Any]) -> None:
     if _is_weekend(trade_date):
         log.info(f"[alert_store] Skipping alert for weekend date: {trade_date}")
         return
+
     sb = _get_supabase()
     if sb is not None:
         try:
@@ -162,13 +163,22 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "reasons":        alert.get("reasons") or [],
                 "patterns":       alert.get("patterns") or [],
             }
-            sb.table("alerts").insert(row).execute()
-            print(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
-            log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
-            return
+            try:
+                result = sb.table("alerts").insert(row).execute()
+                print(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']} | result: {result}")
+                log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']} | result: {result}")
+                return
+            except Exception as exc2:
+                print(f"[alert_store] ERROR: Supabase insert failed: {exc2}")
+                print(f"[alert_store] ALERT DATA: {row}")
+                import traceback
+                traceback.print_exc()
+                log.warning(f"[alert_store] Supabase insert failed: {exc2} — falling back to JSONL")
         except Exception as exc:
-            print(f"[alert_store] WARN: Supabase insert failed: {exc} — falling back to JSONL")
-            log.warning(f"[alert_store] Supabase insert failed: {exc} — falling back to JSONL")
+            print(f"[alert_store] ERROR: Unexpected error in save_alert: {exc}")
+            import traceback
+            traceback.print_exc()
+            log.warning(f"[alert_store] Unexpected error in save_alert: {exc}")
 
     _jsonl_save(alert)
 

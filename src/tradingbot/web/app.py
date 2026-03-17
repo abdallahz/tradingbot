@@ -104,13 +104,30 @@ def _run_scan_in_background() -> None:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def dashboard():
+    from flask import request
     from tradingbot.web.alert_store import load_alerts
-    alerts = load_alerts(50)
+    # Get filters from query params
+    date_filter = request.args.get("date", "")
+    symbol_filter = request.args.get("symbol", "")
+    session_filter = request.args.get("session", "")
+    alerts = load_alerts(200)
+    # Filter by date if provided (match YYYY-MM-DD in timestamp)
+    if date_filter:
+        alerts = [a for a in alerts if a.get("timestamp", "").startswith(date_filter)]
+    # Filter by symbol if provided
+    if symbol_filter:
+        alerts = [a for a in alerts if a.get("symbol", "") == symbol_filter]
+    # Filter by session if provided
+    if session_filter:
+        alerts = [a for a in alerts if a.get("session", "") == session_filter]
     status = _market_status()
     with _scan_lock:
         scanning = _scan_in_progress
     long_count = sum(1 for a in alerts if a.get("side") == "long")
     short_count = sum(1 for a in alerts if a.get("side") == "short")
+    # For filter dropdowns: unique symbols and sessions
+    all_symbols = sorted({a.get("symbol") for a in load_alerts(200)})
+    all_sessions = sorted({a.get("session") for a in load_alerts(200)})
     return render_template(
         "dashboard.html",
         alerts=alerts,
@@ -121,6 +138,11 @@ def dashboard():
         scan_count=_scan_count,
         long_count=long_count,
         short_count=short_count,
+        date_filter=date_filter,
+        symbol_filter=symbol_filter,
+        session_filter=session_filter,
+        all_symbols=all_symbols,
+        all_sessions=all_sessions,
     )
 
 

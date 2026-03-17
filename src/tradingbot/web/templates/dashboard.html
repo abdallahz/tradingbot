@@ -481,7 +481,36 @@
 </head>
 
 <body>
+
     <div class="shell">
+        <!-- ── Filters ─────────────────────────────────────────────── -->
+        <form method="get" style="margin-bottom:24px; display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;">
+            <div>
+                <label for="date">Date:</label>
+                <input type="date" id="date" name="date" value="{{ date_filter }}">
+            </div>
+            <div>
+                <label for="symbol">Symbol:</label>
+                <select id="symbol" name="symbol">
+                    <option value="">All</option>
+                    {% for s in all_symbols %}
+                    <option value="{{ s }}" {% if s==symbol_filter %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="session">Session:</label>
+                <select id="session" name="session">
+                    <option value="">All</option>
+                    {% for sess in all_sessions %}
+                    <option value="{{ sess }}" {% if sess==session_filter %}selected{% endif %}>{{ sess }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit"
+                style="padding:6px 18px; border-radius:6px; background:var(--blue); color:#fff; border:none; font-weight:600;">Apply
+                Filters</button>
+        </form>
 
         <!-- ── Header ──────────────────────────────────────────────────────── -->
         <header>
@@ -598,12 +627,27 @@
                     </div>
                 </div>
 
+
                 <!-- Pattern tags -->
                 {% if a.patterns %}
                 <div class="patterns">
                     {% for p in a.patterns %}
                     <span class="pattern-tag">{{ p | replace('_',' ') }}</span>
                     {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Reasons -->
+                {% if a.reasons %}
+                <div style="margin-bottom:10px;">
+                    <strong>Reason:</strong>
+                    <span>
+                        {% for r in a.reasons %}
+                        <span
+                            style="background:rgba(34,197,94,.08); color:#22c55e; border-radius:4px; padding:2px 8px; margin-right:4px; font-size:11px;">{{
+                            r }}</span>
+                        {% endfor %}
+                    </span>
                 </div>
                 {% endif %}
 
