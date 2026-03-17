@@ -6,6 +6,8 @@ from typing import Literal
 from tradingbot.models import Side, SymbolSnapshot, TradeCard
 
 
+MIN_RR = 2.0
+
 def build_trade_card(
     stock: SymbolSnapshot,
     side: Side,
@@ -39,7 +41,9 @@ def build_trade_card(
 
     # True R:R = (tp2 - entry) / (entry - stop) for long, symmetric for short
     rr = round(abs(tp2 - entry) / risk, 2) if risk > 0 else 0.0
-
+    if rr < MIN_RR:
+        # Option 1: Return None to signal this trade should be dropped
+        return None
     return TradeCard(
         symbol=stock.symbol,
         side=side,

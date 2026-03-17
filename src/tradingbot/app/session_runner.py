@@ -390,6 +390,10 @@ class SessionRunner:
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=session_tag,
             )
+            if card is None:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, "rr_below_floor"))
+                continue
             card.patterns = list(symbol.patterns)
             confluence = score_confluence(card.patterns, side)
             # Block cards with weak or opposing signals (imported constant = 10)
