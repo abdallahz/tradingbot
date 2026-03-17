@@ -122,6 +122,7 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "tp2_price":      alert.get("tp2"),
                 "risk_reward":    alert.get("risk_reward"),
                 "catalyst_score": alert.get("catalyst_score"),
+                "scan_price":     alert.get("scan_price"),
                 "reasons":        alert.get("reasons") or [],
                 "patterns":       alert.get("patterns") or [],
             }
@@ -159,6 +160,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                     "tp1":         r.get("tp1_price"),
                     "tp2":         r.get("tp2_price"),
                     "risk_reward": r.get("risk_reward"),
+                    "scan_price":  r.get("scan_price"),
                     "session":     r.get("session"),
                     "reasons":     r.get("reasons") or [],
                     "patterns":    r.get("patterns") or [],
@@ -202,5 +204,6 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "reasons":        list(card.reason),
         "risk_reward":    round(float(getattr(card, "risk_reward", 0.0)), 2),
         "catalyst_score": round(float(getattr(card, "score", 0.0)), 1),
+        "scan_price":     round(float(getattr(card, "scan_price", card.entry_price)), 2),
         "timestamp":      generated,
     }

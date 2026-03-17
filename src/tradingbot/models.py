@@ -46,6 +46,7 @@ class TradeCard:
     patterns: list[str] = field(default_factory=list)
     risk_reward: float = 0.0   # TP2-to-stop ratio (reward ÷ risk)
     generated_at: str = ""    # UTC timestamp when the alert was created
+    scan_price: float = 0.0   # Price at scan time (pre-market); levels are built from this
 
 
 @dataclass

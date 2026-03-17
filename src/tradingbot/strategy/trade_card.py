@@ -30,8 +30,8 @@ def build_trade_card(
         invalidation = round(stock.pullback_high, 2)
         reasons = ["volume_spike", "ema9_20_reject", "vwap_break", "pullback_entry"]
 
-    # Risk-reward = distance to TP2 ÷ distance to stop (always positive)
-    rr = round((2 * risk) / risk, 2) if risk > 0 else 0.0  # TP2 is always 2R
+    # True R:R = (tp2 - entry) / (entry - stop) for long, symmetric for short
+    rr = round(abs(tp2 - entry) / risk, 2) if risk > 0 else 0.0
 
     return TradeCard(
         symbol=stock.symbol,
@@ -46,4 +46,5 @@ def build_trade_card(
         reason=reasons,
         risk_reward=rr,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        scan_price=round(stock.price, 2),  # price at scan time; levels derived from this
     )
