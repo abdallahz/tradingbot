@@ -192,7 +192,7 @@ def main() -> None:
         except Exception as e:
             log.error(f"Scheduler loop error: {e}")
 
-        time.sleep(60)  # check every minute
+        time.sleep(10)  # check every 10 seconds for faster job triggering
 
 
 if __name__ == "__main__":

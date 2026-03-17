@@ -372,6 +372,9 @@ class CatalystScorerV2:
             "FDA approval", "clinical trial", "breakthrough", "record",
             "buyout", "merger", "upgraded", "initiated coverage"
         ]
+        self.negative_keywords = [
+            "investigation", "resign", "scandal", "lawsuit", "downgrade", "plunge", "warning", "bearish", "miss", "sell", "weak", "drop"
+        ]
 
     def score_symbols(self, symbols: list[str]) -> dict[str, float]:
         """Score each symbol based on catalyst strength from news."""
@@ -394,16 +397,16 @@ class CatalystScorerV2:
             total_score = 0.0
             for item in news_items:
                 base_score = item.relevance_score
-                
-                # Boost for high-impact keywords
                 headline_lower = item.headline.lower()
+                # Boost for high-impact keywords
                 if any(keyword in headline_lower for keyword in self.high_impact_keywords):
                     base_score *= 1.2
-                
+                # Penalty for negative keywords
+                if any(keyword in headline_lower for keyword in self.negative_keywords):
+                    base_score *= 0.5
                 # Weight by recency
                 hours_old = (datetime.utcnow() - item.published_at).total_seconds() / 3600
                 recency_weight = max(0.5, 1.0 - (hours_old / self.news_aggregator.max_age_hours))
-                
                 total_score += base_score * recency_weight
             
             # Normalize to 0-100 scale

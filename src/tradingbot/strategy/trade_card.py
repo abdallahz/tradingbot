@@ -20,7 +20,6 @@ def build_trade_card(
         tp1 = round(entry + risk, 2)
         tp2 = round(entry + 2 * risk, 2)
         invalidation = round(stock.pullback_low, 2)
-        reasons = ["volume_spike", "ema9_20_hold", "vwap_reclaim", "pullback_entry"]
     else:
         entry = round(stock.reclaim_level * 0.9995, 2)
         stop = round(entry * (1.0 + fixed_stop_pct / 100.0), 2)
@@ -28,7 +27,15 @@ def build_trade_card(
         tp1 = round(entry - risk, 2)
         tp2 = round(entry - 2 * risk, 2)
         invalidation = round(stock.pullback_high, 2)
-        reasons = ["volume_spike", "ema9_20_reject", "vwap_break", "pullback_entry"]
+
+    # Use detected patterns as reasons if available, else fallback to old list for backward compatibility
+    if hasattr(stock, "patterns") and stock.patterns:
+        reasons = list(stock.patterns)
+    else:
+        if side == "long":
+            reasons = ["volume_spike", "ema9_20_hold", "vwap_reclaim", "pullback_entry"]
+        else:
+            reasons = ["volume_spike", "ema9_20_reject", "vwap_break", "pullback_entry"]
 
     # True R:R = (tp2 - entry) / (entry - stop) for long, symmetric for short
     rr = round(abs(tp2 - entry) / risk, 2) if risk > 0 else 0.0
