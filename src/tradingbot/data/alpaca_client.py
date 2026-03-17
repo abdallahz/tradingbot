@@ -128,13 +128,20 @@ class AlpacaClient:
                         continue
                     
                     # Get volume metrics
-                    daily_volume = snap.daily_bar.volume if snap.daily_bar else 0
-                    dollar_volume = daily_volume * current_price
-                    
-                    # Compute relative volume (daily vs previous day)
-                    # Try to get previous day volume from bars
+                    # snap.daily_bar.volume at pre-market time = pre-market accumulated
+                    # volume only (regular session hasn't opened yet). Naming it
+                    # premarket_vol makes the distinction clear.
+                    premarket_vol = snap.daily_bar.volume if snap.daily_bar else 0
+
+                    # Compute relative volume (pre-market shares vs previous full session)
                     prev_volume = self._get_previous_volume(bars, symbol)
-                    relative_volume = daily_volume / prev_volume if prev_volume and prev_volume > 0 else 1.0
+                    relative_volume = premarket_vol / prev_volume if prev_volume and prev_volume > 0 else 1.0
+
+                    # Dollar volume must reflect REAL liquidity — use yesterday's full-session
+                    # notional value (prev_volume × prev_close). Pre-market volume is tiny
+                    # (often 50-200k shares) and would falsely fail the $1M filter for
+                    # liquid names. Fall back to 5× pre-market estimate if prev data missing.
+                    dollar_volume = (prev_volume * prev_close) if (prev_volume and prev_close) else (premarket_vol * current_price * 5)
                     
                     # Compute enhanced technical indicators from 15-min intraday bars
                     symbol_bars = self._get_bars_list(intraday_bars, symbol)
@@ -159,10 +166,10 @@ class AlpacaClient:
                     # returns a minute bar during regular market hours. Fall back to
                     # the accumulated pre-market volume so the volume-spike check works.
                     recent_minute_vol = snap.minute_bar.volume if (snap.minute_bar and snap.minute_bar.volume) else 0
-                    recent_volume = recent_minute_vol if recent_minute_vol > 0 else daily_volume
+                    recent_volume = recent_minute_vol if recent_minute_vol > 0 else premarket_vol
                     # Baseline: previous day's avg-per-minute volume is a stable reference.
                     # Avoid dividing current partial-day volume by 390 (wildly off pre-market).
-                    avg_vol_base = prev_volume if prev_volume and prev_volume > 0 else daily_volume * 5
+                    avg_vol_base = prev_volume if prev_volume and prev_volume > 0 else premarket_vol * 5
                     avg_volume_20 = avg_vol_base // 390 if avg_vol_base > 0 else 1
                     if DEBUG:
                         mode = "minute-bar" if recent_minute_vol > 0 else "premarket-fallback"
@@ -182,7 +189,7 @@ class AlpacaClient:
                             symbol=symbol,
                             price=current_price,
                             gap_pct=gap_pct,
-                            premarket_volume=int(daily_volume),
+                            premarket_volume=int(premarket_vol),
                             dollar_volume=dollar_volume,
                             spread_pct=spread_pct,
                             relative_volume=relative_volume,
