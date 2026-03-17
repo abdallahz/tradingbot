@@ -44,8 +44,10 @@ def _get_supabase():
     try:
         from supabase import create_client
         _sb_client = create_client(url, key)
+        print("[alert_store] Supabase client initialised OK")
         log.info("[alert_store] Supabase client initialised")
     except Exception as exc:
+        print(f"[alert_store] WARN: Supabase init failed: {exc} — using JSONL fallback")
         log.warning(f"[alert_store] Supabase init failed: {exc} — using JSONL fallback")
         _sb_client = None
 
@@ -127,9 +129,11 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "patterns":       alert.get("patterns") or [],
             }
             sb.table("alerts").insert(row).execute()
+            print(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
             log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
             return
         except Exception as exc:
+            print(f"[alert_store] WARN: Supabase insert failed: {exc} — falling back to JSONL")
             log.warning(f"[alert_store] Supabase insert failed: {exc} — falling back to JSONL")
 
     _jsonl_save(alert)
@@ -179,9 +183,11 @@ def save_session(session: dict[str, Any]) -> None:
     if sb is not None:
         try:
             sb.table("sessions").insert(session).execute()
+            print(f"[alert_store] Supabase session saved: {session.get('session')} {session.get('trade_date')}")
             log.info(f"[alert_store] Supabase session saved: {session.get('session')} {session.get('trade_date')}")
             return
         except Exception as exc:
+            print(f"[alert_store] WARN: Supabase session insert failed: {exc}")
             log.warning(f"[alert_store] Supabase session insert failed: {exc}")
     # No JSONL fallback for sessions — analytics-only, not critical path
 
