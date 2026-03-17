@@ -392,8 +392,8 @@ class SessionRunner:
             )
             card.patterns = list(symbol.patterns)
             confluence = score_confluence(card.patterns, side)
-            # Only block if there's an actively opposing signal (e.g. bearish_engulfing on a long).
-            if confluence < 0:
+            # Block cards with weak or opposing signals (imported constant = 10)
+            if confluence < MIN_CONFLUENCE_SCORE:
                 if dropped is not None:
                     dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
                 continue
