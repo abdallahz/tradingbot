@@ -1,3 +1,13 @@
+
+from __future__ import annotations
+
+def _is_weekend(date_str: str) -> bool:
+    """Return True if the given date string (YYYY-MM-DD) is a Saturday or Sunday."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.weekday() >= 5  # 5=Saturday, 6=Sunday
+    except Exception:
+        return False
 """
 alert_store.py — Supabase-backed alert persistence with JSONL fallback.
 
@@ -11,8 +21,28 @@ Public interface (unchanged):
     card_to_dict(card)           — convert TradeCard → JSON-serialisable dict
     save_session(session_dict)   — persist one session run summary
 """
-from __future__ import annotations
 
+def _is_weekend(date_str: str) -> bool:
+    """Return True if the given date string (YYYY-MM-DD) is a Saturday or Sunday."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.weekday() >= 5  # 5=Saturday, 6=Sunday
+    except Exception:
+        return False
+
+"""
+alert_store.py — Supabase-backed alert persistence with JSONL fallback.
+
+Primary store: Supabase (hosted Postgres) — survives Render ephemeral containers.
+Fallback store: newline-delimited JSON file — used when SUPABASE_URL is not set
+                (local dev without credentials, or Supabase unavailable).
+
+Public interface (unchanged):
+    save_alert(alert_dict)       — persist one trade card
+    load_alerts(limit)           — return most-recent alerts newest-first
+    card_to_dict(card)           — convert TradeCard → JSON-serialisable dict
+    save_session(session_dict)   — persist one session run summary
+"""
 import json
 import logging
 import os
@@ -109,11 +139,15 @@ def _jsonl_load(limit: int = 100) -> list[dict]:
 
 def save_alert(alert: dict[str, Any]) -> None:
     """Persist one trade card dict (as returned by card_to_dict)."""
+    trade_date = alert.get("trade_date") or date.today().isoformat()
+    if _is_weekend(trade_date):
+        log.info(f"[alert_store] Skipping alert for weekend date: {trade_date}")
+        return
     sb = _get_supabase()
     if sb is not None:
         try:
             row = {
-                "trade_date":     alert.get("trade_date") or date.today().isoformat(),
+                "trade_date":     trade_date,
                 "session":        alert.get("session", ""),
                 "symbol":         alert.get("symbol", ""),
                 "side":           alert.get("side", ""),
@@ -179,6 +213,10 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
 
 def save_session(session: dict[str, Any]) -> None:
     """Persist a session run summary row to the sessions table."""
+    trade_date = session.get("trade_date") or date.today().isoformat()
+    if _is_weekend(trade_date):
+        log.info(f"[alert_store] Skipping session for weekend date: {trade_date}")
+        return
     sb = _get_supabase()
     if sb is not None:
         try:
