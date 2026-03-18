@@ -157,6 +157,17 @@ def main() -> None:
     # Track last intraday scan time (HH:MM) to avoid re-running same block
     last_intraday_block: str = ""
 
+    # ── Startup catch-up: if we're mid-market, fire an immediate intraday scan
+    startup = _now_et()
+    if startup.weekday() < 5:
+        s_min = startup.hour * 60 + startup.minute
+        if 9 * 60 + 30 <= s_min <= 15 * 60:
+            block_m = (s_min // 30) * 30
+            bh, bm = divmod(block_m, 60)
+            last_intraday_block = f"{bh:02d}:{bm:02d}"
+            log.info(f"Startup during market hours — immediate intraday scan for block {last_intraday_block} ET")
+            _run_intraday()
+
     while True:
         try:
             now = _now_et()
