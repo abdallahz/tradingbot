@@ -242,7 +242,7 @@ class SessionRunner:
     def _run_session(
         self,
         snapshots,
-        session_tag: Literal["morning", "midday"],
+        session_tag: Literal["morning", "midday", "close"],
         stricter: bool = False,
     ) -> WatchlistRun:
         """Legacy full-day session runner. Delegates card-building to _build_cards."""
@@ -278,7 +278,7 @@ class SessionRunner:
         self,
         snapshots: list[SymbolSnapshot],
         catalyst_scores: dict[str, float],
-        session_tag: Literal["morning", "midday"],
+        session_tag: Literal["morning", "midday", "close"],
         stricter: bool = False,
     ) -> ThreeOptionWatchlist:
         """Run 3 different scan approaches and provide recommendation."""
@@ -348,7 +348,7 @@ class SessionRunner:
     def _build_cards(
         self,
         ranked: list,
-        session_tag: Literal["morning", "midday"],
+        session_tag: Literal["morning", "midday", "close"],
         volume_spike: float,
         dropped: list[tuple[str, str]] | None = None,
     ) -> list[TradeCard]:
@@ -558,7 +558,7 @@ class SessionRunner:
             sorted_scores = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)
             universe_str = [s for s, _ in sorted_scores[:50]]
         stricter = session_type in ["midday", "close"]
-        session_tag: Literal["morning", "midday"] = "midday" if stricter else "morning"
+        session_tag = session_type  # "morning", "midday", or "close"
         snapshots = self._fetch_snapshots(session_type, universe_str, catalyst_scores)
         self._alerts_sent_count = 0
         results = self._run_three_option_session(snapshots, catalyst_scores, session_tag, stricter)
