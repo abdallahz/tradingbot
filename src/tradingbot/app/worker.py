@@ -1,15 +1,17 @@
 """
 worker.py — Long-running scheduler process for Heroku worker dyno.
 
-Runs in an infinite loop, checking every minute whether it's time to
+Runs in an infinite loop, checking every 10 seconds whether it’s time to
 execute a scheduled job based on config/schedule.yaml times (ET timezone).
 
-Jobs per day:
-  night_research  → run-news   (e.g. 20:00 ET)
-  morning_news    → run-news   (e.g. 08:00 ET)
-  premarket_scan  → run-morning (e.g. 08:45 ET)
-  midday_scan     → run-midday  (e.g. 12:00 ET)
-  close_scan      → run-close   (e.g. 15:50 ET)
+Three scan types:
+  1. Pre-market  — one fixed scan at 08:45 ET (session: morning)
+  2. Midday      — every 30 min from 09:30–15:00 ET (session: midday)
+  3. Close       — one fixed scan at 15:30 ET (session: close)
+
+Plus news research jobs:
+  night_research  → 20:00 ET
+  morning_news    → 08:00 ET
 """
 from __future__ import annotations
 
@@ -60,14 +62,13 @@ def _parse_hhmm(s: str) -> tuple[int, int]:
 
 
 def _load_schedule() -> dict[str, str]:
-    """Return the schedule dict from schedule.yaml."""
+    """Return the fixed daily schedule from schedule.yaml."""
     from tradingbot.config import ConfigLoader
     cfg = ConfigLoader(ROOT).schedule()["schedule"]
     return {
         "night_research": cfg["night_research"],
         "morning_news":   cfg["morning_news"],
         "premarket_scan": cfg["premarket_scan"],
-        "midday_scan":    cfg["midday_scan"],
         "close_scan":     cfg["close_scan"],
     }
 
@@ -116,19 +117,6 @@ def _run_morning() -> None:
         _notifier().send_text(f"⚠️ *Pre-Market scan failed*\n`{e}`")
 
 
-def _run_midday() -> None:
-    log.info("Running midday scan…")
-    try:
-        from tradingbot.app.scheduler import Scheduler
-        scheduler = Scheduler(ROOT, use_real_data=True)
-        card_count = scheduler.run_midday_only()
-        log.info(f"Midday scan complete — {card_count} alert(s) sent.")
-        _notifier().send_session_summary("Midday", card_count)
-    except Exception as e:
-        log.error(f"Midday scan failed: {e}")
-        _notifier().send_text(f"⚠️ *Midday scan failed*\n`{e}`")
-
-
 def _run_close() -> None:
     log.info("Running close scan…")
     try:
@@ -142,23 +130,22 @@ def _run_close() -> None:
         _notifier().send_text(f"⚠️ *Close scan failed*\n`{e}`")
 
 def _run_intraday() -> None:
-    """Recurring scan that runs every 30 min during market hours."""
-    log.info("Running intraday scan\u2026")
+    """Recurring midday scan that runs every 30 min during market hours."""
+    log.info("Running midday intraday scan\u2026")
     try:
         from tradingbot.app.scheduler import Scheduler
         scheduler = Scheduler(ROOT, use_real_data=True)
         card_count = scheduler.run_intraday()
-        log.info(f"Intraday scan complete \u2014 {card_count} alert(s) sent.")
+        log.info(f"Midday intraday scan complete \u2014 {card_count} alert(s) sent.")
     except Exception as e:
-        log.error(f"Intraday scan failed: {e}")
-        _notifier().send_text(f"\u26a0\ufe0f *Intraday scan failed*\n`{e}`")
+        log.error(f"Midday intraday scan failed: {e}")
+        _notifier().send_text(f"\u26a0\ufe0f *Midday intraday scan failed*\n`{e}`")
 
-# Map job name → handler
+# Map job name \u2192 handler (fixed daily jobs only)
 _HANDLERS = {
     "night_research": _run_news,
     "morning_news":   _run_morning_news,
     "premarket_scan": _run_morning,
-    "midday_scan":    _run_midday,
     "close_scan":     _run_close,
 }
 
@@ -179,17 +166,17 @@ def main() -> None:
 
             schedule = _load_schedule()
 
-            # ── Intraday recurring scan (every 30 min, 9:30–15:30 ET, weekdays) ──
+            # \u2500\u2500 Midday intraday scans (every 30 min, 9:30\u201315:00 ET, weekdays) \u2500\u2500
             if now.weekday() < 5:  # weekday only
                 market_open = 9 * 60 + 30
-                market_last_scan = 15 * 60 + 30
-                if market_open <= now_minutes <= market_last_scan:
-                    # Compute current 30-min block: e.g. 10:47 → "10:30"
+                market_last_intraday = 15 * 60  # stop at 3:00 PM (close scan at 3:30)
+                if market_open <= now_minutes <= market_last_intraday:
+                    # Compute current 30-min block: e.g. 10:47 \u2192 "10:30"
                     block_m = (now_minutes // 30) * 30
                     block_h, block_min = divmod(block_m, 60)
                     block_label = f"{block_h:02d}:{block_min:02d}"
                     if block_label != last_intraday_block:
-                        log.info(f"Triggering intraday scan for block {block_label} ET")
+                        log.info(f"Triggering midday intraday scan for block {block_label} ET")
                         last_intraday_block = block_label
                         _run_intraday()
 

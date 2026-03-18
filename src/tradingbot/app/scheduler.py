@@ -17,7 +17,6 @@ class ScheduleWindow:
     night_research: str
     morning_news: str
     premarket_scan: str
-    midday_scan: str
     close_scan: str
     eod_reconcile: str
 
@@ -32,7 +31,6 @@ class Scheduler:
             night_research=cfg["night_research"],
             morning_news=cfg["morning_news"],
             premarket_scan=cfg["premarket_scan"],
-            midday_scan=cfg["midday_scan"],
             close_scan=cfg["close_scan"],
             eod_reconcile=cfg["eod_reconcile"],
         )
@@ -44,7 +42,6 @@ class Scheduler:
             f"night={self.window.night_research} | "
             f"morning_news={self.window.morning_news} | "
             f"premarket={self.window.premarket_scan} | "
-            f"midday={self.window.midday_scan} | "
             f"close={self.window.close_scan} | "
             f"eod={self.window.eod_reconcile}"
         )
@@ -85,29 +82,12 @@ class Scheduler:
         return self._run_scan_session("close")
 
     def run_intraday(self) -> tuple[int, ThreeOptionWatchlist]:
-        """Run an intraday scan, choosing session tag by time of day (ET).
+        """Run a midday intraday scan (always tagged as 'midday').
 
-        Called every 30 minutes during market hours (9:30 AM – 3:30 PM ET).
-        Session tag is derived from current ET hour:
-          - Before 11:30 → morning
-          - 11:30–13:59  → midday
-          - 14:00+       → close
+        Called every 30 minutes during market hours (9:30 AM – 3:00 PM ET).
+        Pre-market and close have their own dedicated fixed-time scans.
         """
-        import pytz
-        from datetime import timezone as tz
-        et = pytz.timezone("America/New_York")
-        now_et = datetime.now(tz.utc).astimezone(et)
-        minutes = now_et.hour * 60 + now_et.minute
-
-        if minutes < 11 * 60 + 30:       # before 11:30
-            session_type = "morning"
-        elif minutes < 14 * 60:           # 11:30 – 13:59
-            session_type = "midday"
-        else:                             # 14:00+
-            session_type = "close"
-
-        print(f"[INTRADAY] {now_et.strftime('%H:%M ET')} → session_type={session_type}")
-        return self._run_scan_session(session_type)
+        return self._run_scan_session("midday")
 
     # ── Private helpers ────────────────────────────────────────────────────
 
