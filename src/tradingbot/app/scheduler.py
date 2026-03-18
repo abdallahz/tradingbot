@@ -148,10 +148,9 @@ class Scheduler:
 
         # Persist session summary to Supabase (BUG-1 fix)
         try:
-            from datetime import date as _date
-            from tradingbot.web.alert_store import save_session
+            from tradingbot.web.alert_store import save_session, _today_et
             save_session({
-                "trade_date":         _date.today().isoformat(),
+                "trade_date":         _today_et().isoformat(),
                 "session":            session_type,
                 "avg_gap":            results.average_gap,
                 "gappers_count":      results.gappers_count,

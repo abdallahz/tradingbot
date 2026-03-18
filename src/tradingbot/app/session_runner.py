@@ -359,13 +359,16 @@ class SessionRunner:
         closer to key support (i.e. a materially better entry).
         """
         cards: list[TradeCard] = []
-        risk_state = RiskState()
 
         # Load today's already-alerted symbols for dedup
         try:
             already_alerted = get_today_alerted_symbols()
         except Exception:
             already_alerted = {}
+
+        # Pre-seed risk state with today's alert count so the daily cap
+        # (max_trades_per_day) persists across 30-minute scan cycles.
+        risk_state = RiskState(trades_taken=len(already_alerted))
 
         for item in ranked:
             if not self.risk_manager.allow_new_trade(risk_state):

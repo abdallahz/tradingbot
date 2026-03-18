@@ -4,5 +4,5 @@ schedule:
   morning_news: "08:00"         # 8:00 AM - Early morning news update
   premarket_scan: "08:45"       # 8:45 AM - Pre-market scan
   close_scan: "15:30"           # 3:30 PM - 30 min before market close
-  eod_reconcile: "17:00"        # 5:00 PM - End of day reconciliation
+  # eod_reconcile removed — no handler implemented yet
 

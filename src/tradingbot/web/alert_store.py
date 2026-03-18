@@ -22,6 +22,22 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
+def _today_et() -> date:
+    """Return today's date in Eastern Time (not UTC).
+
+    On Heroku the server clock is UTC.  Between 8 PM ET and midnight UTC
+    ``date.today()`` returns *tomorrow* in ET terms, breaking dedup queries
+    and trade-date tagging.  This helper keeps everything aligned to the
+    actual trading day.
+    """
+    try:
+        import pytz
+        et = pytz.timezone("America/New_York")
+        return datetime.now(timezone.utc).astimezone(et).date()
+    except Exception:
+        return date.today()  # fallback if pytz unavailable
+
+
 def _is_weekend(date_str: str) -> bool:
     """Return True if the given date string (YYYY-MM-DD) is a Saturday or Sunday."""
     try:
@@ -137,7 +153,7 @@ def _jsonl_load(limit: int = 100) -> list[dict]:
 
 def save_alert(alert: dict[str, Any]) -> None:
     """Persist one trade card dict (as returned by card_to_dict)."""
-    trade_date = alert.get("trade_date") or date.today().isoformat()
+    trade_date = alert.get("trade_date") or _today_et().isoformat()
     if _is_weekend(trade_date):
         log.info(f"[alert_store] Skipping alert for weekend date: {trade_date}")
         return
@@ -234,7 +250,7 @@ def get_today_alerted_symbols() -> dict[str, float]:
     if sb is None:
         return {}
     try:
-        today_str = date.today().isoformat()
+        today_str = _today_et().isoformat()
         resp = (
             sb.table("alerts")
             .select("symbol, entry_price")
@@ -263,7 +279,7 @@ def save_catalyst_scores(scores: dict[str, float]) -> None:
     if sb is None:
         return
     try:
-        today_str = date.today().isoformat()
+        today_str = _today_et().isoformat()
         row = {
             "trade_date": today_str,
             "scores": json.dumps(scores),
@@ -286,7 +302,7 @@ def load_catalyst_scores() -> dict[str, float] | None:
     if sb is None:
         return None
     try:
-        today_str = date.today().isoformat()
+        today_str = _today_et().isoformat()
         resp = (
             sb.table("catalyst_scores")
             .select("scores")
@@ -306,7 +322,7 @@ def load_catalyst_scores() -> dict[str, float] | None:
 
 def save_session(session: dict[str, Any]) -> None:
     """Persist a session run summary row to the sessions table."""
-    trade_date = session.get("trade_date") or date.today().isoformat()
+    trade_date = session.get("trade_date") or _today_et().isoformat()
     if _is_weekend(trade_date):
         log.info(f"[alert_store] Skipping session for weekend date: {trade_date}")
         return
@@ -327,7 +343,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
     generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return {
-        "trade_date":     date.today().isoformat(),
+        "trade_date":     _today_et().isoformat(),
         "symbol":         card.symbol,
         "side":           card.side,
         "score":          round(float(card.score), 1),
