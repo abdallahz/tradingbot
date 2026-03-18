@@ -110,14 +110,16 @@ def dashboard():
     date_filter = request.args.get("date", "")
     symbol_filter = request.args.get("symbol", "")
     session_filter = request.args.get("session", "")
-    alerts = load_alerts(200)
-    # Filter by date if provided (match YYYY-MM-DD in timestamp)
+    all_alerts = load_alerts(200)
+    # Build filter dropdown options from the full (unfiltered) set
+    all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
+    all_sessions = sorted({a.get("session") for a in all_alerts if a.get("session")})
+    # Apply filters
+    alerts = all_alerts
     if date_filter:
         alerts = [a for a in alerts if a.get("timestamp", "").startswith(date_filter)]
-    # Filter by symbol if provided
     if symbol_filter:
         alerts = [a for a in alerts if a.get("symbol", "") == symbol_filter]
-    # Filter by session if provided
     if session_filter:
         alerts = [a for a in alerts if a.get("session", "") == session_filter]
     status = _market_status()
@@ -125,9 +127,6 @@ def dashboard():
         scanning = _scan_in_progress
     long_count = sum(1 for a in alerts if a.get("side") == "long")
     short_count = sum(1 for a in alerts if a.get("side") == "short")
-    # For filter dropdowns: unique symbols and sessions
-    all_symbols = sorted({a.get("symbol") for a in load_alerts(200)})
-    all_sessions = sorted({a.get("session") for a in load_alerts(200)})
     return render_template(
         "dashboard.html",
         alerts=alerts,

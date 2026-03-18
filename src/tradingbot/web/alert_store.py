@@ -1,48 +1,17 @@
+"""
+alert_store.py — Supabase-backed alert persistence with JSONL fallback.
 
+Primary store: Supabase (hosted Postgres) — survives Heroku ephemeral containers.
+Fallback store: newline-delimited JSON file — used when SUPABASE_URL is not set
+                (local dev without credentials, or Supabase unavailable).
+
+Public interface (unchanged):
+    save_alert(alert_dict)       — persist one trade card
+    load_alerts(limit)           — return most-recent alerts newest-first
+    card_to_dict(card)           — convert TradeCard → JSON-serialisable dict
+    save_session(session_dict)   — persist one session run summary
+"""
 from __future__ import annotations
-
-def _is_weekend(date_str: str) -> bool:
-    """Return True if the given date string (YYYY-MM-DD) is a Saturday or Sunday."""
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.weekday() >= 5  # 5=Saturday, 6=Sunday
-    except Exception:
-        return False
-"""
-alert_store.py — Supabase-backed alert persistence with JSONL fallback.
-
-Primary store: Supabase (hosted Postgres) — survives Render ephemeral containers.
-Fallback store: newline-delimited JSON file — used when SUPABASE_URL is not set
-                (local dev without credentials, or Supabase unavailable).
-
-Public interface (unchanged):
-    save_alert(alert_dict)       — persist one trade card
-    load_alerts(limit)           — return most-recent alerts newest-first
-    card_to_dict(card)           — convert TradeCard → JSON-serialisable dict
-    save_session(session_dict)   — persist one session run summary
-"""
-
-def _is_weekend(date_str: str) -> bool:
-    """Return True if the given date string (YYYY-MM-DD) is a Saturday or Sunday."""
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.weekday() >= 5  # 5=Saturday, 6=Sunday
-    except Exception:
-        return False
-
-"""
-alert_store.py — Supabase-backed alert persistence with JSONL fallback.
-
-Primary store: Supabase (hosted Postgres) — survives Render ephemeral containers.
-Fallback store: newline-delimited JSON file — used when SUPABASE_URL is not set
-                (local dev without credentials, or Supabase unavailable).
-
-Public interface (unchanged):
-    save_alert(alert_dict)       — persist one trade card
-    load_alerts(limit)           — return most-recent alerts newest-first
-    card_to_dict(card)           — convert TradeCard → JSON-serialisable dict
-    save_session(session_dict)   — persist one session run summary
-"""
 import json
 import logging
 import os
@@ -51,6 +20,15 @@ from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+
+def _is_weekend(date_str: str) -> bool:
+    """Return True if the given date string (YYYY-MM-DD) is a Saturday or Sunday."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.weekday() >= 5  # 5=Saturday, 6=Sunday
+    except Exception:
+        return False
 
 # ── Supabase client (lazy-initialised once) ───────────────────────────────────
 
@@ -187,7 +165,8 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
     """Return the most-recent alerts (newest first)."""
     sb = _get_supabase()
     if sb is None:
-        raise RuntimeError("Supabase connection required: dashboard must not use JSONL fallback.")
+        log.warning("[alert_store] Supabase unavailable — returning empty list")
+        return []
     try:
         resp = (
             sb.table("alerts")
@@ -217,7 +196,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
         return rows
     except Exception as exc:
         log.warning(f"[alert_store] Supabase load failed: {exc}")
-        raise RuntimeError(f"Supabase load failed: {exc}")
+        return []
 
 
 def save_session(session: dict[str, Any]) -> None:
