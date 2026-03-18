@@ -186,39 +186,38 @@ def save_alert(alert: dict[str, Any]) -> None:
 def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
     """Return the most-recent alerts (newest first)."""
     sb = _get_supabase()
-    if sb is not None:
-        try:
-            resp = (
-                sb.table("alerts")
-                .select("*")
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            # Normalise column names back to the web-dashboard format
-            rows = []
-            for r in resp.data:
-                rows.append({
-                    "trade_date":  r.get("trade_date", ""),
-                    "symbol":      r.get("symbol"),
-                    "side":        r.get("side"),
-                    "score":       r.get("score"),
-                    "entry":       r.get("entry_price"),
-                    "stop":        r.get("stop_price"),
-                    "tp1":         r.get("tp1_price"),
-                    "tp2":         r.get("tp2_price"),
-                    "risk_reward": r.get("risk_reward"),
-                    "scan_price":  r.get("scan_price"),
-                    "session":     r.get("session"),
-                    "reasons":     r.get("reasons") or [],
-                    "patterns":    r.get("patterns") or [],
-                    "timestamp":   r.get("created_at", ""),
-                })
-            return rows
-        except Exception as exc:
-            log.warning(f"[alert_store] Supabase load failed: {exc} — falling back to JSONL")
-
-    return _jsonl_load(limit)
+    if sb is None:
+        raise RuntimeError("Supabase connection required: dashboard must not use JSONL fallback.")
+    try:
+        resp = (
+            sb.table("alerts")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        rows = []
+        for r in resp.data:
+            rows.append({
+                "trade_date":  r.get("trade_date", ""),
+                "symbol":      r.get("symbol"),
+                "side":        r.get("side"),
+                "score":       r.get("score"),
+                "entry":       r.get("entry_price"),
+                "stop":        r.get("stop_price"),
+                "tp1":         r.get("tp1_price"),
+                "tp2":         r.get("tp2_price"),
+                "risk_reward": r.get("risk_reward"),
+                "scan_price":  r.get("scan_price"),
+                "session":     r.get("session"),
+                "reasons":     r.get("reasons") or [],
+                "patterns":    r.get("patterns") or [],
+                "timestamp":   r.get("created_at", ""),
+            })
+        return rows
+    except Exception as exc:
+        log.warning(f"[alert_store] Supabase load failed: {exc}")
+        raise RuntimeError(f"Supabase load failed: {exc}")
 
 
 def save_session(session: dict[str, Any]) -> None:
