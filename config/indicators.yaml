@@ -1,6 +1,6 @@
 indicators:
   ema_fast: 9
   ema_slow: 20
-  volume_spike_multiplier_morning: 0.0
-  volume_spike_multiplier_midday: 0.0
+  volume_spike_multiplier_morning: 1.5   # Require 1.5× avg volume OR EMA/VWAP alignment
+  volume_spike_multiplier_midday: 1.3    # Slightly lower bar for midday (volume naturally lower)
   vwap_hold_bars: 1

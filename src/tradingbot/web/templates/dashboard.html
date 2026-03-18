@@ -348,6 +348,35 @@
             color: var(--blue);
         }
 
+        /* AI Confidence badge */
+        .ai-confidence {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .ai-confidence.high {
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+        }
+        .ai-confidence.medium {
+            background: rgba(234, 179, 8, 0.08);
+            border: 1px solid rgba(234, 179, 8, 0.15);
+            color: #eab308;
+        }
+        .ai-confidence.low {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+        .ai-confidence .ai-icon { font-size: 14px; }
+        .ai-confidence .ai-score { font-weight: 700; }
+        .ai-confidence .ai-text { opacity: 0.8; font-size: 11px; }
+
         /* Scanned price */
         .scanned-price {
             display: flex;
@@ -1321,6 +1350,11 @@
                             <span class="legend-def">Take-Profit targets. TP1 = key resistance level. TP2 = TP1 + 1R
                                 extension (extra reward if momentum continues).</span>
                         </div>
+                        <div class="legend-item">
+                            <span class="legend-term">AI Confidence</span>
+                            <span class="legend-def">1–10 rating from an LLM "second opinion" that evaluates the full
+                                setup (levels, indicators, patterns, news). ≥7 = strong, 5–6 = acceptable, &lt;5 = suppressed.</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1349,6 +1383,17 @@
                     </div>
                     <span class="score-num">{{ a.score }}</span>
                 </div>
+
+                <!-- AI Confidence -->
+                {% if a.ai_confidence %}
+                <div class="ai-confidence {% if a.ai_confidence >= 7 %}high{% elif a.ai_confidence >= 5 %}medium{% else %}low{% endif %}">
+                    <span class="ai-icon">🤖</span>
+                    <span class="ai-score">{{ a.ai_confidence }}/10</span>
+                    <span class="ai-text">
+                        {% if a.ai_confidence >= 7 %}AI: Strong setup{% elif a.ai_confidence >= 5 %}AI: Acceptable{% else %}AI: Marginal{% endif %}
+                    </span>
+                </div>
+                {% endif %}
 
                 <!-- Scanned price -->
                 {% if a.scan_price %}

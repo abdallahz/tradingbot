@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tradingbot.models import SymbolSnapshot
+from tradingbot.analysis.technical_indicators import interpret_signals
 
 
 @dataclass
@@ -75,15 +76,70 @@ class Ranker:
         strength = abs(macd_hist) / stock.price
         return min(strength / 0.01, 1.0) * 100.0
 
+    def _score_signal_alignment(self, stock: SymbolSnapshot) -> float:
+        """Score the alignment of technical signals (0-100).
+
+        Uses interpret_signals() which was previously dead code.
+        Rewards having multiple bullish signals aligned (for longs) or
+        multiple bearish signals aligned (for shorts).
+        """
+        signals = interpret_signals(stock.tech_indicators, stock.price)
+        if not signals:
+            return 50.0  # neutral when no data
+
+        bullish = {"ema_bullish_alignment", "macd_bullish_cross", "above_vwap", "bb_oversold", "rsi_oversold"}
+        bearish = {"ema_bearish_alignment", "macd_bearish_cross", "below_vwap", "bb_overbought", "rsi_overbought"}
+
+        bull_count = sum(1 for s in signals if s in bullish)
+        bear_count = sum(1 for s in signals if s in bearish)
+
+        # Direction-agnostic: reward signal agreement in either direction
+        total = bull_count + bear_count
+        if total == 0:
+            return 50.0
+        alignment = max(bull_count, bear_count) / total  # 0.5 = split, 1.0 = unanimous
+        # Scale: 50 (split) → 100 (unanimous), with count multiplier
+        count_bonus = min(total / 4.0, 1.0)  # More signals = more robust
+        return (50.0 + alignment * 50.0) * count_bonus
+
+    def _score_obv_divergence(self, stock: SymbolSnapshot) -> float:
+        """Score OBV (On-Balance Volume) trend alignment (0-100).
+
+        OBV rising while price consolidated = accumulation (bullish).
+        OBV falling while price stable = distribution (bearish).
+        If OBV confirms the price direction, give a bonus.
+        """
+        obv = stock.tech_indicators.get("obv", None)
+        if obv is None:
+            return 50.0  # neutral when no OBV data
+
+        # Use gap direction as a proxy for recent price direction
+        # OBV > 0 suggests net buying pressure
+        if stock.gap_pct >= 0 and obv > 0:
+            return 80.0  # Price up + OBV confirms = strong
+        elif stock.gap_pct < 0 and obv < 0:
+            return 80.0  # Price down + OBV confirms = strong (for shorts)
+        elif stock.gap_pct >= 0 and obv < 0:
+            return 25.0  # Price up but OBV diverging = weak
+        elif stock.gap_pct < 0 and obv > 0:
+            return 25.0  # Price down but OBV diverging = weak
+        return 50.0
+
     def score(self, stock: SymbolSnapshot) -> float:
         g  = self._normalize_gap(stock)
         rv = self._normalize_rel_vol(stock)
         lq = self._normalize_liquidity(stock)
         c  = stock.catalyst_score
         m  = self._normalize_momentum(stock)
-        rs = self._normalize_rsi(stock)        # was hardcoded r=80 (+8.0 free pts)
-        mc = self._normalize_macd(stock)       # was hardcoded x=85 (+4.25 free pts)
-        return 0.25 * g + 0.20 * rv + 0.15 * lq + 0.15 * c + 0.10 * m + 0.10 * rs + 0.05 * mc
+        rs = self._normalize_rsi(stock)
+        mc = self._normalize_macd(stock)
+        sa = self._score_signal_alignment(stock)
+        ob = self._score_obv_divergence(stock)
+        # Weights sum to 1.0 — added signal alignment (5%) and OBV (5%),
+        # reduced gap (20%) and momentum (5%) slightly to make room.
+        return (0.20 * g + 0.18 * rv + 0.12 * lq + 0.15 * c
+                + 0.05 * m + 0.10 * rs + 0.05 * mc
+                + 0.08 * sa + 0.07 * ob)
 
     def run(self, snapshots: list[SymbolSnapshot]) -> list[RankedCandidate]:
         ranked = [RankedCandidate(snapshot=item, score=self.score(item)) for item in snapshots]

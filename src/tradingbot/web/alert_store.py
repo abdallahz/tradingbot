@@ -445,6 +445,9 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "catalyst_score": round(float(getattr(card, "score", 0.0)), 1),
         "scan_price":     round(float(getattr(card, "scan_price", card.entry_price)), 2),
         "key_support":    round(float(getattr(card, "key_support", 0.0)), 2),
-        "key_resistance":  round(float(getattr(card, "key_resistance", 0.0)), 2),
+        "key_resistance": round(float(getattr(card, "key_resistance", 0.0)), 2),
+        "ai_confidence":  int(getattr(card, "ai_confidence", 0)),
+        "ai_reasoning":   str(getattr(card, "ai_reasoning", "")),
+        "ai_concerns":    list(getattr(card, "ai_concerns", [])),
         "timestamp":      generated,
     }

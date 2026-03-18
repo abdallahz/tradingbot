@@ -135,6 +135,17 @@ class TelegramNotifier:
         confluence = getattr(card, "score", 0.0)
         signals    = ", ".join(card.reason) if card.reason else "—"
 
+        # AI confidence badge
+        ai_conf = getattr(card, "ai_confidence", 0)
+        if ai_conf >= 7:
+            ai_line = f"🤖 <b>AI</b>      : <code>{ai_conf}/10</code> ✅ Strong setup"
+        elif ai_conf >= 5:
+            ai_line = f"🤖 <b>AI</b>      : <code>{ai_conf}/10</code> ⚠️ Acceptable"
+        elif ai_conf > 0:
+            ai_line = f"🤖 <b>AI</b>      : <code>{ai_conf}/10</code> ❌ Marginal"
+        else:
+            ai_line = ""
+
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
             "",
@@ -156,6 +167,14 @@ class TelegramNotifier:
             f"📊 <b>Patterns</b> : {patterns}",
             f"📝 <b>Signals</b>  : {signals}",
         ]
+        if ai_line:
+            lines.append("")
+            lines.append(ai_line)
+            # Add AI reasoning if available
+            ai_reasoning = getattr(card, "ai_reasoning", "")
+            if ai_reasoning:
+                lines.append(f"    💬 {ai_reasoning[:200]}")
+
         return "\n".join(lines)
 
     # ── Low-level HTTP helpers ─────────────────────────────────────────────

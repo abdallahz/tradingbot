@@ -33,6 +33,7 @@ from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
+from tradingbot.analysis.ai_trade_validator import AITradeValidator
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
 from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
 
@@ -115,6 +116,7 @@ class SessionRunner:
             max_consecutive_losses=risk_defaults["max_consecutive_losses"],
         )
         self.market_analyzer = MarketConditionAnalyzer()
+        self.ai_validator = AITradeValidator()
         self.notifier = TelegramNotifier.from_env()
         self._alerts_sent_count: int = 0
         
@@ -425,6 +427,21 @@ class SessionRunner:
                 continue
             # Blend confluence bonus into the ranker score (30% weight, cap 100)
             card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
+
+            # ── AI Trade Validation (LLM "second opinion") ──
+            validation = self.ai_validator.validate(
+                card=card,
+                snapshot=symbol,
+                catalyst_score=symbol.catalyst_score,
+            )
+            card.ai_confidence = validation.confidence
+            card.ai_reasoning = validation.reasoning
+            card.ai_concerns = list(validation.concerns)
+            if not validation.approved:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"ai_rejected:confidence={validation.confidence}"))
+                continue
+
             chart_path = generate_chart(
                 symbol=symbol.symbol,
                 bars_data=symbol.raw_bars,
