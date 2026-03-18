@@ -18,7 +18,6 @@ class ScheduleWindow:
     morning_news: str
     premarket_scan: str
     close_scan: str
-    eod_reconcile: str
 
 
 class Scheduler:
@@ -32,7 +31,6 @@ class Scheduler:
             morning_news=cfg["morning_news"],
             premarket_scan=cfg["premarket_scan"],
             close_scan=cfg["close_scan"],
-            eod_reconcile=cfg["eod_reconcile"],
         )
         self.archive = ArchiveManager(root)
 
@@ -42,8 +40,7 @@ class Scheduler:
             f"night={self.window.night_research} | "
             f"morning_news={self.window.morning_news} | "
             f"premarket={self.window.premarket_scan} | "
-            f"close={self.window.close_scan} | "
-            f"eod={self.window.eod_reconcile}"
+            f"close={self.window.close_scan}"
         )
 
     def run_now(self) -> tuple:
