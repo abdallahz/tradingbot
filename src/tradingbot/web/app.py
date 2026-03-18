@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template, url_for
@@ -107,7 +107,10 @@ def dashboard():
     from flask import request
     from tradingbot.web.alert_store import load_alerts
     # Get filters from query params
-    date_filter = request.args.get("date", "")
+    # Default to today's date for a day-trading workflow
+    today = date.today().isoformat()
+    raw_date = request.args.get("date", today)
+    date_filter = "" if raw_date == "_all" else raw_date
     symbol_filter = request.args.get("symbol", "")
     session_filter = request.args.get("session", "")
     side_filter = request.args.get("side", "")
@@ -166,6 +169,7 @@ def dashboard():
         long_count=long_count,
         short_count=short_count,
         date_filter=date_filter,
+        today=today,
         symbol_filter=symbol_filter,
         session_filter=session_filter,
         side_filter=side_filter,

@@ -487,12 +487,19 @@
         <div class="filter-section">
             <div class="filter-header">
                 <div class="filter-title">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                    </svg>
                     Filters
                 </div>
                 {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter %}
                 <a href="/" class="filter-clear-all">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
                     Clear all
                 </a>
                 {% endif %}
@@ -502,12 +509,15 @@
                     <label for="date">Date</label>
                     <div class="select-wrap">
                         <select id="date" name="date">
-                            <option value="">All Dates</option>
+                            <option value="_all" {% if not date_filter %}selected{% endif %}>All Dates</option>
                             {% for d in all_dates %}
-                            <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}</option>
+                            <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}{% if d==today %} (Today){% endif %}</option>
                             {% endfor %}
                         </select>
-                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
                     </div>
                 </div>
                 <div class="filter-group">
@@ -519,7 +529,10 @@
                             <option value="{{ s }}" {% if s==symbol_filter %}selected{% endif %}>{{ s }}</option>
                             {% endfor %}
                         </select>
-                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
                     </div>
                 </div>
                 <div class="filter-group">
@@ -531,7 +544,10 @@
                             <option value="{{ st }}" {% if st==session_filter %}selected{% endif %}>{{ st }}</option>
                             {% endfor %}
                         </select>
-                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
                     </div>
                 </div>
                 <div class="filter-group">
@@ -540,28 +556,41 @@
                         <select id="scan_time" name="scan_time">
                             <option value="">All Scans</option>
                             {% for st in all_scan_times %}
-                            <option value="{{ st }}" {% if st==scan_time_filter %}selected{% endif %}>{{ st }} UTC</option>
+                            <option value="{{ st }}" {% if st==scan_time_filter %}selected{% endif %}>{{ st }} UTC
+                            </option>
                             {% endfor %}
                         </select>
-                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
                     </div>
                 </div>
                 <div class="filter-group">
                     <label for="side">Side</label>
                     <div class="side-toggle">
                         <input type="hidden" name="side" id="side-value" value="{{ side_filter }}">
-                        <button type="button" class="toggle-btn {% if not side_filter %}active{% endif %}" data-val="">All</button>
-                        <button type="button" class="toggle-btn long-toggle {% if side_filter=='long' %}active{% endif %}" data-val="long">
+                        <button type="button" class="toggle-btn {% if not side_filter %}active{% endif %}"
+                            data-val="">All</button>
+                        <button type="button"
+                            class="toggle-btn long-toggle {% if side_filter=='long' %}active{% endif %}"
+                            data-val="long">
                             <span class="toggle-dot green-dot"></span> Long
                         </button>
-                        <button type="button" class="toggle-btn short-toggle {% if side_filter=='short' %}active{% endif %}" data-val="short">
+                        <button type="button"
+                            class="toggle-btn short-toggle {% if side_filter=='short' %}active{% endif %}"
+                            data-val="short">
                             <span class="toggle-dot red-dot"></span> Short
                         </button>
                     </div>
                 </div>
                 <div class="filter-actions">
                     <button type="submit" class="filter-btn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
                         Apply
                     </button>
                 </div>
@@ -572,7 +601,9 @@
                 {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
                 {% if session_filter %}<span class="chip">🕐 {{ session_filter }}</span>{% endif %}
                 {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }} UTC</span>{% endif %}
-                {% if side_filter %}<span class="chip {% if side_filter=='long' %}chip-green{% else %}chip-red{% endif %}">{{ side_filter | upper }}</span>{% endif %}
+                {% if side_filter %}<span
+                    class="chip {% if side_filter=='long' %}chip-green{% else %}chip-red{% endif %}">{{ side_filter |
+                    upper }}</span>{% endif %}
             </div>
             {% endif %}
         </div>
@@ -615,7 +646,10 @@
                 transition: opacity .2s;
                 text-decoration: none;
             }
-            .filter-clear-all:hover { opacity: 1; }
+
+            .filter-clear-all:hover {
+                opacity: 1;
+            }
 
             .filter-bar {
                 display: flex;
@@ -711,7 +745,7 @@
 
             .toggle-btn:hover {
                 color: var(--text);
-                background: rgba(255,255,255,.03);
+                background: rgba(255, 255, 255, .03);
             }
 
             .toggle-btn.active {
@@ -734,8 +768,14 @@
                 height: 6px;
                 border-radius: 50%;
             }
-            .green-dot { background: var(--green); }
-            .red-dot { background: var(--red); }
+
+            .green-dot {
+                background: var(--green);
+            }
+
+            .red-dot {
+                background: var(--red);
+            }
 
             /* Apply button */
             .filter-actions {
@@ -791,11 +831,13 @@
                 font-size: 11px;
                 font-weight: 600;
             }
+
             .chip-green {
                 background: rgba(34, 197, 94, .1);
                 border-color: rgba(34, 197, 94, .2);
                 color: var(--green);
             }
+
             .chip-red {
                 background: rgba(239, 68, 68, .1);
                 border-color: rgba(239, 68, 68, .2);
@@ -803,12 +845,31 @@
             }
 
             @media (max-width: 600px) {
-                .filter-section { padding: 14px 16px; }
-                .filter-bar { flex-direction: column; gap: 12px; }
-                .filter-group { min-width: 100%; }
-                .side-toggle { width: 100%; }
-                .filter-actions { width: 100%; }
-                .filter-btn { width: 100%; justify-content: center; }
+                .filter-section {
+                    padding: 14px 16px;
+                }
+
+                .filter-bar {
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .filter-group {
+                    min-width: 100%;
+                }
+
+                .side-toggle {
+                    width: 100%;
+                }
+
+                .filter-actions {
+                    width: 100%;
+                }
+
+                .filter-btn {
+                    width: 100%;
+                    justify-content: center;
+                }
             }
         </style>
 
