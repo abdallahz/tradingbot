@@ -174,6 +174,26 @@ def dashboard():
     long_count = sum(1 for a in alerts if a.get("side") == "long")
     short_count = sum(1 for a in alerts if a.get("side") == "short")
 
+    # Derive last-scan time and scan count from actual alert data
+    # (the worker runs in a separate dyno, so in-memory state is meaningless)
+    today_alerts = [a for a in all_alerts
+                    if (a.get("trade_date") or "") == today]
+    if today_alerts:
+        # Most-recent alert's formatted timestamp = last scan time
+        last_scan = today_alerts[0].get("timestamp", _last_scan_time)
+        # Count distinct scan blocks today = number of scans run
+        scan_count = len({a.get("scan_block") for a in today_alerts if a.get("scan_block")})
+    else:
+        # Fall back: check the most recent alert of any date
+        if all_alerts:
+            last_scan = all_alerts[0].get("timestamp", _last_scan_time)
+            scan_count = len({a.get("scan_block") for a in all_alerts
+                              if a.get("scan_block") and
+                              (a.get("trade_date") or "") == (all_alerts[0].get("trade_date") or "")})
+        else:
+            last_scan = _last_scan_time
+            scan_count = _scan_count
+
     # Load night research catalyst scores for the watchlist panel
     catalyst_picks = []
     try:
@@ -208,10 +228,10 @@ def dashboard():
         "dashboard.html",
         alerts=alerts,
         market=status,
-        last_scan=_last_scan_time,
+        last_scan=last_scan,
         scan_error=_last_scan_error,
         scanning=scanning,
-        scan_count=_scan_count,
+        scan_count=scan_count,
         long_count=long_count,
         short_count=short_count,
         date_filter=date_filter,
