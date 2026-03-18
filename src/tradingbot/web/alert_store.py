@@ -603,6 +603,77 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     }
 
 
+def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
+    """Return daily performance stats for the last N trading days.
+
+    Returns a list of dicts sorted oldest→newest:
+    [{"date": "2026-03-10", "total": 5, "wins": 3, "losses": 1,
+      "expired": 1, "win_rate": 75.0, "avg_pnl": 1.23, "cum_pnl": 4.56}, ...]
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return []
+    try:
+        resp = (
+            sb.table("trade_outcomes")
+            .select("trade_date, status, pnl_pct")
+            .not_.is_("status", "null")
+            .order("trade_date")
+            .limit(5000)
+            .execute()
+        )
+        if not resp.data:
+            return []
+
+        # Group by date
+        from collections import defaultdict
+        by_date: dict[str, list[dict]] = defaultdict(list)
+        for r in resp.data:
+            d = r.get("trade_date", "")
+            if d:
+                by_date[d].append(r)
+
+        # Process each date
+        history: list[dict[str, Any]] = []
+        cum_pnl = 0.0
+        for d in sorted(by_date.keys())[-days:]:
+            rows = by_date[d]
+            wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit"))
+            losses = sum(1 for r in rows if r.get("status") == "stopped")
+            expired = sum(1 for r in rows if r.get("status") == "expired")
+            total = len(rows)
+            decided = wins + losses
+            pnls = [float(r.get("pnl_pct") or 0) for r in rows
+                    if r.get("status") not in ("open",)]
+            day_pnl = sum(pnls)
+            cum_pnl += day_pnl
+            history.append({
+                "date": d,
+                "date_label": _format_date_short(d),
+                "total": total,
+                "wins": wins,
+                "losses": losses,
+                "expired": expired,
+                "win_rate": round((wins / decided * 100) if decided > 0 else 0.0, 1),
+                "avg_pnl": round(day_pnl / len(pnls), 2) if pnls else 0.0,
+                "day_pnl": round(day_pnl, 2),
+                "cum_pnl": round(cum_pnl, 2),
+            })
+        return history
+    except Exception as exc:
+        log.warning(f"[alert_store] get_performance_history failed: {exc}")
+        return []
+
+
+def _format_date_short(date_str: str) -> str:
+    """'2026-03-10' → 'Mar 10'."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.strftime("%b %d").replace(" 0", " ")
+    except Exception:
+        return date_str
+
+
 def card_to_dict(card: Any) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
     generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

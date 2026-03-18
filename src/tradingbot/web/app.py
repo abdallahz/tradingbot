@@ -196,10 +196,12 @@ def dashboard():
                    "expired": 0, "win_rate": 0.0, "avg_pnl": 0.0,
                    "best": 0.0, "worst": 0.0}
     outcome_map = {}  # alert_id → {status, pnl_pct, exit_price}
+    perf_history = []  # daily performance for chart
     try:
-        from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
+        from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date, get_performance_history
         trade_stats = get_trade_stats(date_filter or None)
         outcomes = load_outcomes_for_date(date_filter or None)
+        perf_history = get_performance_history(30)
         for o in outcomes:
             aid = o.get("alert_id")
             if aid:
@@ -240,6 +242,7 @@ def dashboard():
         session_labels=SESSION_LABELS,
         catalyst_picks=catalyst_picks,
         trade_stats=trade_stats,
+        perf_history=perf_history,
     )
 
 
@@ -261,6 +264,15 @@ def api_status():
         "scan_count": stats["scan_count"],
         "market": _market_status(),
     })
+
+
+@app.route("/api/performance")
+def api_performance():
+    try:
+        from tradingbot.web.alert_store import get_performance_history
+        return jsonify(get_performance_history(30))
+    except Exception:
+        return jsonify([])
 
 
 @app.route("/api/health")

@@ -401,35 +401,53 @@
             font-weight: 600;
             margin-bottom: 10px;
         }
+
         .outcome-badge.tp1_hit {
-            background: rgba(34,197,94,.12);
-            border: 1px solid rgba(34,197,94,.25);
+            background: rgba(34, 197, 94, .12);
+            border: 1px solid rgba(34, 197, 94, .25);
             color: var(--green);
         }
+
         .outcome-badge.tp2_hit {
-            background: rgba(34,197,94,.18);
-            border: 1px solid rgba(34,197,94,.35);
+            background: rgba(34, 197, 94, .18);
+            border: 1px solid rgba(34, 197, 94, .35);
             color: #15803d;
         }
+
         .outcome-badge.stopped {
-            background: rgba(239,68,68,.12);
-            border: 1px solid rgba(239,68,68,.25);
+            background: rgba(239, 68, 68, .12);
+            border: 1px solid rgba(239, 68, 68, .25);
             color: var(--red);
         }
+
         .outcome-badge.expired {
-            background: rgba(100,116,139,.12);
-            border: 1px solid rgba(100,116,139,.25);
+            background: rgba(100, 116, 139, .12);
+            border: 1px solid rgba(100, 116, 139, .25);
             color: var(--sub);
         }
+
         .outcome-badge.open {
-            background: rgba(59,130,246,.10);
-            border: 1px solid rgba(59,130,246,.20);
+            background: rgba(59, 130, 246, .10);
+            border: 1px solid rgba(59, 130, 246, .20);
             color: var(--blue);
         }
-        .outcome-icon { font-size: 13px; }
-        .outcome-pnl { margin-left: auto; font-weight: 700; }
-        .outcome-pnl.positive { color: var(--green); }
-        .outcome-pnl.negative { color: var(--red); }
+
+        .outcome-icon {
+            font-size: 13px;
+        }
+
+        .outcome-pnl {
+            margin-left: auto;
+            font-weight: 700;
+        }
+
+        .outcome-pnl.positive {
+            color: var(--green);
+        }
+
+        .outcome-pnl.negative {
+            color: var(--red);
+        }
 
         /* ── P&L Summary bar ─────────────────────────────── */
         .pnl-summary {
@@ -443,6 +461,7 @@
             gap: 24px;
             flex-wrap: wrap;
         }
+
         .pnl-title {
             font-size: 14px;
             font-weight: 700;
@@ -450,26 +469,189 @@
             align-items: center;
             gap: 8px;
         }
+
         .pnl-stat {
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 2px;
         }
+
         .pnl-stat-value {
             font-size: 18px;
             font-weight: 700;
         }
+
         .pnl-stat-label {
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: .6px;
             color: var(--sub);
         }
+
         .pnl-divider {
             width: 1px;
             height: 32px;
             background: var(--border);
+        }
+
+        /* ── Performance History chart ───────────────────── */
+        .perf-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+        }
+        .perf-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+        .perf-title {
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .perf-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height .35s ease;
+        }
+        .perf-body.open {
+            max-height: 800px;
+        }
+        .perf-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 140px;
+            padding-top: 16px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+        .perf-bar-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+        }
+        .perf-bar-wrap {
+            width: 100%;
+            max-width: 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            height: 110px;
+            position: relative;
+        }
+        .perf-bar {
+            width: 100%;
+            border-radius: 3px 3px 0 0;
+            min-height: 2px;
+            transition: height .3s ease;
+        }
+        .perf-bar.positive { background: var(--green); }
+        .perf-bar.negative { background: var(--red); }
+        .perf-bar.zero { background: var(--border); }
+        .perf-bar-label {
+            font-size: 8px;
+            color: var(--sub);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 40px;
+        }
+        .perf-bar-value {
+            font-size: 9px;
+            font-weight: 600;
+            position: absolute;
+            top: -14px;
+            white-space: nowrap;
+        }
+        .perf-bar-value.positive { color: var(--green); }
+        .perf-bar-value.negative { color: var(--red); }
+        .perf-cum-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 60px;
+            margin-bottom: 8px;
+        }
+        .perf-cum-bar-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 0;
+        }
+        .perf-cum-bar-wrap {
+            width: 100%;
+            max-width: 28px;
+            height: 50px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            position: relative;
+        }
+        .perf-cum-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            position: absolute;
+        }
+        .perf-cum-dot.positive { background: var(--green); }
+        .perf-cum-dot.negative { background: var(--red); }
+        .perf-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .perf-table th {
+            text-align: left;
+            color: var(--sub);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .perf-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(37,43,56,.5);
+        }
+        .perf-table .num { text-align: right; }
+        .perf-alltime {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            padding: 12px 0 4px;
+            border-top: 1px solid var(--border);
+            margin-top: 10px;
+        }
+        .perf-alltime-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .perf-alltime-val {
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .perf-alltime-lbl {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--sub);
         }
 
         /* Scanned price */
@@ -1314,11 +1496,15 @@
             </div>
             <div class="pnl-divider"></div>
             <div class="pnl-stat">
-                <div class="pnl-stat-value {% if trade_stats.win_rate >= 50 %}green{% else %}{% endif %}" style="{% if trade_stats.win_rate < 50 %}color:var(--red){% endif %}">{{ trade_stats.win_rate }}%</div>
+                <div class="pnl-stat-value {% if trade_stats.win_rate >= 50 %}green{% else %}{% endif %}"
+                    style="{% if trade_stats.win_rate < 50 %}color:var(--red){% endif %}">{{ trade_stats.win_rate }}%
+                </div>
                 <div class="pnl-stat-label">Win Rate</div>
             </div>
             <div class="pnl-stat">
-                <div class="pnl-stat-value {% if trade_stats.avg_pnl >= 0 %}green{% else %}{% endif %}" style="{% if trade_stats.avg_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(trade_stats.avg_pnl) }}%</div>
+                <div class="pnl-stat-value {% if trade_stats.avg_pnl >= 0 %}green{% else %}{% endif %}"
+                    style="{% if trade_stats.avg_pnl < 0 %}color:var(--red){% endif %}">{{
+                    "%+.2f"|format(trade_stats.avg_pnl) }}%</div>
                 <div class="pnl-stat-label">Avg P&amp;L</div>
             </div>
             <div class="pnl-stat">
@@ -1328,6 +1514,110 @@
             <div class="pnl-stat">
                 <div class="pnl-stat-value" style="color:var(--red)">{{ "%+.2f"|format(trade_stats.worst) }}%</div>
                 <div class="pnl-stat-label">Worst</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── Performance History ────────────────────────────────────────── -->
+        {% if perf_history and perf_history | length > 0 %}
+        <div class="perf-section">
+            <div class="perf-header"
+                onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+                <div class="perf-title">
+                    📈 Performance History
+                    <span class="watchlist-count">{{ perf_history | length }} days</span>
+                </div>
+                <svg class="watchlist-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="perf-body">
+                <!-- Daily P&L bar chart -->
+                <div style="font-size:11px; color:var(--sub); padding:12px 0 4px;">Daily P&L %</div>
+                {% set max_pnl = [] %}
+                {% for d in perf_history %}
+                    {% if d.day_pnl|abs > (max_pnl[0] if max_pnl else 0) %}
+                        {% if max_pnl %}{% set _ = max_pnl.pop() %}{% endif %}
+                        {% set _ = max_pnl.append(d.day_pnl|abs) %}
+                    {% endif %}
+                {% endfor %}
+                {% set scale = max_pnl[0] if max_pnl and max_pnl[0] > 0 else 1 %}
+                <div class="perf-chart">
+                    {% for d in perf_history %}
+                    <div class="perf-bar-group">
+                        <div class="perf-bar-wrap">
+                            <span class="perf-bar-value {% if d.day_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                                {{ "%+.1f"|format(d.day_pnl) }}
+                            </span>
+                            <div class="perf-bar {% if d.day_pnl > 0 %}positive{% elif d.day_pnl < 0 %}negative{% else %}zero{% endif %}"
+                                style="height: {{ ((d.day_pnl|abs / scale) * 90)|int }}px">
+                            </div>
+                        </div>
+                        <div class="perf-bar-label">{{ d.date_label }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- All-time summary -->
+                {% set all_wins = perf_history | sum(attribute='wins') %}
+                {% set all_losses = perf_history | sum(attribute='losses') %}
+                {% set all_total = perf_history | sum(attribute='total') %}
+                {% set all_decided = all_wins + all_losses %}
+                {% set all_wr = ((all_wins / all_decided * 100) | round(1)) if all_decided > 0 else 0.0 %}
+                {% set last = perf_history[-1] if perf_history else None %}
+                <div class="perf-alltime">
+                    <div class="perf-alltime-stat">
+                        <div class="perf-alltime-val blue">{{ all_total }}</div>
+                        <div class="perf-alltime-lbl">Total Trades</div>
+                    </div>
+                    <div class="perf-alltime-stat">
+                        <div class="perf-alltime-val green">{{ all_wins }}</div>
+                        <div class="perf-alltime-lbl">Total Wins</div>
+                    </div>
+                    <div class="perf-alltime-stat">
+                        <div class="perf-alltime-val" style="color:var(--red)">{{ all_losses }}</div>
+                        <div class="perf-alltime-lbl">Total Losses</div>
+                    </div>
+                    <div class="perf-alltime-stat">
+                        <div class="perf-alltime-val {% if all_wr >= 50 %}green{% endif %}" style="{% if all_wr < 50 %}color:var(--red){% endif %}">{{ all_wr }}%</div>
+                        <div class="perf-alltime-lbl">Overall Win Rate</div>
+                    </div>
+                    {% if last %}
+                    <div class="perf-alltime-stat">
+                        <div class="perf-alltime-val {% if last.cum_pnl >= 0 %}green{% endif %}" style="{% if last.cum_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(last.cum_pnl) }}%</div>
+                        <div class="perf-alltime-lbl">Cumulative P&amp;L</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Daily breakdown table -->
+                <table class="perf-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="num">Trades</th>
+                            <th class="num">W</th>
+                            <th class="num">L</th>
+                            <th class="num">Win %</th>
+                            <th class="num">Day P&L</th>
+                            <th class="num">Cum P&L</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in perf_history | reverse %}
+                        <tr>
+                            <td>{{ d.date_label }}</td>
+                            <td class="num">{{ d.total }}</td>
+                            <td class="num" style="color:var(--green)">{{ d.wins }}</td>
+                            <td class="num" style="color:var(--red)">{{ d.losses }}</td>
+                            <td class="num">{{ d.win_rate }}%</td>
+                            <td class="num" style="color:{% if d.day_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{ "%+.2f"|format(d.day_pnl) }}%</td>
+                            <td class="num" style="color:{% if d.cum_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{ "%+.2f"|format(d.cum_pnl) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
         {% endif %}
@@ -1494,8 +1784,10 @@
                         </div>
                         <div class="legend-item">
                             <span class="legend-term">Trade Tracker</span>
-                            <span class="legend-def">Monitors each alert's price vs Entry/Stop/TP1/TP2 levels during market hours.
-                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🛑 Stopped = stop loss hit,
+                            <span class="legend-def">Monitors each alert's price vs Entry/Stop/TP1/TP2 levels during
+                                market hours.
+                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🛑 Stopped = stop loss
+                                hit,
                                 ⏰ Expired = market closed with no hit. P&amp;L % shown for resolved trades.</span>
                         </div>
                     </div>
