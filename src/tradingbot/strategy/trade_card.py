@@ -15,15 +15,15 @@ def build_trade_card(
     fixed_stop_pct: float,
     session_tag: Literal["morning", "midday"],
 ) -> TradeCard:
+    # Entry = current market price (what you'd actually get filled at)
+    entry = round(stock.price, 2)
     if side == "long":
-        entry = round(stock.reclaim_level * 1.0005, 2)
         stop = round(entry * (1.0 - fixed_stop_pct / 100.0), 2)
         risk = entry - stop
         tp1 = round(entry + risk, 2)
         tp2 = round(entry + 2 * risk, 2)
         invalidation = round(stock.pullback_low, 2)
     else:
-        entry = round(stock.reclaim_level * 0.9995, 2)
         stop = round(entry * (1.0 + fixed_stop_pct / 100.0), 2)
         risk = stop - entry
         tp1 = round(entry - risk, 2)
