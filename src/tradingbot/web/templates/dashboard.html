@@ -902,6 +902,95 @@
                 color: var(--red);
             }
 
+            /* Night Research Watchlist */
+            .watchlist-section {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 16px 20px;
+                margin-bottom: 24px;
+            }
+
+            .watchlist-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                cursor: pointer;
+                user-select: none;
+            }
+
+            .watchlist-header:hover {
+                opacity: .85;
+            }
+
+            .watchlist-title {
+                font-size: 14px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .watchlist-count {
+                background: rgba(245, 158, 11, .15);
+                color: #f59e0b;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 2px 8px;
+                border-radius: 10px;
+            }
+
+            .watchlist-chevron {
+                transition: transform .2s;
+                color: rgba(255,255,255,.4);
+            }
+
+            .watchlist-chevron.open {
+                transform: rotate(180deg);
+            }
+
+            .watchlist-body {
+                display: none;
+                margin-top: 14px;
+            }
+
+            .watchlist-body.open {
+                display: block;
+            }
+
+            .watchlist-grid {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .watchlist-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: rgba(255, 255, 255, .04);
+                border: 1px solid rgba(255, 255, 255, .08);
+                border-radius: 8px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+
+            .watchlist-chip .wl-symbol {
+                font-weight: 700;
+                color: #fff;
+            }
+
+            .watchlist-chip .wl-score {
+                font-weight: 600;
+                padding: 1px 6px;
+                border-radius: 4px;
+                font-size: 10px;
+            }
+
+            .wl-score.high   { background: rgba(34,197,94,.15); color: var(--green); }
+            .wl-score.medium { background: rgba(245,158,11,.15); color: #f59e0b; }
+            .wl-score.low    { background: rgba(255,255,255,.06); color: rgba(255,255,255,.5); }
+
             @media (max-width: 600px) {
                 .filter-section {
                     padding: 14px 16px;
@@ -1012,6 +1101,32 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- ── Night Research Watchlist ───────────────────────────────────── -->
+        {% if catalyst_picks %}
+        <div class="watchlist-section">
+            <div class="watchlist-header" onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+                <div class="watchlist-title">
+                    📰 Night Research Watchlist
+                    <span class="watchlist-count">{{ catalyst_picks | length }}</span>
+                </div>
+                <svg class="watchlist-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="watchlist-body">
+                <div class="watchlist-grid">
+                    {% for pick in catalyst_picks %}
+                    <div class="watchlist-chip">
+                        <span class="wl-symbol">{{ pick.symbol }}</span>
+                        <span class="wl-score {% if pick.score >= 70 %}high{% elif pick.score >= 55 %}medium{% else %}low{% endif %}">{{ pick.score }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- ── Alert cards ─────────────────────────────────────────────────── -->
         <div class="section-header">

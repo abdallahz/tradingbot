@@ -173,6 +173,24 @@ def dashboard():
         scanning = _scan_in_progress
     long_count = sum(1 for a in alerts if a.get("side") == "long")
     short_count = sum(1 for a in alerts if a.get("side") == "short")
+
+    # Load night research catalyst scores for the watchlist panel
+    catalyst_picks = []
+    try:
+        import json as _json
+        scores_path = Path(__file__).resolve().parents[3] / "outputs" / "catalyst_scores.json"
+        if scores_path.exists():
+            with scores_path.open("r", encoding="utf-8") as f:
+                raw_scores = _json.load(f)
+            # Sort by score descending, take top 15, only those ≥ 40
+            catalyst_picks = [
+                {"symbol": sym, "score": round(sc, 1)}
+                for sym, sc in sorted(raw_scores.items(), key=lambda x: -x[1])
+                if sc >= 40
+            ][:15]
+    except Exception:
+        pass
+
     return render_template(
         "dashboard.html",
         alerts=alerts,
@@ -194,6 +212,7 @@ def dashboard():
         all_dates=all_dates,
         all_scan_times=all_scan_times,
         session_labels=SESSION_LABELS,
+        catalyst_picks=catalyst_picks,
     )
 
 
