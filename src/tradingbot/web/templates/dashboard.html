@@ -416,6 +416,36 @@
             opacity: .75;
         }
 
+        .level-price.support {
+            color: #f59e0b;
+        }
+
+        .level-price.resistance {
+            color: #a78bfa;
+        }
+
+        .key-levels {
+            background: rgba(255, 255, 255, .03);
+            border: 1px solid rgba(255, 255, 255, .06);
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 10px;
+        }
+
+        .key-levels-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: rgba(255, 255, 255, .4);
+            margin-bottom: 6px;
+        }
+
+        .key-levels-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
         /* Patterns */
         .patterns {
             display: flex;
@@ -1015,7 +1045,28 @@
                 </div>
                 {% endif %}
 
-                <!-- Price levels -->
+                <!-- Key levels (support / resistance) -->
+                {% if a.key_support or a.key_resistance %}
+                <div class="key-levels">
+                    <div class="key-levels-title">Key Levels</div>
+                    <div class="key-levels-row">
+                        {% if a.key_support %}
+                        <div class="level">
+                            <div class="level-label">Support</div>
+                            <div class="level-price support">${{ "%.2f"|format(a.key_support) }}</div>
+                        </div>
+                        {% endif %}
+                        {% if a.key_resistance %}
+                        <div class="level">
+                            <div class="level-label">Resistance</div>
+                            <div class="level-price resistance">${{ "%.2f"|format(a.key_resistance) }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Trade plan -->
                 <div class="levels">
                     <div class="level">
                         <div class="level-label">Entry</div>

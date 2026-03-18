@@ -204,7 +204,30 @@ class AlpacaClient:
                     # ── pullback_high: bear invalidation level ─────────────────
                     # Above PM high + ATR buffer = too much upside, short fails.
                     pullback_high = reclaim_level + atr_val
-                    
+
+                    # ── key_support: strongest nearby support for stop placement ──
+                    # Pick the highest meaningful floor: VWAP, EMA20, PM low, prev close
+                    support_candidates = [
+                        v for v in [vwap, ema20, pm_low, prev_close] if v and v > 0
+                    ]
+                    key_support = max(support_candidates) if support_candidates else current_price * 0.98
+                    # Also consider the computed support from bar data if available
+                    bar_support = tech.get("support", 0.0)
+                    if bar_support > 0:
+                        key_support = max(key_support, bar_support)
+                    # Support must be below current price to be meaningful
+                    if key_support >= current_price:
+                        key_support = current_price - atr_val * 0.5
+
+                    # ── key_resistance: nearest ceiling / profit target ───────
+                    key_resistance = reclaim_level  # PM high is the primary resistance
+                    bar_resistance = tech.get("resistance", 0.0)
+                    if bar_resistance > 0 and bar_resistance > current_price:
+                        key_resistance = max(key_resistance, bar_resistance)
+                    # Resistance must be above current price
+                    if key_resistance <= current_price:
+                        key_resistance = current_price + atr_val
+
                     snapshots.append(
                         SymbolSnapshot(
                             symbol=symbol,
@@ -223,6 +246,9 @@ class AlpacaClient:
                             pullback_low=pullback_low,
                             reclaim_level=reclaim_level,
                             pullback_high=pullback_high,
+                            key_support=key_support,
+                            key_resistance=key_resistance,
+                            atr=atr_val,
                             patterns=patterns,
                             raw_bars=symbol_bars,
                             tech_indicators=tech,

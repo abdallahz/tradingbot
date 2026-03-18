@@ -25,6 +25,9 @@ class SymbolSnapshot:
     pullback_low: float
     reclaim_level: float
     pullback_high: float
+    key_support: float = 0.0      # strongest nearby support level
+    key_resistance: float = 0.0   # strongest nearby resistance level
+    atr: float = 0.0              # ATR for stop buffer sizing
     patterns: list[str] = field(default_factory=list)
     raw_bars: list = field(default_factory=list)
     tech_indicators: dict = field(default_factory=dict)
@@ -40,13 +43,15 @@ class TradeCard:
     tp1_price: float
     tp2_price: float
     invalidation_price: float
-    session_tag: Literal["morning", "midday"]
+    session_tag: Literal["morning", "midday", "close"]
     reason: list[str] = field(default_factory=list)
     chart_path: str = ""
     patterns: list[str] = field(default_factory=list)
-    risk_reward: float = 0.0   # TP2-to-stop ratio (reward ÷ risk)
+    risk_reward: float = 0.0   # TP1-to-stop ratio (reward ÷ risk)
     generated_at: str = ""    # UTC timestamp when the alert was created
-    scan_price: float = 0.0   # Price at scan time (pre-market); levels are built from this
+    scan_price: float = 0.0   # Price at scan time
+    key_support: float = 0.0  # Support level used for stop
+    key_resistance: float = 0.0  # Resistance level used for TP
 
 
 @dataclass
@@ -60,7 +65,7 @@ class RiskState:
 @dataclass
 class WatchlistRun:
     generated_at: datetime
-    run_type: Literal["morning", "midday"]
+    run_type: Literal["morning", "midday", "close"]
     cards: list[TradeCard]
     dropped: list[tuple[str, str]]
 
@@ -80,7 +85,7 @@ class NightResearchResult:
 class ThreeOptionWatchlist:
     """Watchlist with 3 trading approaches and market-based recommendation."""
     generated_at: datetime
-    run_type: Literal["morning", "midday"]
+    run_type: Literal["morning", "midday", "close"]
     
     # Option 1: Night research catalyst picks
     night_research_picks: list[NightResearchResult]

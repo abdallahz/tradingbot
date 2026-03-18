@@ -146,20 +146,22 @@ def save_alert(alert: dict[str, Any]) -> None:
     if sb is not None:
         try:
             row = {
-                "trade_date":     trade_date,
-                "session":        alert.get("session", ""),
-                "symbol":         alert.get("symbol", ""),
-                "side":           alert.get("side", ""),
-                "score":          alert.get("score"),
-                "entry_price":    alert.get("entry"),
-                "stop_price":     alert.get("stop"),
-                "tp1_price":      alert.get("tp1"),
-                "tp2_price":      alert.get("tp2"),
-                "risk_reward":    alert.get("risk_reward"),
-                "catalyst_score": alert.get("catalyst_score"),
-                "scan_price":     alert.get("scan_price"),
-                "reasons":        alert.get("reasons") or [],
-                "patterns":       alert.get("patterns") or [],
+                "trade_date":      trade_date,
+                "session":         alert.get("session", ""),
+                "symbol":          alert.get("symbol", ""),
+                "side":            alert.get("side", ""),
+                "score":           alert.get("score"),
+                "entry_price":     alert.get("entry"),
+                "stop_price":      alert.get("stop"),
+                "tp1_price":       alert.get("tp1"),
+                "tp2_price":       alert.get("tp2"),
+                "risk_reward":     alert.get("risk_reward"),
+                "catalyst_score":  alert.get("catalyst_score"),
+                "scan_price":      alert.get("scan_price"),
+                "key_support":     alert.get("key_support"),
+                "key_resistance":  alert.get("key_resistance"),
+                "reasons":         alert.get("reasons") or [],
+                "patterns":        alert.get("patterns") or [],
             }
             try:
                 result = sb.table("alerts").insert(row).execute()
@@ -198,26 +200,57 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
         rows = []
         for r in resp.data:
             rows.append({
-                "trade_date":  r.get("trade_date", ""),
-                "symbol":      r.get("symbol"),
-                "side":        r.get("side"),
-                "score":       r.get("score"),
-                "entry":       r.get("entry_price"),
-                "stop":        r.get("stop_price"),
-                "tp1":         r.get("tp1_price"),
-                "tp2":         r.get("tp2_price"),
-                "risk_reward": r.get("risk_reward"),
-                "scan_price":  r.get("scan_price"),
-                "session":     r.get("session"),
-                "reasons":     r.get("reasons") or [],
-                "patterns":    r.get("patterns") or [],
-                "timestamp":   _format_ts(r.get("created_at", "")),
-                "timestamp_raw": r.get("created_at", ""),
+                "trade_date":     r.get("trade_date", ""),
+                "symbol":         r.get("symbol"),
+                "side":           r.get("side"),
+                "score":          r.get("score"),
+                "entry":          r.get("entry_price"),
+                "stop":           r.get("stop_price"),
+                "tp1":            r.get("tp1_price"),
+                "tp2":            r.get("tp2_price"),
+                "risk_reward":    r.get("risk_reward"),
+                "scan_price":     r.get("scan_price"),
+                "key_support":    r.get("key_support", 0),
+                "key_resistance": r.get("key_resistance", 0),
+                "session":        r.get("session"),
+                "reasons":        r.get("reasons") or [],
+                "patterns":       r.get("patterns") or [],
+                "timestamp":      _format_ts(r.get("created_at", "")),
+                "timestamp_raw":  r.get("created_at", ""),
             })
         return rows
     except Exception as exc:
         log.warning(f"[alert_store] Supabase load failed: {exc}")
         return []
+
+
+def get_today_alerted_symbols() -> dict[str, float]:
+    """Return {symbol: entry_price} for all alerts already sent today.
+
+    Used by _build_cards to avoid re-alerting the same stock unless
+    it has pulled back significantly closer to support.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return {}
+    try:
+        today_str = date.today().isoformat()
+        resp = (
+            sb.table("alerts")
+            .select("symbol, entry_price")
+            .eq("trade_date", today_str)
+            .execute()
+        )
+        result: dict[str, float] = {}
+        for r in resp.data:
+            sym = r.get("symbol", "")
+            price = r.get("entry_price", 0.0) or 0.0
+            # Keep the most recent (last) entry price for each symbol
+            result[sym] = float(price)
+        return result
+    except Exception as exc:
+        log.warning(f"[alert_store] get_today_alerted_symbols failed: {exc}")
+        return {}
 
 
 def save_session(session: dict[str, Any]) -> None:
@@ -258,5 +291,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "risk_reward":    round(float(getattr(card, "risk_reward", 0.0)), 2),
         "catalyst_score": round(float(getattr(card, "score", 0.0)), 1),
         "scan_price":     round(float(getattr(card, "scan_price", card.entry_price)), 2),
+        "key_support":    round(float(getattr(card, "key_support", 0.0)), 2),
+        "key_resistance":  round(float(getattr(card, "key_resistance", 0.0)), 2),
         "timestamp":      generated,
     }

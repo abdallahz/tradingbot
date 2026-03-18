@@ -34,7 +34,7 @@ from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
-from tradingbot.web.alert_store import card_to_dict, save_alert
+from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
 
 
 class SessionRunner:
@@ -354,15 +354,18 @@ class SessionRunner:
     ) -> list[TradeCard]:
         """Build trade cards from ranked candidates.
 
-        Args:
-            ranked: Scored candidates from the ranker.
-            session_tag: Session label for each trade card.
-            volume_spike: Volume multiplier threshold for setup validation.
-            dropped: Optional list updated in-place with (symbol, reason) pairs
-                for every candidate that does not produce a trade card.
+        Includes dedup logic: if a symbol was already alerted today,
+        only re-alert if the current price has pulled back at least 50%
+        closer to key support (i.e. a materially better entry).
         """
         cards: list[TradeCard] = []
         risk_state = RiskState()
+
+        # Load today's already-alerted symbols for dedup
+        try:
+            already_alerted = get_today_alerted_symbols()
+        except Exception:
+            already_alerted = {}
 
         for item in ranked:
             if not self.risk_manager.allow_new_trade(risk_state):
@@ -371,6 +374,21 @@ class SessionRunner:
                 break
 
             symbol = item.snapshot
+
+            # ── Dedup check: skip if already alerted unless pullback ──
+            prev_entry = already_alerted.get(symbol.symbol)
+            if prev_entry is not None and prev_entry > 0:
+                support = symbol.key_support if symbol.key_support > 0 else symbol.price * 0.98
+                distance_before = prev_entry - support
+                distance_now = symbol.price - support
+                if distance_before > 0 and distance_now > 0:
+                    # Only re-alert if price moved ≥50% closer to support
+                    pullback_pct = 1.0 - (distance_now / distance_before)
+                    if pullback_pct < 0.50:
+                        if dropped is not None:
+                            dropped.append((symbol.symbol, f"dedup:pullback_only_{pullback_pct:.0%}"))
+                        continue
+
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
 
