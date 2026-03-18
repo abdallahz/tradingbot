@@ -117,14 +117,19 @@ def dashboard():
     scan_time_filter = request.args.get("scan_time", "")
     all_alerts = load_alerts(200)
 
-    # Helper: round a timestamp string to the nearest 30-min block label
+    # Helper: convert UTC timestamp to ET and round to 30-min block
     def _scan_block(ts: str) -> str:
-        """'2026-03-18T14:47:00+00:00' → '14:30'  (30-min floor)"""
+        """'2026-03-18T14:47:00+00:00' → '10:30 AM ET'  (30-min floor in ET)"""
         try:
-            t = ts[11:16]          # 'HH:MM'
-            h, m = int(t[:2]), int(t[3:5])
-            m = (m // 30) * 30     # floor to 0 or 30
-            return f"{h:02d}:{m:02d}"
+            import pytz
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            et = pytz.timezone("America/New_York")
+            dt_et = dt.astimezone(et)
+            h, m = dt_et.hour, dt_et.minute
+            m = (m // 30) * 30  # floor to 0 or 30
+            hour_12 = h % 12 or 12
+            ampm = "AM" if h < 12 else "PM"
+            return f"{hour_12}:{m:02d} {ampm} ET"
         except Exception:
             return ""
 
