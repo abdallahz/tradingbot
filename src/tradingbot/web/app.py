@@ -178,10 +178,23 @@ def dashboard():
     catalyst_picks = []
     try:
         import json as _json
-        scores_path = Path(__file__).resolve().parents[3] / "outputs" / "catalyst_scores.json"
-        if scores_path.exists():
-            with scores_path.open("r", encoding="utf-8") as f:
-                raw_scores = _json.load(f)
+        raw_scores = None
+
+        # 1. Try Supabase (persists across dyno restarts)
+        try:
+            from tradingbot.web.alert_store import load_catalyst_scores
+            raw_scores = load_catalyst_scores()
+        except Exception:
+            pass
+
+        # 2. Fallback to local file
+        if not raw_scores:
+            scores_path = Path(__file__).resolve().parents[3] / "outputs" / "catalyst_scores.json"
+            if scores_path.exists():
+                with scores_path.open("r", encoding="utf-8") as f:
+                    raw_scores = _json.load(f)
+
+        if raw_scores:
             # Sort by score descending, take top 15, only those ≥ 40
             catalyst_picks = [
                 {"symbol": sym, "score": round(sc, 1)}

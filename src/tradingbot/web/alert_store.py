@@ -253,6 +253,57 @@ def get_today_alerted_symbols() -> dict[str, float]:
         return {}
 
 
+def save_catalyst_scores(scores: dict[str, float]) -> None:
+    """Persist catalyst scores to Supabase so they survive dyno restarts.
+
+    Stores one row per day with the full JSON dict, so intraday scans
+    can reuse the same scores without re-running news research.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return
+    try:
+        today_str = date.today().isoformat()
+        row = {
+            "trade_date": today_str,
+            "scores": json.dumps(scores),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        # Upsert: if a row for today already exists, overwrite it
+        sb.table("catalyst_scores").upsert(row, on_conflict="trade_date").execute()
+        log.info(f"[alert_store] Catalyst scores saved to Supabase ({len(scores)} symbols)")
+    except Exception as exc:
+        log.warning(f"[alert_store] save_catalyst_scores failed: {exc}")
+
+
+def load_catalyst_scores() -> dict[str, float] | None:
+    """Load today's catalyst scores from Supabase.
+
+    Returns the scores dict if found, or None if not available (meaning
+    news research needs to run).
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return None
+    try:
+        today_str = date.today().isoformat()
+        resp = (
+            sb.table("catalyst_scores")
+            .select("scores")
+            .eq("trade_date", today_str)
+            .execute()
+        )
+        if resp.data and resp.data[0].get("scores"):
+            raw = resp.data[0]["scores"]
+            scores = json.loads(raw) if isinstance(raw, str) else raw
+            log.info(f"[alert_store] Loaded catalyst scores from Supabase ({len(scores)} symbols)")
+            return {k: float(v) for k, v in scores.items()}
+        return None
+    except Exception as exc:
+        log.warning(f"[alert_store] load_catalyst_scores failed: {exc}")
+        return None
+
+
 def save_session(session: dict[str, Any]) -> None:
     """Persist a session run summary row to the sessions table."""
     trade_date = session.get("trade_date") or date.today().isoformat()

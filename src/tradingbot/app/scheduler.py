@@ -51,12 +51,19 @@ class Scheduler:
         return runner.run_day_three_options()
     
     def run_news_only(self) -> dict[str, float]:
-        """Run night/morning news research only and save catalyst_scores.json"""
+        """Run night/morning news research, save to Supabase + local file."""
         runner = SessionRunner(self.root, use_real_data=self.use_real_data)
         catalyst_scores = runner.run_news_research()
         
-        # Save catalyst scores to outputs/catalyst_scores.json
-        import json
+        # Save to Supabase (persists across dyno restarts)
+        try:
+            from tradingbot.web.alert_store import save_catalyst_scores
+            save_catalyst_scores(catalyst_scores)
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning(f"[scheduler] save_catalyst_scores to Supabase failed: {exc}")
+
+        # Also save to local file (dashboard, archive)
         output_dir = self.root / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
         scores_path = output_dir / "catalyst_scores.json"
@@ -92,18 +99,33 @@ class Scheduler:
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _load_catalyst_scores(self) -> dict[str, float]:
-        """Load catalyst_scores.json, or run news research inline if missing.
+        """Load today's catalyst scores from Supabase → local file → inline re-run.
 
-        On ephemeral filesystems (e.g. Render cron jobs) the file written by
-        run-news won't persist to the next job, so we regenerate it on demand.
+        Priority:
+          1. Supabase (survives dyno restarts)
+          2. Local catalyst_scores.json (fast, no network)
+          3. Run news research inline (slow fallback)
         """
+        # 1. Try Supabase first (persistent across dyno restarts)
+        try:
+            from tradingbot.web.alert_store import load_catalyst_scores
+            scores = load_catalyst_scores()
+            if scores:
+                print(f"Loaded catalyst scores from Supabase ({len(scores)} symbols)")
+                return scores
+        except Exception as exc:
+            print(f"Supabase catalyst_scores load failed: {exc}")
+
+        # 2. Try local filesystem
         path = self.root / "outputs" / "catalyst_scores.json"
         if path.exists():
             with path.open("r", encoding="utf-8") as f:
                 scores = json.load(f)
+            print(f"Loaded catalyst scores from local file ({len(scores)} symbols)")
             return scores
 
-        print("catalyst_scores.json not found — running news research inline.")
+        # 3. Fallback: run news research inline (only happens on first scan of day)
+        print("No cached catalyst scores found — running news research inline.")
         scores = self.run_news_only()
         above40 = sum(1 for v in scores.values() if v >= 40)
         print(f"News research complete: {len(scores)} symbols scored, {above40} with score>=40")

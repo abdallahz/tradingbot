@@ -942,7 +942,7 @@
 
             .watchlist-chevron {
                 transition: transform .2s;
-                color: rgba(255,255,255,.4);
+                color: rgba(255, 255, 255, .4);
             }
 
             .watchlist-chevron.open {
@@ -987,9 +987,20 @@
                 font-size: 10px;
             }
 
-            .wl-score.high   { background: rgba(34,197,94,.15); color: var(--green); }
-            .wl-score.medium { background: rgba(245,158,11,.15); color: #f59e0b; }
-            .wl-score.low    { background: rgba(255,255,255,.06); color: rgba(255,255,255,.5); }
+            .wl-score.high {
+                background: rgba(34, 197, 94, .15);
+                color: var(--green);
+            }
+
+            .wl-score.medium {
+                background: rgba(245, 158, 11, .15);
+                color: #f59e0b;
+            }
+
+            .wl-score.low {
+                background: rgba(255, 255, 255, .06);
+                color: rgba(255, 255, 255, .5);
+            }
 
             @media (max-width: 600px) {
                 .filter-section {
@@ -1105,7 +1116,8 @@
         <!-- ── Night Research Watchlist ───────────────────────────────────── -->
         {% if catalyst_picks %}
         <div class="watchlist-section">
-            <div class="watchlist-header" onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+            <div class="watchlist-header"
+                onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
                 <div class="watchlist-title">
                     📰 Night Research Watchlist
                     <span class="watchlist-count">{{ catalyst_picks | length }}</span>
@@ -1120,7 +1132,9 @@
                     {% for pick in catalyst_picks %}
                     <div class="watchlist-chip">
                         <span class="wl-symbol">{{ pick.symbol }}</span>
-                        <span class="wl-score {% if pick.score >= 70 %}high{% elif pick.score >= 55 %}medium{% else %}low{% endif %}">{{ pick.score }}</span>
+                        <span
+                            class="wl-score {% if pick.score >= 70 %}high{% elif pick.score >= 55 %}medium{% else %}low{% endif %}">{{
+                            pick.score }}</span>
                     </div>
                     {% endfor %}
                 </div>
