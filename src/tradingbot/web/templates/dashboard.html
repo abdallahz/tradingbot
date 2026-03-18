@@ -1002,6 +1002,82 @@
                 color: rgba(255, 255, 255, .5);
             }
 
+            /* Legend / Glossary */
+            .legend-section {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 16px 20px;
+                margin-bottom: 24px;
+            }
+
+            .legend-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                cursor: pointer;
+                user-select: none;
+            }
+
+            .legend-header:hover { opacity: .85; }
+
+            .legend-title {
+                font-size: 14px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .legend-body {
+                display: none;
+                margin-top: 16px;
+            }
+
+            .legend-body.open {
+                display: block;
+            }
+
+            .legend-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+                gap: 12px;
+            }
+
+            .legend-category {
+                margin-bottom: 6px;
+            }
+
+            .legend-cat-title {
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .6px;
+                color: rgba(255,255,255,.4);
+                margin-bottom: 8px;
+                padding-bottom: 4px;
+                border-bottom: 1px solid rgba(255,255,255,.06);
+            }
+
+            .legend-item {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 8px;
+                font-size: 12px;
+                line-height: 1.5;
+            }
+
+            .legend-term {
+                font-weight: 700;
+                color: #fff;
+                white-space: nowrap;
+                min-width: 105px;
+            }
+
+            .legend-def {
+                color: rgba(255,255,255,.55);
+            }
+
             @media (max-width: 600px) {
                 .filter-section {
                     padding: 14px 16px;
@@ -1141,6 +1217,114 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- ── Trading Terms Legend ────────────────────────────────────────── -->
+        <div class="legend-section">
+            <div class="legend-header" onclick="let b=this.nextElementSibling,c=this.querySelector('.watchlist-chevron');b.classList.toggle('open');c.classList.toggle('open')">
+                <div class="legend-title">
+                    📖 Trading Terms Legend
+                </div>
+                <span class="watchlist-chevron">▾</span>
+            </div>
+            <div class="legend-body">
+                <div class="legend-grid">
+                    <!-- Column 1: Key Levels -->
+                    <div class="legend-category">
+                        <div class="legend-cat-title">Key Levels</div>
+                        <div class="legend-item">
+                            <span class="legend-term">VWAP</span>
+                            <span class="legend-def">Volume-Weighted Average Price — the average price weighted by volume throughout the day. Institutional benchmark; price above VWAP = bullish bias.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">EMA 9 / EMA 20</span>
+                            <span class="legend-def">Exponential Moving Averages (9-period fast, 20-period slow). When price holds above both = uptrend. EMA9 crossing below EMA20 = bearish.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">Key Support</span>
+                            <span class="legend-def">Strongest floor below price (highest of VWAP, EMA20, pre-market low, previous close). Used for stop-loss placement.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">Key Resistance</span>
+                            <span class="legend-def">Nearest ceiling above price (pre-market high or bar resistance). Used as the first profit target (TP1).</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">ATR</span>
+                            <span class="legend-def">Average True Range — measures volatility. Used as a buffer below support for stop placement so normal noise doesn't trigger the stop.</span>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Chart Patterns -->
+                    <div class="legend-category">
+                        <div class="legend-cat-title">Chart Patterns</div>
+                        <div class="legend-item">
+                            <span class="legend-term">🚩 Bull Flag</span>
+                            <span class="legend-def">Strong up-move (pole) followed by a controlled pullback with lower highs (flag). Bullish continuation pattern.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">⚡ Breakout</span>
+                            <span class="legend-def">Price crossing above resistance with volume confirmation (≥1.5× average). Signals a new leg up.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">↗️ Support Bounce</span>
+                            <span class="legend-def">Price touches a support level and bounces up with increasing volume — buyers defending the level.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">🔨 Hammer</span>
+                            <span class="legend-def">Bullish reversal candle: small body at the top, long lower wick (≥2× body). Shows buyers rejected lower prices.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">🟢 Bull Engulfing</span>
+                            <span class="legend-def">Green candle fully engulfs the previous red candle. Strong bullish reversal signal.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">🔴 Bear Engulfing</span>
+                            <span class="legend-def">Red candle fully engulfs the previous green candle. Strong bearish reversal signal.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">〰️ Doji</span>
+                            <span class="legend-def">Open ≈ Close (tiny body, long wicks). Signals indecision — potential reversal ahead.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">📈 Above VWAP</span>
+                            <span class="legend-def">Price trading above VWAP indicates institutional buying pressure and bullish intraday bias.</span>
+                        </div>
+                    </div>
+
+                    <!-- Column 3: Signals & Metrics -->
+                    <div class="legend-category">
+                        <div class="legend-cat-title">Signals &amp; Metrics</div>
+                        <div class="legend-item">
+                            <span class="legend-term">Gap %</span>
+                            <span class="legend-def">Percentage difference between today's open and yesterday's close. Large gaps signal strong overnight catalysts.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">RelVol</span>
+                            <span class="legend-def">Relative Volume — today's volume vs. the average. RelVol 2.0× = twice normal activity, confirming real interest.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">Volume Spike</span>
+                            <span class="legend-def">Recent volume exceeds the per-minute average by a multiplier. Confirms that the move has conviction, not just drift.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">R:R (Risk/Reward)</span>
+                            <span class="legend-def">Ratio of potential profit (TP1) to potential loss (stop). Minimum 2:1 required — you risk $1 to make $2+.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">Confluence Score</span>
+                            <span class="legend-def">0–100 score from combining all detected patterns. Higher = more signals agreeing on the same direction.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">Catalyst Score</span>
+                            <span class="legend-def">0–100 score from overnight news research (SEC filings, earnings, press releases, RSS feeds). ≥40 = noteworthy catalyst.</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-term">TP1 / TP2</span>
+                            <span class="legend-def">Take-Profit targets. TP1 = key resistance level. TP2 = TP1 + 1R extension (extra reward if momentum continues).</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- ── Alert cards ─────────────────────────────────────────────────── -->
         <div class="section-header">
