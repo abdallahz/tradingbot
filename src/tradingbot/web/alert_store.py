@@ -216,6 +216,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
         rows = []
         for r in resp.data:
             rows.append({
+                "id":             r.get("id"),
                 "trade_date":     r.get("trade_date", ""),
                 "symbol":         r.get("symbol"),
                 "side":           r.get("side"),
@@ -423,6 +424,183 @@ def get_session_scan_blocks(trade_date: str | None = None) -> list[tuple[str, st
     except Exception as exc:
         log.warning(f"[alert_store] get_session_scan_blocks failed: {exc}")
         return []
+
+
+# ── Trade Outcome helpers ──────────────────────────────────────────────────────
+
+def seed_outcomes_for_today() -> int:
+    """Create 'open' outcome rows for any alerts that don't have one yet.
+
+    Called by the TradeTracker at the start of each tick.  Only seeds
+    alerts from today.  Returns the number of new rows created.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return 0
+    try:
+        today_str = _today_et().isoformat()
+
+        # Get today's alerts
+        alerts_resp = (
+            sb.table("alerts")
+            .select("id, symbol, side, entry_price, stop_price, tp1_price, tp2_price, session, trade_date")
+            .eq("trade_date", today_str)
+            .execute()
+        )
+        if not alerts_resp.data:
+            return 0
+
+        # Get existing outcomes for today (to avoid duplicates)
+        existing_resp = (
+            sb.table("trade_outcomes")
+            .select("alert_id")
+            .eq("trade_date", today_str)
+            .execute()
+        )
+        existing_ids = {r["alert_id"] for r in (existing_resp.data or [])}
+
+        count = 0
+        for alert in alerts_resp.data:
+            aid = alert.get("id")
+            if aid in existing_ids:
+                continue
+            row = {
+                "alert_id":    aid,
+                "trade_date":  today_str,
+                "symbol":      alert.get("symbol", ""),
+                "side":        alert.get("side", "long"),
+                "session":     alert.get("session", ""),
+                "entry_price": alert.get("entry_price"),
+                "stop_price":  alert.get("stop_price"),
+                "tp1_price":   alert.get("tp1_price"),
+                "tp2_price":   alert.get("tp2_price"),
+                "status":      "open",
+            }
+            sb.table("trade_outcomes").insert(row).execute()
+            count += 1
+        return count
+    except Exception as exc:
+        log.warning(f"[alert_store] seed_outcomes_for_today failed: {exc}")
+        return 0
+
+
+def load_open_outcomes() -> list[dict[str, Any]]:
+    """Return all trade outcomes with status='open' or 'tp1_hit' (still tracking)."""
+    sb = _get_supabase()
+    if sb is None:
+        return []
+    try:
+        today_str = _today_et().isoformat()
+        resp = (
+            sb.table("trade_outcomes")
+            .select("*")
+            .eq("trade_date", today_str)
+            .in_("status", ["open", "tp1_hit"])
+            .execute()
+        )
+        return resp.data or []
+    except Exception as exc:
+        log.warning(f"[alert_store] load_open_outcomes failed: {exc}")
+        return []
+
+
+def update_outcome(
+    outcome_id: int,
+    status: str,
+    exit_price: float | None = None,
+    pnl_pct: float | None = None,
+    hit_at: str | None = None,
+) -> None:
+    """Update a trade outcome row with new status and P&L."""
+    sb = _get_supabase()
+    if sb is None:
+        return
+    try:
+        updates: dict[str, Any] = {"status": status}
+        if exit_price is not None:
+            updates["exit_price"] = round(exit_price, 2)
+        if pnl_pct is not None:
+            updates["pnl_pct"] = round(pnl_pct, 2)
+        if hit_at:
+            updates["hit_at"] = hit_at
+        sb.table("trade_outcomes").update(updates).eq("id", outcome_id).execute()
+    except Exception as exc:
+        log.warning(f"[alert_store] update_outcome failed: {exc}")
+
+
+def load_outcomes_for_date(trade_date: str | None = None) -> list[dict[str, Any]]:
+    """Return all trade outcomes for a given date (default: today)."""
+    sb = _get_supabase()
+    if sb is None:
+        return []
+    try:
+        date_str = trade_date or _today_et().isoformat()
+        resp = (
+            sb.table("trade_outcomes")
+            .select("*")
+            .eq("trade_date", date_str)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return resp.data or []
+    except Exception as exc:
+        log.warning(f"[alert_store] load_outcomes_for_date failed: {exc}")
+        return []
+
+
+def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
+    """Compute win/loss stats for the given date.
+
+    Returns {"total": N, "wins": N, "losses": N, "open": N, "expired": N,
+             "win_rate": 0.0, "avg_pnl": 0.0, "best": 0.0, "worst": 0.0}
+    """
+    outcomes = load_outcomes_for_date(trade_date)
+    if not outcomes:
+        return {
+            "total": 0, "wins": 0, "losses": 0, "open": 0,
+            "expired": 0, "win_rate": 0.0, "avg_pnl": 0.0,
+            "best": 0.0, "worst": 0.0,
+        }
+
+    wins = 0
+    losses = 0
+    open_count = 0
+    expired = 0
+    pnls: list[float] = []
+
+    for o in outcomes:
+        st = o.get("status", "open")
+        pnl = float(o.get("pnl_pct") or 0.0)
+        if st in ("tp1_hit", "tp2_hit"):
+            wins += 1
+            pnls.append(pnl)
+        elif st == "stopped":
+            losses += 1
+            pnls.append(pnl)
+        elif st == "expired":
+            expired += 1
+            pnls.append(pnl)
+        else:
+            open_count += 1
+
+    total = len(outcomes)
+    decided = wins + losses  # exclude open + expired from win rate
+    win_rate = round((wins / decided * 100) if decided > 0 else 0.0, 1)
+    avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0.0
+    best = round(max(pnls), 2) if pnls else 0.0
+    worst = round(min(pnls), 2) if pnls else 0.0
+
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "open": open_count,
+        "expired": expired,
+        "win_rate": win_rate,
+        "avg_pnl": avg_pnl,
+        "best": best,
+        "worst": worst,
+    }
 
 
 def card_to_dict(card: Any) -> dict[str, Any]:

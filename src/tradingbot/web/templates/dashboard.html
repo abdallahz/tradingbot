@@ -390,6 +390,88 @@
             font-size: 11px;
         }
 
+        /* ── Trade Outcome badge ─────────────────────────── */
+        .outcome-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .outcome-badge.tp1_hit {
+            background: rgba(34,197,94,.12);
+            border: 1px solid rgba(34,197,94,.25);
+            color: var(--green);
+        }
+        .outcome-badge.tp2_hit {
+            background: rgba(34,197,94,.18);
+            border: 1px solid rgba(34,197,94,.35);
+            color: #15803d;
+        }
+        .outcome-badge.stopped {
+            background: rgba(239,68,68,.12);
+            border: 1px solid rgba(239,68,68,.25);
+            color: var(--red);
+        }
+        .outcome-badge.expired {
+            background: rgba(100,116,139,.12);
+            border: 1px solid rgba(100,116,139,.25);
+            color: var(--sub);
+        }
+        .outcome-badge.open {
+            background: rgba(59,130,246,.10);
+            border: 1px solid rgba(59,130,246,.20);
+            color: var(--blue);
+        }
+        .outcome-icon { font-size: 13px; }
+        .outcome-pnl { margin-left: auto; font-weight: 700; }
+        .outcome-pnl.positive { color: var(--green); }
+        .outcome-pnl.negative { color: var(--red); }
+
+        /* ── P&L Summary bar ─────────────────────────────── */
+        .pnl-summary {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .pnl-title {
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pnl-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .pnl-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .pnl-stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: var(--sub);
+        }
+        .pnl-divider {
+            width: 1px;
+            height: 32px;
+            background: var(--border);
+        }
+
         /* Scanned price */
         .scanned-price {
             display: flex;
@@ -1209,6 +1291,47 @@
             </div>
         </div>
 
+        <!-- ── P&L Summary (Trade Tracker) ────────────────────────────────── -->
+        {% if trade_stats and trade_stats.total > 0 %}
+        <div class="pnl-summary">
+            <div class="pnl-title">📊 Trade Tracker</div>
+            <div class="pnl-divider"></div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value blue">{{ trade_stats.total }}</div>
+                <div class="pnl-stat-label">Tracked</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value green">{{ trade_stats.wins }}</div>
+                <div class="pnl-stat-label">Wins</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--red)">{{ trade_stats.losses }}</div>
+                <div class="pnl-stat-label">Losses</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value amber">{{ trade_stats.open }}</div>
+                <div class="pnl-stat-label">Open</div>
+            </div>
+            <div class="pnl-divider"></div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value {% if trade_stats.win_rate >= 50 %}green{% else %}{% endif %}" style="{% if trade_stats.win_rate < 50 %}color:var(--red){% endif %}">{{ trade_stats.win_rate }}%</div>
+                <div class="pnl-stat-label">Win Rate</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value {% if trade_stats.avg_pnl >= 0 %}green{% else %}{% endif %}" style="{% if trade_stats.avg_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(trade_stats.avg_pnl) }}%</div>
+                <div class="pnl-stat-label">Avg P&amp;L</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value green">{{ "%+.2f"|format(trade_stats.best) }}%</div>
+                <div class="pnl-stat-label">Best</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--red)">{{ "%+.2f"|format(trade_stats.worst) }}%</div>
+                <div class="pnl-stat-label">Worst</div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- ── Night Research Watchlist ───────────────────────────────────── -->
         {% if catalyst_picks %}
         <div class="watchlist-section">
@@ -1369,6 +1492,12 @@
                                 setup (levels, indicators, patterns, news). ≥7 = strong, 5–6 = acceptable, &lt;5 =
                                 suppressed.</span>
                         </div>
+                        <div class="legend-item">
+                            <span class="legend-term">Trade Tracker</span>
+                            <span class="legend-def">Monitors each alert's price vs Entry/Stop/TP1/TP2 levels during market hours.
+                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🛑 Stopped = stop loss hit,
+                                ⏰ Expired = market closed with no hit. P&amp;L % shown for resolved trades.</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1408,6 +1537,31 @@
                         {% if a.ai_confidence >= 7 %}AI: Strong setup{% elif a.ai_confidence >= 5 %}AI: Acceptable{%
                         else %}AI: Marginal{% endif %}
                     </span>
+                </div>
+                {% endif %}
+
+                <!-- Trade Outcome badge -->
+                {% if a.outcome %}
+                <div class="outcome-badge {{ a.outcome.status }}">
+                    <span class="outcome-icon">
+                        {% if a.outcome.status == 'tp1_hit' %}🎯
+                        {% elif a.outcome.status == 'tp2_hit' %}🏆
+                        {% elif a.outcome.status == 'stopped' %}🛑
+                        {% elif a.outcome.status == 'expired' %}⏰
+                        {% else %}⏳{% endif %}
+                    </span>
+                    <span>
+                        {% if a.outcome.status == 'tp1_hit' %}TP1 Hit
+                        {% elif a.outcome.status == 'tp2_hit' %}TP2 Hit
+                        {% elif a.outcome.status == 'stopped' %}Stopped Out
+                        {% elif a.outcome.status == 'expired' %}Expired
+                        {% else %}Tracking{% endif %}
+                    </span>
+                    {% if a.outcome.status != 'open' %}
+                    <span class="outcome-pnl {% if a.outcome.pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ "%+.2f"|format(a.outcome.pnl_pct) }}%
+                    </span>
+                    {% endif %}
                 </div>
                 {% endif %}
 

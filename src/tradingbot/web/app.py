@@ -191,6 +191,34 @@ def dashboard():
     except Exception:
         pass
 
+    # Load trade outcome data for P&L summary and per-card badges
+    trade_stats = {"total": 0, "wins": 0, "losses": 0, "open": 0,
+                   "expired": 0, "win_rate": 0.0, "avg_pnl": 0.0,
+                   "best": 0.0, "worst": 0.0}
+    outcome_map = {}  # alert_id → {status, pnl_pct, exit_price}
+    try:
+        from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
+        trade_stats = get_trade_stats(date_filter or None)
+        outcomes = load_outcomes_for_date(date_filter or None)
+        for o in outcomes:
+            aid = o.get("alert_id")
+            if aid:
+                outcome_map[aid] = {
+                    "status": o.get("status", "open"),
+                    "pnl_pct": round(float(o.get("pnl_pct") or 0.0), 2),
+                    "exit_price": o.get("exit_price"),
+                }
+    except Exception:
+        pass
+
+    # Attach outcome to each alert
+    for a in alerts:
+        aid = a.get("id")
+        if aid and aid in outcome_map:
+            a["outcome"] = outcome_map[aid]
+        else:
+            a["outcome"] = None
+
     return render_template(
         "dashboard.html",
         alerts=alerts,
@@ -211,6 +239,7 @@ def dashboard():
         all_scan_times=all_scan_times,
         session_labels=SESSION_LABELS,
         catalyst_picks=catalyst_picks,
+        trade_stats=trade_stats,
     )
 
 

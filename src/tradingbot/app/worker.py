@@ -116,6 +116,9 @@ def _run_morning() -> None:
         log.error(f"Pre-market scan failed: {e}")
         _notifier().send_text(f"⚠️ *Pre-Market scan failed*\n`{e}`")
 
+    # ── Seed trade outcomes for morning alerts ──
+    _run_tracker()
+
 
 def _run_close() -> None:
     log.info("Running close scan…")
@@ -129,6 +132,10 @@ def _run_close() -> None:
         log.error(f"Close scan failed: {e}")
         _notifier().send_text(f"⚠️ *Close scan failed*\n`{e}`")
 
+    # ── Final tracker tick + expire remaining open trades ──
+    _run_tracker()
+    _run_expire_trades()
+
 def _run_intraday() -> None:
     """Recurring midday scan that runs every 30 min during market hours."""
     log.info("Running midday intraday scan\u2026")
@@ -140,6 +147,41 @@ def _run_intraday() -> None:
     except Exception as e:
         log.error(f"Midday intraday scan failed: {e}")
         _notifier().send_text(f"\u26a0\ufe0f *Midday intraday scan failed*\n`{e}`")
+
+    # ── Trade Tracker: check open outcomes after each scan ──
+    _run_tracker()
+
+
+def _run_tracker() -> None:
+    """Check open trade outcomes against current prices."""
+    try:
+        from tradingbot.tracking.trade_tracker import TradeTracker
+        tracker = TradeTracker()
+        result = tracker.tick()
+        checked = result.get("checked", 0)
+        updates = result.get("updates", 0)
+        seeded = result.get("seeded", 0)
+        if checked > 0 or seeded > 0:
+            log.info(
+                f"Trade tracker: seeded={seeded}, checked={checked}, updates={updates}"
+            )
+    except Exception as e:
+        log.error(f"Trade tracker failed: {e}")
+
+
+def _run_expire_trades() -> None:
+    """Expire open trades at market close."""
+    try:
+        from tradingbot.tracking.trade_tracker import TradeTracker
+        tracker = TradeTracker()
+        expired = tracker.expire_open_trades()
+        log.info(f"Trade tracker: expired {expired} trade(s) at close")
+        if expired > 0:
+            _notifier().send_text(
+                f"📊 *Trade Tracker EOD*\nExpired {expired} open trade(s) at market close."
+            )
+    except Exception as e:
+        log.error(f"Trade tracker expire failed: {e}")
 
 # Map job name \u2192 handler (fixed daily jobs only)
 _HANDLERS = {
