@@ -568,7 +568,7 @@
                         <select id="session" name="session">
                             <option value="">All Sessions</option>
                             {% for st in all_sessions %}
-                            <option value="{{ st }}" {% if st==session_filter %}selected{% endif %}>{{ st }}</option>
+                            <option value="{{ st }}" {% if st==session_filter %}selected{% endif %}>{{ session_labels.get(st, st) }}</option>
                             {% endfor %}
                         </select>
                         <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -625,7 +625,7 @@
             <div class="active-filters">
                 {% if date_filter %}<span class="chip">📅 {{ date_filter }}</span>{% endif %}
                 {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
-                {% if session_filter %}<span class="chip">🕐 {{ session_filter }}</span>{% endif %}
+                {% if session_filter %}<span class="chip">🕐 {{ session_labels.get(session_filter, session_filter) }}</span>{% endif %}
                 {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }}</span>{% endif %}
                 {% if side_filter %}<span
                     class="chip {% if side_filter=='long' %}chip-green{% else %}chip-red{% endif %}">{{ side_filter |
@@ -1059,7 +1059,7 @@
 
                 <!-- Footer -->
                 <div class="card-footer">
-                    <span class="session-tag">{{ a.session }}</span>
+                    <span class="session-tag">{{ session_labels.get(a.session, a.session) }}</span>
                     <span class="timestamp">{{ a.timestamp }}</span>
                 </div>
             </div>

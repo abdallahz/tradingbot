@@ -142,6 +142,9 @@ def dashboard():
         a["scan_block"] = lbl
         a["scan_block_sort"] = sk
 
+    # Session display labels (raw value → friendly name)
+    SESSION_LABELS = {"morning": "Pre-Market", "midday": "Midday", "close": "Close"}
+
     # Build filter dropdown options from the full (unfiltered) set
     all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
     all_sessions = sorted({a.get("session") for a in all_alerts if a.get("session")})
@@ -190,6 +193,7 @@ def dashboard():
         all_sessions=all_sessions,
         all_dates=all_dates,
         all_scan_times=all_scan_times,
+        session_labels=SESSION_LABELS,
     )
 
 
