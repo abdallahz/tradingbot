@@ -118,14 +118,14 @@ services:
       - key: SUPABASE_KEY
         sync: false
 
-  # -- Intraday Scans (every 30 min, 9:30 AM to 3:30 PM EDT, weekdays) --------
+  # -- Intraday/Midday Scans (every 30 min, ~9:00 AM to ~2:30 PM EDT, weekdays)
   - type: cron
     name: tradingbot-intraday
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-midday
-    schedule: "*/30 13-19 * * 1-5"
+    schedule: "*/30 13-18 * * 1-5"
     envVars:
       - key: ALPACA_API_KEY
         sync: false
@@ -142,14 +142,14 @@ services:
       - key: SUPABASE_KEY
         sync: false
 
-  # -- Close Scan -------------------------------------------------------------
+  # -- Close Scan (30 min before market close) --------------------------------
   - type: cron
     name: tradingbot-close
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-close
-    schedule: "50 19 * * 1-5"
+    schedule: "30 19 * * 1-5"
     envVars:
       - key: ALPACA_API_KEY
         sync: false
