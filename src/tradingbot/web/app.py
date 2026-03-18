@@ -115,11 +115,12 @@ def dashboard():
     session_filter = request.args.get("session", "")
     side_filter = request.args.get("side", "")
     scan_time_filter = request.args.get("scan_time", "")
-    all_alerts = load_alerts(200)
+    all_alerts = load_alerts(500)
 
     # Helper: convert UTC timestamp to ET and round to 30-min block
-    def _scan_block(ts: str) -> str:
-        """'2026-03-18T14:47:00+00:00' → '10:30 AM ET'  (30-min floor in ET)"""
+    def _scan_block(ts: str) -> tuple[str, str]:
+        """Return (sort_key, display_label) for a 30-min ET block.
+        '2026-03-18T14:47:00+00:00' → ('10:30', '10:30 AM ET')"""
         try:
             import pytz
             dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -127,15 +128,19 @@ def dashboard():
             dt_et = dt.astimezone(et)
             h, m = dt_et.hour, dt_et.minute
             m = (m // 30) * 30  # floor to 0 or 30
+            sort_key = f"{h:02d}:{m:02d}"
             hour_12 = h % 12 or 12
             ampm = "AM" if h < 12 else "PM"
-            return f"{hour_12}:{m:02d} {ampm} ET"
+            label = f"{hour_12}:{m:02d} {ampm} ET"
+            return sort_key, label
         except Exception:
-            return ""
+            return "", ""
 
-    # Tag each alert with its scan_block (use raw ISO timestamp)
+    # Tag each alert with its scan_block display label and sort key
     for a in all_alerts:
-        a["scan_block"] = _scan_block(a.get("timestamp_raw", ""))
+        sk, lbl = _scan_block(a.get("timestamp_raw", ""))
+        a["scan_block"] = lbl
+        a["scan_block_sort"] = sk
 
     # Build filter dropdown options from the full (unfiltered) set
     all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
@@ -143,7 +148,9 @@ def dashboard():
     all_dates = sorted({a.get("trade_date") or a.get("timestamp", "")[:10]
                         for a in all_alerts
                         if a.get("trade_date") or a.get("timestamp")}, reverse=True)
-    all_scan_times = sorted({a["scan_block"] for a in all_alerts if a["scan_block"]})
+    all_scan_times = [lbl for _, lbl in sorted(
+        {(a["scan_block_sort"], a["scan_block"]) for a in all_alerts if a["scan_block"]}
+    )]
 
     # Apply filters
     alerts = all_alerts
