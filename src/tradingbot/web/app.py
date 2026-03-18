@@ -12,11 +12,10 @@ GET  /api/health  Simple health check for Heroku router
 from __future__ import annotations
 
 import os
-import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, redirect, render_template, url_for
+from flask import Flask, jsonify, render_template
 
 # Load .env for local dev
 try:
@@ -37,11 +36,9 @@ def _find_root() -> Path:
 
 
 # ── In-process scan state ──────────────────────────────────────────────────────
-_scan_lock = threading.Lock()
-_scan_in_progress = False
+# Kept only as fallback defaults; real values come from Supabase.
 _last_scan_time: str = "Never"
-_last_scan_error: str = ""
-_scan_count: int = 0          # how many scans have run since startup
+_scan_count: int = 0
 
 
 # ── Market hours helper ────────────────────────────────────────────────────────
@@ -74,31 +71,6 @@ def _market_status() -> dict:
         "time_et": now_et.strftime("%H:%M ET"),
         "date": now_et.strftime("%a %b %d, %Y"),
     }
-
-
-# ── Background scan ────────────────────────────────────────────────────────────
-def _run_scan_in_background() -> None:
-    global _scan_in_progress, _last_scan_time, _last_scan_error, _scan_count
-    try:
-        from tradingbot.app.session_runner import SessionRunner
-        from tradingbot.web.alert_store import card_to_dict, save_alert
-
-        root = _find_root()
-        use_real = bool(os.getenv("ALPACA_API_KEY") or os.getenv("ALPACA_KEY_ID"))
-        runner = SessionRunner(root, use_real_data=use_real)
-        morning, _ = runner.run_day()
-
-        for card in morning.cards:
-            save_alert(card_to_dict(card))
-
-        _last_scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        _last_scan_error = ""
-        _scan_count += 1
-    except Exception as exc:
-        _last_scan_error = str(exc)
-    finally:
-        with _scan_lock:
-            _scan_in_progress = False
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -169,8 +141,6 @@ def dashboard():
     if scan_time_filter:
         alerts = [a for a in alerts if a.get("scan_block", "") == scan_time_filter]
     status = _market_status()
-    with _scan_lock:
-        scanning = _scan_in_progress
     long_count = sum(1 for a in alerts if a.get("side") == "long")
     short_count = sum(1 for a in alerts if a.get("side") == "short")
 
@@ -229,8 +199,6 @@ def dashboard():
         alerts=alerts,
         market=status,
         last_scan=last_scan,
-        scan_error=_last_scan_error,
-        scanning=scanning,
         scan_count=scan_count,
         long_count=long_count,
         short_count=short_count,
@@ -249,17 +217,6 @@ def dashboard():
     )
 
 
-@app.route("/scan", methods=["POST"])
-def trigger_scan():
-    global _scan_in_progress
-    with _scan_lock:
-        if not _scan_in_progress:
-            _scan_in_progress = True
-            t = threading.Thread(target=_run_scan_in_background, daemon=True)
-            t.start()
-    return redirect(url_for("dashboard"))
-
-
 @app.route("/api/alerts")
 def api_alerts():
     from tradingbot.web.alert_store import load_alerts
@@ -268,10 +225,7 @@ def api_alerts():
 
 @app.route("/api/status")
 def api_status():
-    with _scan_lock:
-        scanning = _scan_in_progress
     return jsonify({
-        "scanning": scanning,
         "last_scan": _last_scan_time,
         "scan_count": _scan_count,
         "market": _market_status(),

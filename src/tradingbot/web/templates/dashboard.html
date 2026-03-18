@@ -1167,30 +1167,6 @@
             </div>
         </div>
 
-        <!-- ── Scan controls ───────────────────────────────────────────────── -->
-        <div class="scan-section">
-            <form method="POST" action="/scan">
-                {% if scanning %}
-                <button class="btn-scan" disabled>
-                    <span class="spinner"></span> Scanning…
-                </button>
-                {% else %}
-                <button class="btn-scan" type="submit">⚡ Run Scan Now</button>
-                {% endif %}
-            </form>
-            <div>
-                {% if scan_error %}
-                <div class="scan-error">⚠ {{ scan_error }}</div>
-                {% elif scanning %}
-                <div class="scan-info">Scanning market… this may take 30–60 seconds. Page will auto-refresh.</div>
-                {% elif last_scan != 'Never' %}
-                <div class="scan-info">Last completed: {{ last_scan }}</div>
-                {% else %}
-                <div class="scan-info">No scan run yet. Click "Run Scan Now" to fetch live setups.</div>
-                {% endif %}
-            </div>
-        </div>
-
         <!-- ── Night Research Watchlist ───────────────────────────────────── -->
         {% if catalyst_picks %}
         <div class="watchlist-section">
@@ -1459,8 +1435,7 @@
                 <div class="empty-icon">🔍</div>
                 <div class="empty-title">No alerts yet</div>
                 <div class="empty-sub">
-                    Click <strong>Run Scan Now</strong> to scan the market for high-confluence trade setups.<br />
-                    Alerts also arrive automatically from the scheduled worker and via Telegram.
+                    Alerts arrive automatically every 30 minutes during market hours and via Telegram.
                 </div>
             </div>
             {% endif %}
@@ -1472,25 +1447,14 @@
     <div id="refresh-hint">Auto-refresh in <span id="countdown">30</span>s</div>
 
     <script>
-        // Auto-refresh every 30 s (useful while scanning)
+        // Auto-refresh every 30 s to pick up new alerts from the worker
         let seconds = 30;
         const cd = document.getElementById('countdown');
-        const interval = setInterval(() => {
+        setInterval(() => {
             seconds--;
             if (cd) cd.textContent = seconds;
-            if (seconds <= 0) {
-                clearInterval(interval);
-                window.location.reload();
-            }
+            if (seconds <= 0) window.location.reload();
         }, 1000);
-
-        // If scan is in progress, refresh faster (every 5 s)
-        const scanning = {{ 'true' if scanning else 'false' }};
-        if (scanning) {
-            clearInterval(interval);
-            setTimeout(() => window.location.reload(), 5000);
-            if (cd) cd.textContent = '5';
-        }
     </script>
 </body>
 
