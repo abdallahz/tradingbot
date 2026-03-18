@@ -348,6 +348,32 @@
             color: var(--blue);
         }
 
+        /* Scanned price */
+        .scanned-price {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 6px 10px;
+            background: rgba(168, 85, 247, .08);
+            border: 1px solid rgba(168, 85, 247, .15);
+            border-radius: 6px;
+        }
+
+        .scanned-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: var(--purple);
+            font-weight: 600;
+        }
+
+        .scanned-value {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--purple);
+        }
+
         /* Price levels */
         .levels {
             display: grid;
@@ -978,6 +1004,14 @@
                     </div>
                     <span class="score-num">{{ a.score }}</span>
                 </div>
+
+                <!-- Scanned price -->
+                {% if a.scan_price %}
+                <div class="scanned-price">
+                    <span class="scanned-label">Scanned @</span>
+                    <span class="scanned-value">${{ "%.2f"|format(a.scan_price) }}</span>
+                </div>
+                {% endif %}
 
                 <!-- Price levels -->
                 <div class="levels">
