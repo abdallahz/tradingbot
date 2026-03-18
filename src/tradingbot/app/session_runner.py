@@ -116,7 +116,11 @@ class SessionRunner:
             max_consecutive_losses=risk_defaults["max_consecutive_losses"],
         )
         self.market_analyzer = MarketConditionAnalyzer()
-        self.ai_validator = AITradeValidator()
+        # AI Trade Validator (paid LLM call per card) — disabled by default
+        ai_validation_enabled = False
+        if use_real_data:
+            ai_validation_enabled = broker_config.get("news", {}).get("ai_trade_validation_enabled", False)
+        self.ai_validator = AITradeValidator() if ai_validation_enabled else None
         self.notifier = TelegramNotifier.from_env()
         self._alerts_sent_count: int = 0
         
@@ -429,18 +433,20 @@ class SessionRunner:
             card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
 
             # ── AI Trade Validation (LLM "second opinion") ──
-            validation = self.ai_validator.validate(
-                card=card,
-                snapshot=symbol,
-                catalyst_score=symbol.catalyst_score,
-            )
-            card.ai_confidence = validation.confidence
-            card.ai_reasoning = validation.reasoning
-            card.ai_concerns = list(validation.concerns)
-            if not validation.approved:
-                if dropped is not None:
-                    dropped.append((symbol.symbol, f"ai_rejected:confidence={validation.confidence}"))
-                continue
+            # Disabled by default (paid API). Enable via broker.yaml: ai_trade_validation_enabled: true
+            if self.ai_validator is not None:
+                validation = self.ai_validator.validate(
+                    card=card,
+                    snapshot=symbol,
+                    catalyst_score=symbol.catalyst_score,
+                )
+                card.ai_confidence = validation.confidence
+                card.ai_reasoning = validation.reasoning
+                card.ai_concerns = list(validation.concerns)
+                if not validation.approved:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, f"ai_rejected:confidence={validation.confidence}"))
+                    continue
 
             chart_path = generate_chart(
                 symbol=symbol.symbol,
