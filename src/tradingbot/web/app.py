@@ -110,18 +110,25 @@ def dashboard():
     date_filter = request.args.get("date", "")
     symbol_filter = request.args.get("symbol", "")
     session_filter = request.args.get("session", "")
+    side_filter = request.args.get("side", "")
     all_alerts = load_alerts(200)
     # Build filter dropdown options from the full (unfiltered) set
     all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
     all_sessions = sorted({a.get("session") for a in all_alerts if a.get("session")})
+    all_dates = sorted({a.get("trade_date") or a.get("timestamp", "")[:10]
+                        for a in all_alerts
+                        if a.get("trade_date") or a.get("timestamp")}, reverse=True)
     # Apply filters
     alerts = all_alerts
     if date_filter:
-        alerts = [a for a in alerts if a.get("timestamp", "").startswith(date_filter)]
+        alerts = [a for a in alerts
+                  if (a.get("trade_date") or a.get("timestamp", "")[:10]) == date_filter]
     if symbol_filter:
         alerts = [a for a in alerts if a.get("symbol", "") == symbol_filter]
     if session_filter:
         alerts = [a for a in alerts if a.get("session", "") == session_filter]
+    if side_filter:
+        alerts = [a for a in alerts if a.get("side", "") == side_filter]
     status = _market_status()
     with _scan_lock:
         scanning = _scan_in_progress
@@ -140,8 +147,10 @@ def dashboard():
         date_filter=date_filter,
         symbol_filter=symbol_filter,
         session_filter=session_filter,
+        side_filter=side_filter,
         all_symbols=all_symbols,
         all_sessions=all_sessions,
+        all_dates=all_dates,
     )
 
 

@@ -487,53 +487,128 @@
         <form method="get" class="filter-bar">
             <div class="filter-group">
                 <label for="date">Date</label>
-                <input type="date" id="date" name="date" value="{{ date_filter }}">
+                <select id="date" name="date">
+                    <option value="">All Dates</option>
+                    {% for d in all_dates %}
+                    <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="filter-group">
                 <label for="symbol">Symbol</label>
                 <select id="symbol" name="symbol">
-                    <option value="">All</option>
+                    <option value="">All Symbols</option>
                     {% for s in all_symbols %}
                     <option value="{{ s }}" {% if s==symbol_filter %}selected{% endif %}>{{ s }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="filter-group">
-                <label for="session_time">Session Time</label>
-                <select id="session_time" name="session_time">
-                    <option value="">All</option>
-                    {% for st in all_session_times %}
-                    <option value="{{ st }}" {% if st==session_time_filter %}selected{% endif %}>{{ st }}</option>
+                <label for="session">Session</label>
+                <select id="session" name="session">
+                    <option value="">All Sessions</option>
+                    {% for st in all_sessions %}
+                    <option value="{{ st }}" {% if st==session_filter %}selected{% endif %}>{{ st }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <button type="submit" class="filter-btn">Filter</button>
+            <div class="filter-group">
+                <label for="side">Side</label>
+                <select id="side" name="side">
+                    <option value="">Long &amp; Short</option>
+                    <option value="long" {% if side_filter=='long' %}selected{% endif %}>Long</option>
+                    <option value="short" {% if side_filter=='short' %}selected{% endif %}>Short</option>
+                </select>
+            </div>
+            <button type="submit" class="filter-btn">Apply</button>
+            {% if date_filter or symbol_filter or session_filter or side_filter %}
+            <a href="/" class="filter-clear">Clear</a>
+            {% endif %}
         </form>
 
         <style>
             .filter-bar {
                 display: flex;
-                gap: 18px;
+                gap: 14px;
                 align-items: flex-end;
                 margin-bottom: 28px;
                 flex-wrap: wrap;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 16px 20px;
             }
 
             .filter-group {
                 display: flex;
                 flex-direction: column;
-                gap: 4px;
+                gap: 5px;
+            }
+
+            .filter-group label {
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: .8px;
+                color: var(--sub);
+                font-weight: 600;
+            }
+
+            .filter-group select,
+            .filter-group input[type="date"] {
+                background: var(--bg);
+                color: var(--text);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 7px 12px;
+                font-size: 13px;
+                min-width: 140px;
+                cursor: pointer;
+            }
+
+            .filter-group select:focus,
+            .filter-group input[type="date"]:focus {
+                outline: none;
+                border-color: var(--blue);
             }
 
             .filter-btn {
                 padding: 8px 22px;
                 border-radius: 7px;
-                background: var(--blue);
+                background: linear-gradient(135deg, #3b82f6, #6366f1);
                 color: #fff;
                 border: none;
                 font-weight: 600;
-                font-size: 14px;
-                margin-top: 18px;
+                font-size: 13px;
+                cursor: pointer;
+                transition: opacity .2s;
+                height: 34px;
+            }
+
+            .filter-btn:hover {
+                opacity: .85;
+            }
+
+            .filter-clear {
+                font-size: 12px;
+                color: var(--sub);
+                text-decoration: underline;
+                cursor: pointer;
+                padding-bottom: 8px;
+            }
+
+            .filter-clear:hover {
+                color: var(--red);
+            }
+
+            @media (max-width: 600px) {
+                .filter-bar {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+                .filter-group select,
+                .filter-group input[type="date"] {
+                    min-width: 100%;
+                }
             }
         </style>
 
