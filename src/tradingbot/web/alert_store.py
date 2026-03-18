@@ -382,6 +382,49 @@ def get_scan_stats() -> dict[str, Any]:
         return {"last_scan": "Never", "scan_count": 0}
 
 
+def get_session_scan_blocks(trade_date: str | None = None) -> list[tuple[str, str]]:
+    """Return (sort_key, label) pairs for every session row on *trade_date*.
+
+    Example return: [("13:00", "1:00 PM ET"), ("13:30", "1:30 PM ET")]
+    This lets the dashboard show scan-time slots even when zero alerts fired.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return []
+    try:
+        import pytz
+        date_str = trade_date or _today_et().isoformat()
+        resp = (
+            sb.table("sessions")
+            .select("created_at")
+            .eq("trade_date", date_str)
+            .order("created_at")
+            .execute()
+        )
+        et = pytz.timezone("America/New_York")
+        blocks: set[tuple[str, str]] = set()
+        for row in (resp.data or []):
+            raw = row.get("created_at", "")
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                dt_et = dt.astimezone(et)
+                h, m = dt_et.hour, dt_et.minute
+                m = (m // 30) * 30
+                sort_key = f"{h:02d}:{m:02d}"
+                hour_12 = h % 12 or 12
+                ampm = "AM" if h < 12 else "PM"
+                label = f"{hour_12}:{m:02d} {ampm} ET"
+                blocks.add((sort_key, label))
+            except Exception:
+                continue
+        return sorted(blocks)
+    except Exception as exc:
+        log.warning(f"[alert_store] get_session_scan_blocks failed: {exc}")
+        return []
+
+
 def card_to_dict(card: Any) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
     generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

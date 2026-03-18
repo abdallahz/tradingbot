@@ -123,9 +123,15 @@ def dashboard():
     all_dates = sorted({a.get("trade_date") or a.get("timestamp", "")[:10]
                         for a in all_alerts
                         if a.get("trade_date") or a.get("timestamp")}, reverse=True)
-    all_scan_times = [lbl for _, lbl in sorted(
-        {(a["scan_block_sort"], a["scan_block"]) for a in all_alerts if a["scan_block"]}
-    )]
+    # Scan-time dropdown: merge blocks from alerts AND from sessions table
+    # so zero-alert scans still appear in the list
+    alert_blocks = {(a["scan_block_sort"], a["scan_block"]) for a in all_alerts if a["scan_block"]}
+    try:
+        from tradingbot.web.alert_store import get_session_scan_blocks
+        session_blocks = set(get_session_scan_blocks(date_filter or None))
+    except Exception:
+        session_blocks = set()
+    all_scan_times = [lbl for _, lbl in sorted(alert_blocks | session_blocks)]
 
     # Apply filters
     alerts = all_alerts
