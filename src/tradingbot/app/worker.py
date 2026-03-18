@@ -141,6 +141,17 @@ def _run_close() -> None:
         log.error(f"Close scan failed: {e}")
         _notifier().send_text(f"⚠️ *Close scan failed*\n`{e}`")
 
+def _run_intraday() -> None:
+    """Recurring scan that runs every 30 min during market hours."""
+    log.info("Running intraday scan\u2026")
+    try:
+        from tradingbot.app.scheduler import Scheduler
+        scheduler = Scheduler(ROOT, use_real_data=True)
+        card_count = scheduler.run_intraday()
+        log.info(f"Intraday scan complete \u2014 {card_count} alert(s) sent.")
+    except Exception as e:
+        log.error(f"Intraday scan failed: {e}")
+        _notifier().send_text(f"\u26a0\ufe0f *Intraday scan failed*\n`{e}`")
 
 # Map job name → handler
 _HANDLERS = {
@@ -156,6 +167,8 @@ def main() -> None:
     log.info(f"Worker started. Project root: {ROOT}")
     # Track which jobs have already run today (reset at midnight ET)
     ran_today: dict[str, date] = {}
+    # Track last intraday scan time (HH:MM) to avoid re-running same block
+    last_intraday_block: str = ""
 
     while True:
         try:
@@ -166,6 +179,21 @@ def main() -> None:
 
             schedule = _load_schedule()
 
+            # ── Intraday recurring scan (every 30 min, 9:30–15:30 ET, weekdays) ──
+            if now.weekday() < 5:  # weekday only
+                market_open = 9 * 60 + 30
+                market_last_scan = 15 * 60 + 30
+                if market_open <= now_minutes <= market_last_scan:
+                    # Compute current 30-min block: e.g. 10:47 → "10:30"
+                    block_m = (now_minutes // 30) * 30
+                    block_h, block_min = divmod(block_m, 60)
+                    block_label = f"{block_h:02d}:{block_min:02d}"
+                    if block_label != last_intraday_block:
+                        log.info(f"Triggering intraday scan for block {block_label} ET")
+                        last_intraday_block = block_label
+                        _run_intraday()
+
+            # ── Fixed daily jobs ──
             for job_name, scheduled_time in schedule.items():
                 if ran_today.get(job_name) == today:
                     continue  # already ran today — skip
@@ -184,10 +212,12 @@ def main() -> None:
                     ran_today[job_name] = today
                     _HANDLERS[job_name]()
 
-            # Purge stale entries from previous days
+            # Purge stale entries from previous days and reset intraday block
             for job_name in list(ran_today.keys()):
                 if ran_today[job_name] != today:
                     del ran_today[job_name]
+            if now.hour == 0 and now.minute < 1:
+                last_intraday_block = ""
 
         except Exception as e:
             log.error(f"Scheduler loop error: {e}")

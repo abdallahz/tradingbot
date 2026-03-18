@@ -84,6 +84,31 @@ class Scheduler:
         """Run close scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("close")
 
+    def run_intraday(self) -> tuple[int, ThreeOptionWatchlist]:
+        """Run an intraday scan, choosing session tag by time of day (ET).
+
+        Called every 30 minutes during market hours (9:30 AM – 3:30 PM ET).
+        Session tag is derived from current ET hour:
+          - Before 11:30 → morning
+          - 11:30–13:59  → midday
+          - 14:00+       → close
+        """
+        import pytz
+        from datetime import timezone as tz
+        et = pytz.timezone("America/New_York")
+        now_et = datetime.now(tz.utc).astimezone(et)
+        minutes = now_et.hour * 60 + now_et.minute
+
+        if minutes < 11 * 60 + 30:       # before 11:30
+            session_type = "morning"
+        elif minutes < 14 * 60:           # 11:30 – 13:59
+            session_type = "midday"
+        else:                             # 14:00+
+            session_type = "close"
+
+        print(f"[INTRADAY] {now_et.strftime('%H:%M ET')} → session_type={session_type}")
+        return self._run_scan_session(session_type)
+
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _load_catalyst_scores(self) -> dict[str, float]:
