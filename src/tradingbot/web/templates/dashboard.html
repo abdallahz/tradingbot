@@ -490,7 +490,7 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
                     Filters
                 </div>
-                {% if date_filter or symbol_filter or session_filter or side_filter %}
+                {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter %}
                 <a href="/" class="filter-clear-all">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     Clear all
@@ -535,6 +535,18 @@
                     </div>
                 </div>
                 <div class="filter-group">
+                    <label for="scan_time">Scan Time</label>
+                    <div class="select-wrap">
+                        <select id="scan_time" name="scan_time">
+                            <option value="">All Scans</option>
+                            {% for st in all_scan_times %}
+                            <option value="{{ st }}" {% if st==scan_time_filter %}selected{% endif %}>{{ st }} UTC</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                </div>
+                <div class="filter-group">
                     <label for="side">Side</label>
                     <div class="side-toggle">
                         <input type="hidden" name="side" id="side-value" value="{{ side_filter }}">
@@ -554,11 +566,12 @@
                     </button>
                 </div>
             </form>
-            {% if date_filter or symbol_filter or session_filter or side_filter %}
+            {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter %}
             <div class="active-filters">
                 {% if date_filter %}<span class="chip">📅 {{ date_filter }}</span>{% endif %}
                 {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
                 {% if session_filter %}<span class="chip">🕐 {{ session_filter }}</span>{% endif %}
+                {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }} UTC</span>{% endif %}
                 {% if side_filter %}<span class="chip {% if side_filter=='long' %}chip-green{% else %}chip-red{% endif %}">{{ side_filter | upper }}</span>{% endif %}
             </div>
             {% endif %}

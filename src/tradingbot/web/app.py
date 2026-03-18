@@ -111,13 +111,32 @@ def dashboard():
     symbol_filter = request.args.get("symbol", "")
     session_filter = request.args.get("session", "")
     side_filter = request.args.get("side", "")
+    scan_time_filter = request.args.get("scan_time", "")
     all_alerts = load_alerts(200)
+
+    # Helper: round a timestamp string to the nearest 30-min block label
+    def _scan_block(ts: str) -> str:
+        """'2026-03-18T14:47:00+00:00' → '14:30'  (30-min floor)"""
+        try:
+            t = ts[11:16]          # 'HH:MM'
+            h, m = int(t[:2]), int(t[3:5])
+            m = (m // 30) * 30     # floor to 0 or 30
+            return f"{h:02d}:{m:02d}"
+        except Exception:
+            return ""
+
+    # Tag each alert with its scan_block
+    for a in all_alerts:
+        a["scan_block"] = _scan_block(a.get("timestamp", ""))
+
     # Build filter dropdown options from the full (unfiltered) set
     all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
     all_sessions = sorted({a.get("session") for a in all_alerts if a.get("session")})
     all_dates = sorted({a.get("trade_date") or a.get("timestamp", "")[:10]
                         for a in all_alerts
                         if a.get("trade_date") or a.get("timestamp")}, reverse=True)
+    all_scan_times = sorted({a["scan_block"] for a in all_alerts if a["scan_block"]})
+
     # Apply filters
     alerts = all_alerts
     if date_filter:
@@ -129,6 +148,8 @@ def dashboard():
         alerts = [a for a in alerts if a.get("session", "") == session_filter]
     if side_filter:
         alerts = [a for a in alerts if a.get("side", "") == side_filter]
+    if scan_time_filter:
+        alerts = [a for a in alerts if a.get("scan_block", "") == scan_time_filter]
     status = _market_status()
     with _scan_lock:
         scanning = _scan_in_progress
@@ -148,9 +169,11 @@ def dashboard():
         symbol_filter=symbol_filter,
         session_filter=session_filter,
         side_filter=side_filter,
+        scan_time_filter=scan_time_filter,
         all_symbols=all_symbols,
         all_sessions=all_sessions,
         all_dates=all_dates,
+        all_scan_times=all_scan_times,
     )
 
 
