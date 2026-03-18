@@ -339,6 +339,49 @@ def save_session(session: dict[str, Any]) -> None:
     # No JSONL fallback for sessions — analytics-only, not critical path
 
 
+def get_scan_stats() -> dict[str, Any]:
+    """Return last-scan time and today's scan count from the sessions table.
+
+    Returns {"last_scan": "Mar 18, 2026 · 10:34 AM ET", "scan_count": 5}
+    Falls back to empty defaults if Supabase is unavailable.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return {"last_scan": "Never", "scan_count": 0}
+    try:
+        today_str = _today_et().isoformat()
+
+        # Count today's sessions
+        count_resp = (
+            sb.table("sessions")
+            .select("id", count="exact")
+            .eq("trade_date", today_str)
+            .execute()
+        )
+        scan_count = count_resp.count if hasattr(count_resp, "count") and count_resp.count else 0
+        # Fallback: count rows if .count not available
+        if scan_count == 0 and count_resp.data:
+            scan_count = len(count_resp.data)
+
+        # Most recent session (any date)
+        latest_resp = (
+            sb.table("sessions")
+            .select("created_at")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if latest_resp.data:
+            last_scan = _format_ts(latest_resp.data[0].get("created_at", ""))
+        else:
+            last_scan = "Never"
+
+        return {"last_scan": last_scan, "scan_count": scan_count}
+    except Exception as exc:
+        log.warning(f"[alert_store] get_scan_stats failed: {exc}")
+        return {"last_scan": "Never", "scan_count": 0}
+
+
 def card_to_dict(card: Any) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
     generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
