@@ -484,133 +484,331 @@
 
     <div class="shell">
         <!-- ── Filters ─────────────────────────────────────────────── -->
-        <form method="get" class="filter-bar">
-            <div class="filter-group">
-                <label for="date">Date</label>
-                <select id="date" name="date">
-                    <option value="">All Dates</option>
-                    {% for d in all_dates %}
-                    <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}</option>
-                    {% endfor %}
-                </select>
+        <div class="filter-section">
+            <div class="filter-header">
+                <div class="filter-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                    Filters
+                </div>
+                {% if date_filter or symbol_filter or session_filter or side_filter %}
+                <a href="/" class="filter-clear-all">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    Clear all
+                </a>
+                {% endif %}
             </div>
-            <div class="filter-group">
-                <label for="symbol">Symbol</label>
-                <select id="symbol" name="symbol">
-                    <option value="">All Symbols</option>
-                    {% for s in all_symbols %}
-                    <option value="{{ s }}" {% if s==symbol_filter %}selected{% endif %}>{{ s }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="session">Session</label>
-                <select id="session" name="session">
-                    <option value="">All Sessions</option>
-                    {% for st in all_sessions %}
-                    <option value="{{ st }}" {% if st==session_filter %}selected{% endif %}>{{ st }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="side">Side</label>
-                <select id="side" name="side">
-                    <option value="">Long &amp; Short</option>
-                    <option value="long" {% if side_filter=='long' %}selected{% endif %}>Long</option>
-                    <option value="short" {% if side_filter=='short' %}selected{% endif %}>Short</option>
-                </select>
-            </div>
-            <button type="submit" class="filter-btn">Apply</button>
+            <form method="get" class="filter-bar">
+                <div class="filter-group">
+                    <label for="date">Date</label>
+                    <div class="select-wrap">
+                        <select id="date" name="date">
+                            <option value="">All Dates</option>
+                            {% for d in all_dates %}
+                            <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label for="symbol">Symbol</label>
+                    <div class="select-wrap">
+                        <select id="symbol" name="symbol">
+                            <option value="">All Symbols</option>
+                            {% for s in all_symbols %}
+                            <option value="{{ s }}" {% if s==symbol_filter %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label for="session">Session</label>
+                    <div class="select-wrap">
+                        <select id="session" name="session">
+                            <option value="">All Sessions</option>
+                            {% for st in all_sessions %}
+                            <option value="{{ st }}" {% if st==session_filter %}selected{% endif %}>{{ st }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label for="side">Side</label>
+                    <div class="side-toggle">
+                        <input type="hidden" name="side" id="side-value" value="{{ side_filter }}">
+                        <button type="button" class="toggle-btn {% if not side_filter %}active{% endif %}" data-val="">All</button>
+                        <button type="button" class="toggle-btn long-toggle {% if side_filter=='long' %}active{% endif %}" data-val="long">
+                            <span class="toggle-dot green-dot"></span> Long
+                        </button>
+                        <button type="button" class="toggle-btn short-toggle {% if side_filter=='short' %}active{% endif %}" data-val="short">
+                            <span class="toggle-dot red-dot"></span> Short
+                        </button>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button type="submit" class="filter-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        Apply
+                    </button>
+                </div>
+            </form>
             {% if date_filter or symbol_filter or session_filter or side_filter %}
-            <a href="/" class="filter-clear">Clear</a>
+            <div class="active-filters">
+                {% if date_filter %}<span class="chip">📅 {{ date_filter }}</span>{% endif %}
+                {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
+                {% if session_filter %}<span class="chip">🕐 {{ session_filter }}</span>{% endif %}
+                {% if side_filter %}<span class="chip {% if side_filter=='long' %}chip-green{% else %}chip-red{% endif %}">{{ side_filter | upper }}</span>{% endif %}
+            </div>
             {% endif %}
-        </form>
+        </div>
 
         <style>
-            .filter-bar {
-                display: flex;
-                gap: 14px;
-                align-items: flex-end;
-                margin-bottom: 28px;
-                flex-wrap: wrap;
+            /* ── Filter section ──────────────────────────── */
+            .filter-section {
                 background: var(--surface);
                 border: 1px solid var(--border);
-                border-radius: var(--radius);
-                padding: 16px 20px;
+                border-radius: 12px;
+                padding: 20px 24px;
+                margin-bottom: 28px;
+            }
+
+            .filter-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 16px;
+            }
+
+            .filter-title {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--sub);
+                text-transform: uppercase;
+                letter-spacing: .6px;
+            }
+
+            .filter-clear-all {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 12px;
+                color: var(--red);
+                opacity: .8;
+                transition: opacity .2s;
+                text-decoration: none;
+            }
+            .filter-clear-all:hover { opacity: 1; }
+
+            .filter-bar {
+                display: flex;
+                gap: 16px;
+                align-items: flex-end;
+                flex-wrap: wrap;
             }
 
             .filter-group {
                 display: flex;
                 flex-direction: column;
-                gap: 5px;
+                gap: 6px;
+                flex: 1;
+                min-width: 135px;
             }
 
             .filter-group label {
                 font-size: 10px;
                 text-transform: uppercase;
-                letter-spacing: .8px;
-                color: var(--sub);
+                letter-spacing: 1px;
+                color: var(--muted);
                 font-weight: 600;
             }
 
-            .filter-group select,
-            .filter-group input[type="date"] {
+            /* Custom select wrapper */
+            .select-wrap {
+                position: relative;
+            }
+
+            .select-wrap select {
+                width: 100%;
+                appearance: none;
+                -webkit-appearance: none;
                 background: var(--bg);
                 color: var(--text);
                 border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 7px 12px;
+                border-radius: 8px;
+                padding: 9px 32px 9px 12px;
                 font-size: 13px;
-                min-width: 140px;
+                font-weight: 500;
                 cursor: pointer;
+                transition: border-color .2s, box-shadow .2s;
             }
 
-            .filter-group select:focus,
-            .filter-group input[type="date"]:focus {
+            .select-wrap select:hover {
+                border-color: rgba(59, 130, 246, .4);
+            }
+
+            .select-wrap select:focus {
                 outline: none;
                 border-color: var(--blue);
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, .15);
+            }
+
+            .select-chevron {
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: var(--muted);
+                pointer-events: none;
+            }
+
+            /* Side toggle buttons */
+            .side-toggle {
+                display: flex;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                overflow: hidden;
+            }
+
+            .toggle-btn {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--muted);
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                transition: all .2s;
+                white-space: nowrap;
+            }
+
+            .toggle-btn:not(:last-child) {
+                border-right: 1px solid var(--border);
+            }
+
+            .toggle-btn:hover {
+                color: var(--text);
+                background: rgba(255,255,255,.03);
+            }
+
+            .toggle-btn.active {
+                color: var(--text);
+                background: rgba(59, 130, 246, .12);
+            }
+
+            .toggle-btn.long-toggle.active {
+                background: rgba(34, 197, 94, .12);
+                color: var(--green);
+            }
+
+            .toggle-btn.short-toggle.active {
+                background: rgba(239, 68, 68, .12);
+                color: var(--red);
+            }
+
+            .toggle-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+            }
+            .green-dot { background: var(--green); }
+            .red-dot { background: var(--red); }
+
+            /* Apply button */
+            .filter-actions {
+                display: flex;
+                align-items: flex-end;
+                padding-bottom: 0;
             }
 
             .filter-btn {
-                padding: 8px 22px;
-                border-radius: 7px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 9px 20px;
+                border-radius: 8px;
                 background: linear-gradient(135deg, #3b82f6, #6366f1);
                 color: #fff;
                 border: none;
                 font-weight: 600;
                 font-size: 13px;
                 cursor: pointer;
-                transition: opacity .2s;
-                height: 34px;
+                transition: transform .15s, box-shadow .2s;
+                box-shadow: 0 2px 8px rgba(59, 130, 246, .25);
             }
 
             .filter-btn:hover {
-                opacity: .85;
+                transform: translateY(-1px);
+                box-shadow: 0 4px 14px rgba(59, 130, 246, .35);
             }
 
-            .filter-clear {
-                font-size: 12px;
-                color: var(--sub);
-                text-decoration: underline;
-                cursor: pointer;
-                padding-bottom: 8px;
+            .filter-btn:active {
+                transform: translateY(0);
             }
 
-            .filter-clear:hover {
+            /* Active filter chips */
+            .active-filters {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 14px;
+                padding-top: 14px;
+                border-top: 1px solid var(--border);
+            }
+
+            .chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                background: rgba(59, 130, 246, .1);
+                border: 1px solid rgba(59, 130, 246, .2);
+                color: #93c5fd;
+                border-radius: 20px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            .chip-green {
+                background: rgba(34, 197, 94, .1);
+                border-color: rgba(34, 197, 94, .2);
+                color: var(--green);
+            }
+            .chip-red {
+                background: rgba(239, 68, 68, .1);
+                border-color: rgba(239, 68, 68, .2);
                 color: var(--red);
             }
 
             @media (max-width: 600px) {
-                .filter-bar {
-                    flex-direction: column;
-                    align-items: stretch;
-                }
-                .filter-group select,
-                .filter-group input[type="date"] {
-                    min-width: 100%;
-                }
+                .filter-section { padding: 14px 16px; }
+                .filter-bar { flex-direction: column; gap: 12px; }
+                .filter-group { min-width: 100%; }
+                .side-toggle { width: 100%; }
+                .filter-actions { width: 100%; }
+                .filter-btn { width: 100%; justify-content: center; }
             }
         </style>
+
+        <script>
+            // Side toggle buttons
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById('side-value').value = btn.dataset.val;
+                });
+            });
+        </script>
 
         <!-- ── Header ──────────────────────────────────────────────────────── -->
         <header>
