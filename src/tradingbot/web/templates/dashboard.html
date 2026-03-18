@@ -537,7 +537,8 @@
                         <select id="date" name="date">
                             <option value="_all" {% if not date_filter %}selected{% endif %}>All Dates</option>
                             {% for d in all_dates %}
-                            <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}{% if d==today %} (Today){% endif %}</option>
+                            <option value="{{ d }}" {% if d==date_filter %}selected{% endif %}>{{ d }}{% if d==today %}
+                                (Today){% endif %}</option>
                             {% endfor %}
                         </select>
                         <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"

@@ -30,6 +30,26 @@ def _is_weekend(date_str: str) -> bool:
     except Exception:
         return False
 
+
+def _format_ts(raw: str) -> str:
+    """Convert ISO timestamp to readable format: 'Mar 18, 2026 · 2:34 PM ET'."""
+    if not raw:
+        return ""
+    try:
+        import pytz
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        et = pytz.timezone("America/New_York")
+        dt_et = dt.astimezone(et)
+        hour = dt_et.strftime("%I").lstrip("0") or "12"
+        return f"{dt_et.strftime('%b %d, %Y')} · {hour}:{dt_et.strftime('%M %p')} ET"
+    except Exception:
+        try:
+            # Fallback: simpler format without timezone conversion
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return dt.strftime("%b %d, %Y · %H:%M UTC")
+        except Exception:
+            return raw
+
 # ── Supabase client (lazy-initialised once) ───────────────────────────────────
 
 _sb_client = None
@@ -191,7 +211,8 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "session":     r.get("session"),
                 "reasons":     r.get("reasons") or [],
                 "patterns":    r.get("patterns") or [],
-                "timestamp":   r.get("created_at", ""),
+                "timestamp":   _format_ts(r.get("created_at", "")),
+                "timestamp_raw": r.get("created_at", ""),
             })
         return rows
     except Exception as exc:

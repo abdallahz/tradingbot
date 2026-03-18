@@ -128,9 +128,9 @@ def dashboard():
         except Exception:
             return ""
 
-    # Tag each alert with its scan_block
+    # Tag each alert with its scan_block (use raw ISO timestamp)
     for a in all_alerts:
-        a["scan_block"] = _scan_block(a.get("timestamp", ""))
+        a["scan_block"] = _scan_block(a.get("timestamp_raw", ""))
 
     # Build filter dropdown options from the full (unfiltered) set
     all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
