@@ -216,9 +216,14 @@ def api_alerts():
 
 @app.route("/api/status")
 def api_status():
+    try:
+        from tradingbot.web.alert_store import get_scan_stats
+        stats = get_scan_stats()
+    except Exception:
+        stats = {"last_scan": _last_scan_time, "scan_count": _scan_count}
     return jsonify({
-        "last_scan": _last_scan_time,
-        "scan_count": _scan_count,
+        "last_scan": stats["last_scan"],
+        "scan_count": stats["scan_count"],
         "market": _market_status(),
     })
 
