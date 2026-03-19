@@ -146,3 +146,28 @@ class Ranker:
         ranked = [item for item in ranked if item.score >= self.min_score]
         ranked.sort(key=lambda x: x.score, reverse=True)
         return ranked[: self.max_candidates]
+
+
+class CatalystWeightedRanker(Ranker):
+    """Ranker variant for Option 2 (relaxed / catalyst-driven).
+
+    Doubles the catalyst weight (35%) and reduces dependency on intraday
+    technical data that is sparse in pre-market.  Scores are ~15-25 points
+    higher for strong-catalyst stocks compared to the base Ranker.
+    """
+
+    def score(self, stock: SymbolSnapshot) -> float:
+        g  = self._normalize_gap(stock)
+        rv = self._normalize_rel_vol(stock)
+        lq = self._normalize_liquidity(stock)
+        c  = stock.catalyst_score
+        m  = self._normalize_momentum(stock)
+        rs = self._normalize_rsi(stock)
+        mc = self._normalize_macd(stock)
+        # Weights: catalyst 35%, gap 15%, relVol 12%, liquidity 10%,
+        #          RSI 8%, momentum 5%, MACD 5%, signal_align+OBV → 10% combined
+        sa = self._score_signal_alignment(stock)
+        ob = self._score_obv_divergence(stock)
+        return (0.15 * g + 0.12 * rv + 0.10 * lq + 0.35 * c
+                + 0.05 * m + 0.08 * rs + 0.05 * mc
+                + 0.05 * sa + 0.05 * ob)

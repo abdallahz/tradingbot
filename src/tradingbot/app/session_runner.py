@@ -23,7 +23,7 @@ from tradingbot.models import (
     WatchlistRun,
 )
 from tradingbot.research.news_aggregator import CatalystScorerV2, NewsAggregator
-from tradingbot.ranking.ranker import Ranker
+from tradingbot.ranking.ranker import CatalystWeightedRanker, Ranker
 from tradingbot.reports.watchlist_report import write_csv, write_markdown, write_three_option_markdown
 from tradingbot.research.catalyst_scorer import CatalystScorer
 from tradingbot.risk.risk_manager import RiskManager
@@ -100,7 +100,7 @@ class SessionRunner:
             min_score=scanner_defaults["min_score"],
             max_candidates=scanner_defaults["max_candidates"],
         )
-        self.relaxed_ranker = Ranker(
+        self.relaxed_ranker = CatalystWeightedRanker(
             min_score=25,  # Very permissive — Option 2 should always show results
             max_candidates=scanner_defaults["max_candidates"],
         )
