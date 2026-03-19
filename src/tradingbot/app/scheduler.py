@@ -93,6 +93,28 @@ class Scheduler:
         """
         return self._run_scan_session("midday")
 
+    def run_close_hold_scan(self) -> list:
+        """Run the close-hold overnight scan.
+
+        Fetches current snapshots for the full universe at ~3:30 PM,
+        scores them for overnight-hold potential, and returns the top picks.
+        """
+        from tradingbot.scanner.close_hold_scanner import CloseHoldScanner
+
+        runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+        catalyst_scores = self._load_catalyst_scores()
+
+        # Build universe (same logic as run_single_session)
+        universe_str = [s for s, sc in catalyst_scores.items() if sc >= 40]
+        if not universe_str:
+            sorted_scores = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)
+            universe_str = [s for s, _ in sorted_scores[:50]]
+
+        snapshots = runner._fetch_snapshots("close", universe_str, catalyst_scores)
+        scanner = CloseHoldScanner(max_picks=5, min_score=35.0)
+        picks = scanner.scan(snapshots)
+        return picks
+
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _load_catalyst_scores(self) -> dict[str, float]:

@@ -136,6 +136,47 @@ class TelegramNotifier:
             text = "\n".join(lines)
         return self._send_message(text)
 
+    def send_close_picks(self, picks: list) -> bool:
+        """Send close-hold overnight picks to Telegram.
+
+        Args:
+            picks: list of CloseHoldPick dataclass instances.
+        """
+        if not self._enabled:
+            return False
+
+        if not picks:
+            text = (
+                "🌙 *Close Scan — Overnight Holds*\n\n"
+                "No qualifying setups found for tonight."
+            )
+            return self._send_message(text)
+
+        lines = [
+            "🌙 *Close Scan — Overnight Holds*",
+            f"Top {len(picks)} pick(s) to buy now, hold for tomorrow's open:",
+            "",
+        ]
+
+        for i, p in enumerate(picks, 1):
+            side_emoji = "🟢" if p.side == "long" else "🔴"
+            change_str = f"{p.change_pct:+.1f}%"
+            lines.append(
+                f"*{i}. {side_emoji} `{p.symbol}`* — Score {p.score:.0f}/100"
+            )
+            lines.append(
+                f"   Price: `${p.price:.2f}` | Day: {change_str} | "
+                f"Vol: {p.relative_volume:.1f}x"
+            )
+            if p.catalyst_score >= 50:
+                lines.append(f"   Catalyst: {p.catalyst_score:.0f} | RSI: {p.rsi:.0f}")
+            lines.append(f"   📍 S: `${p.key_support:.2f}` | R: `${p.key_resistance:.2f}`")
+            lines.append(f"   💡 _{p.thesis}_")
+            lines.append("")
+
+        text = "\n".join(lines)
+        return self._send_message(text)
+
     def send_daily_recap(
         self,
         stats: dict,

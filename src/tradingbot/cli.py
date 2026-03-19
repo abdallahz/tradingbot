@@ -24,7 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     news_parser.add_argument("--label", default="News Research", help="Label for Telegram notification (e.g. 'Night Research')")
     sub.add_parser("run-morning", help="Run pre-market scan (8:45 AM)")
     sub.add_parser("run-midday", help="Run midday scan (12:00 PM)")
-    sub.add_parser("run-close", help="Run close scan (3:50 PM)")
+    sub.add_parser("run-close", help="Run close scan (overnight holds + daily recap)")
     return parser
 
 
@@ -107,13 +107,27 @@ def main() -> None:
         from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
         from tradingbot.tracking.trade_tracker import TradeTracker
 
-        # Step 1: Final tracker tick + expire open trades
+        # Step 1: Close-hold scan (overnight picks)
+        picks = scheduler.run_close_hold_scan()
+        print(f"\n{mode_str} Close Scan — Overnight Holds")
+        for p in picks:
+            arrow = "↗" if p.side == "long" else "↘"
+            print(f"  {arrow} {p.symbol} — Score {p.score:.0f} | ${p.price:.2f} ({p.change_pct:+.1f}%) | {p.thesis}")
+        if not picks:
+            print("  No qualifying setups found.")
+
+        _notifier = TelegramNotifier.from_env()
+        if _notifier._enabled:
+            _ok = _notifier.send_close_picks(picks)
+            print(f">> Telegram close picks: {'sent' if _ok else 'FAILED'}")
+
+        # Step 2: Final tracker tick + expire open trades
         tracker = TradeTracker()
         tracker.tick()
         expired = tracker.expire_open_trades()
-        print(f">> Expired {expired} open trade(s)")
+        print(f"\n>> Expired {expired} open trade(s)")
 
-        # Step 2: Build daily recap
+        # Step 3: Build daily recap
         stats = get_trade_stats()
         outcomes = load_outcomes_for_date()
         print(f"\n{mode_str} Daily Recap")
@@ -121,13 +135,12 @@ def main() -> None:
         print(f">> Win Rate: {stats['win_rate']:.0f}% | Avg P&L: {stats['avg_pnl']:+.2f}%")
         print(f">> Best: {stats['best']:+.2f}% | Worst: {stats['worst']:+.2f}%")
 
-        # Step 3: Send Telegram recap
-        _notifier = TelegramNotifier.from_env()
+        # Step 4: Send Telegram recap
         if _notifier._enabled:
             _ok = _notifier.send_daily_recap(stats, outcomes)
             print(f">> Telegram recap: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
-            print(">> Telegram recap: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
+            print(">> Telegram: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
         return
 
     # Legacy run-day command

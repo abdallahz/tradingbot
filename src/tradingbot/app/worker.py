@@ -121,16 +121,28 @@ def _run_morning() -> None:
 
 
 def _run_close() -> None:
-    """EOD job: expire open trades, then send daily P&L recap to Telegram."""
-    log.info("Running close — daily recap + trade expiration…")
+    """EOD job: close-hold scan → expire trades → daily P&L recap."""
+    log.info("Running close — overnight scan + daily recap…")
 
-    # ── Step 1: Final tracker tick (check TP/Stop one last time) ──
+    # ── Step 1: Close-hold scan (buy-and-hold-for-tomorrow picks) ──
+    try:
+        from tradingbot.app.scheduler import Scheduler
+        scheduler = Scheduler(ROOT, use_real_data=True)
+        picks = scheduler.run_close_hold_scan()
+        notifier = _notifier()
+        notifier.send_close_picks(picks)
+        log.info(f"Close-hold scan sent — {len(picks)} overnight pick(s).")
+    except Exception as e:
+        log.error(f"Close-hold scan failed: {e}")
+        _notifier().send_text(f"⚠️ *Close-hold scan failed*\n`{e}`")
+
+    # ── Step 2: Final tracker tick (check TP/Stop one last time) ──
     _run_tracker()
 
-    # ── Step 2: Expire remaining open trades ──
+    # ── Step 3: Expire remaining open trades ──
     _run_expire_trades()
 
-    # ── Step 3: Build and send daily recap ──
+    # ── Step 4: Build and send daily recap ──
     try:
         from tradingbot.web.alert_store import (
             get_trade_stats,
