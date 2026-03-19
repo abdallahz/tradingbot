@@ -156,15 +156,17 @@ def _run_close() -> None:
             from tradingbot.web.alert_store import _get_supabase, _today_et
             sb = _get_supabase()
             if sb:
+                today_str = _today_et().isoformat()
                 resp = (
                     sb.table("sessions")
                     .select("id", count="exact")
-                    .eq("trade_date", _today_et().isoformat())
+                    .eq("trade_date", today_str)
                     .execute()
                 )
                 scan_count = resp.count or 0
-        except Exception:
-            pass
+                log.info(f"Scan count for {today_str}: {scan_count}")
+        except Exception as exc:
+            log.warning(f"Scan count query failed: {exc}")
 
         notifier = _notifier()
         notifier.send_daily_recap(stats, outcomes, scan_count)

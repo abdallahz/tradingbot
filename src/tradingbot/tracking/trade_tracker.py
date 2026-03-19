@@ -187,11 +187,22 @@ class TradeTracker:
         # Fetch final prices
         symbols = list({t["symbol"] for t in open_trades})
         prices = self._fetch_quotes(symbols)
+        if not prices:
+            log.warning(
+                f"[tracker] No quotes returned for {len(symbols)} symbols — "
+                "will use entry_price as exit for expired trades"
+            )
         now_str = datetime.now(timezone.utc).isoformat()
         count = 0
         for trade in open_trades:
             sym = trade["symbol"]
+            entry = float(trade.get("entry_price") or 0)
             price = prices.get(sym, 0.0)
+            # If no live quote, fall back to entry_price (PnL=0 is better
+            # than exit=$0.00 which looks broken in the recap)
+            if price <= 0 and entry > 0:
+                price = entry
+                log.warning(f"[tracker] {sym}: no quote, using entry ${entry:.2f} as exit")
             pnl = self._calc_pnl(trade, price) if price > 0 else 0.0
             update_outcome(
                 outcome_id=trade["id"],

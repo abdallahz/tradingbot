@@ -235,6 +235,9 @@ class TelegramNotifier:
                 pnl = float(o.get("pnl_pct") or 0.0)
                 entry = float(o.get("entry_price") or 0.0)
                 exit_p = float(o.get("exit_price") or 0.0)
+                # If exit is missing/zero, show entry (no data available)
+                if exit_p <= 0 and entry > 0:
+                    exit_p = entry
 
                 status_map = {
                     "tp1_hit": "🎯 TP1",
