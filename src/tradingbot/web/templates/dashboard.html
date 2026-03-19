@@ -503,6 +503,7 @@
             padding: 16px 20px;
             margin-bottom: 24px;
         }
+
         .perf-header {
             display: flex;
             align-items: center;
@@ -510,6 +511,7 @@
             cursor: pointer;
             user-select: none;
         }
+
         .perf-title {
             font-size: 14px;
             font-weight: 700;
@@ -517,14 +519,17 @@
             align-items: center;
             gap: 8px;
         }
+
         .perf-body {
             max-height: 0;
             overflow: hidden;
             transition: max-height .35s ease;
         }
+
         .perf-body.open {
             max-height: 800px;
         }
+
         .perf-chart {
             display: flex;
             align-items: flex-end;
@@ -534,6 +539,7 @@
             border-bottom: 1px solid var(--border);
             margin-bottom: 12px;
         }
+
         .perf-bar-group {
             flex: 1;
             display: flex;
@@ -542,6 +548,7 @@
             gap: 4px;
             min-width: 0;
         }
+
         .perf-bar-wrap {
             width: 100%;
             max-width: 28px;
@@ -552,15 +559,26 @@
             height: 110px;
             position: relative;
         }
+
         .perf-bar {
             width: 100%;
             border-radius: 3px 3px 0 0;
             min-height: 2px;
             transition: height .3s ease;
         }
-        .perf-bar.positive { background: var(--green); }
-        .perf-bar.negative { background: var(--red); }
-        .perf-bar.zero { background: var(--border); }
+
+        .perf-bar.positive {
+            background: var(--green);
+        }
+
+        .perf-bar.negative {
+            background: var(--red);
+        }
+
+        .perf-bar.zero {
+            background: var(--border);
+        }
+
         .perf-bar-label {
             font-size: 8px;
             color: var(--sub);
@@ -570,6 +588,7 @@
             text-overflow: ellipsis;
             max-width: 40px;
         }
+
         .perf-bar-value {
             font-size: 9px;
             font-weight: 600;
@@ -577,8 +596,15 @@
             top: -14px;
             white-space: nowrap;
         }
-        .perf-bar-value.positive { color: var(--green); }
-        .perf-bar-value.negative { color: var(--red); }
+
+        .perf-bar-value.positive {
+            color: var(--green);
+        }
+
+        .perf-bar-value.negative {
+            color: var(--red);
+        }
+
         .perf-cum-row {
             display: flex;
             align-items: flex-end;
@@ -586,6 +612,7 @@
             height: 60px;
             margin-bottom: 8px;
         }
+
         .perf-cum-bar-group {
             flex: 1;
             display: flex;
@@ -593,6 +620,7 @@
             align-items: center;
             min-width: 0;
         }
+
         .perf-cum-bar-wrap {
             width: 100%;
             max-width: 28px;
@@ -602,20 +630,29 @@
             justify-content: center;
             position: relative;
         }
+
         .perf-cum-dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
             position: absolute;
         }
-        .perf-cum-dot.positive { background: var(--green); }
-        .perf-cum-dot.negative { background: var(--red); }
+
+        .perf-cum-dot.positive {
+            background: var(--green);
+        }
+
+        .perf-cum-dot.negative {
+            background: var(--red);
+        }
+
         .perf-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 12px;
             margin-top: 8px;
         }
+
         .perf-table th {
             text-align: left;
             color: var(--sub);
@@ -625,11 +662,16 @@
             padding: 6px 8px;
             border-bottom: 1px solid var(--border);
         }
+
         .perf-table td {
             padding: 6px 8px;
-            border-bottom: 1px solid rgba(37,43,56,.5);
+            border-bottom: 1px solid rgba(37, 43, 56, .5);
         }
-        .perf-table .num { text-align: right; }
+
+        .perf-table .num {
+            text-align: right;
+        }
+
         .perf-alltime {
             display: flex;
             gap: 20px;
@@ -638,15 +680,18 @@
             border-top: 1px solid var(--border);
             margin-top: 10px;
         }
+
         .perf-alltime-stat {
             display: flex;
             flex-direction: column;
             gap: 2px;
         }
+
         .perf-alltime-val {
             font-size: 16px;
             font-weight: 700;
         }
+
         .perf-alltime-lbl {
             font-size: 10px;
             text-transform: uppercase;
@@ -1537,10 +1582,10 @@
                 <div style="font-size:11px; color:var(--sub); padding:12px 0 4px;">Daily P&L %</div>
                 {% set max_pnl = [] %}
                 {% for d in perf_history %}
-                    {% if d.day_pnl|abs > (max_pnl[0] if max_pnl else 0) %}
-                        {% if max_pnl %}{% set _ = max_pnl.pop() %}{% endif %}
-                        {% set _ = max_pnl.append(d.day_pnl|abs) %}
-                    {% endif %}
+                {% if d.day_pnl|abs > (max_pnl[0] if max_pnl else 0) %}
+                {% if max_pnl %}{% set _ = max_pnl.pop() %}{% endif %}
+                {% set _ = max_pnl.append(d.day_pnl|abs) %}
+                {% endif %}
                 {% endfor %}
                 {% set scale = max_pnl[0] if max_pnl and max_pnl[0] > 0 else 1 %}
                 <div class="perf-chart">
@@ -1580,12 +1625,15 @@
                         <div class="perf-alltime-lbl">Total Losses</div>
                     </div>
                     <div class="perf-alltime-stat">
-                        <div class="perf-alltime-val {% if all_wr >= 50 %}green{% endif %}" style="{% if all_wr < 50 %}color:var(--red){% endif %}">{{ all_wr }}%</div>
+                        <div class="perf-alltime-val {% if all_wr >= 50 %}green{% endif %}"
+                            style="{% if all_wr < 50 %}color:var(--red){% endif %}">{{ all_wr }}%</div>
                         <div class="perf-alltime-lbl">Overall Win Rate</div>
                     </div>
                     {% if last %}
                     <div class="perf-alltime-stat">
-                        <div class="perf-alltime-val {% if last.cum_pnl >= 0 %}green{% endif %}" style="{% if last.cum_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(last.cum_pnl) }}%</div>
+                        <div class="perf-alltime-val {% if last.cum_pnl >= 0 %}green{% endif %}"
+                            style="{% if last.cum_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(last.cum_pnl)
+                            }}%</div>
                         <div class="perf-alltime-lbl">Cumulative P&amp;L</div>
                     </div>
                     {% endif %}
@@ -1612,8 +1660,12 @@
                             <td class="num" style="color:var(--green)">{{ d.wins }}</td>
                             <td class="num" style="color:var(--red)">{{ d.losses }}</td>
                             <td class="num">{{ d.win_rate }}%</td>
-                            <td class="num" style="color:{% if d.day_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{ "%+.2f"|format(d.day_pnl) }}%</td>
-                            <td class="num" style="color:{% if d.cum_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{ "%+.2f"|format(d.cum_pnl) }}%</td>
+                            <td class="num"
+                                style="color:{% if d.day_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{
+                                "%+.2f"|format(d.day_pnl) }}%</td>
+                            <td class="num"
+                                style="color:{% if d.cum_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{
+                                "%+.2f"|format(d.cum_pnl) }}%</td>
                         </tr>
                         {% endfor %}
                     </tbody>

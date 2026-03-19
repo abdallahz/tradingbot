@@ -92,6 +92,7 @@ class TelegramNotifier:
         session: str,
         card_count: int,
         pipeline_info: str = "",
+        night_picks: list | None = None,
     ) -> bool:
         """Send a short session summary after a scan completes."""
         if not self._enabled:
@@ -106,6 +107,17 @@ class TelegramNotifier:
             )
         if pipeline_info:
             text += f"\n\n\U0001f50e Pipeline: {pipeline_info}"
+
+        # When no cards fired, include Option 1 night research picks so the
+        # user still has actionable watchlist items from the night research.
+        if card_count == 0 and night_picks:
+            text += "\n\n\U0001f4cb *Night Research Watchlist:*"
+            for pick in night_picks[:8]:
+                score = getattr(pick, "catalyst_score", 0)
+                reasons = ", ".join(getattr(pick, "reasons", [])) or "catalyst"
+                bar = "\U0001f7e2" if score >= 75 else "\U0001f7e1" if score >= 60 else "\u26aa"
+                text += f"\n{bar} `{pick.symbol}` — catalyst {score:.0f} | {reasons}"
+
         return self._send_message(text)
 
     def send_news_summary(self, session: str, scores: dict) -> bool:

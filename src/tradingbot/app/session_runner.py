@@ -292,13 +292,16 @@ class SessionRunner:
         # Option 1: Night Research — top catalyst picks with smart money overlay
         night_picks = self._get_night_research_picks(snapshots, catalyst_scores, session_tag)
 
-        # Option 2: Relaxed filters scan
+        # Option 2: Relaxed filters scan — also relaxes indicator confirmation
         relaxed_scan = self.relaxed_scanner.run(snapshots)
         relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
+        o2_dropped: list[tuple[str, str]] = []
         relaxed_cards = self._build_cards(
             ranked=relaxed_ranked,
             session_tag=session_tag,
             volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
+            relaxed=True,
+            dropped=o2_dropped,
         )
 
         # Option 3: Strict filters scan
@@ -313,13 +316,27 @@ class SessionRunner:
             ]
 
         strict_ranked = (self.midday_ranker if stricter else self.ranker).run(strict_scan.candidates)
+        o3_dropped: list[tuple[str, str]] = []
         strict_cards = self._build_cards(
             ranked=strict_ranked,
             session_tag=session_tag,
             volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
+            dropped=o3_dropped,
         )
 
         print(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
+        if o2_dropped:
+            drop_summary = {}
+            for _, reason in o2_dropped:
+                key = reason.split(":")[0]
+                drop_summary[key] = drop_summary.get(key, 0) + 1
+            print(f"[{session_tag.upper()}] O2 drops: {drop_summary}")
+        if o3_dropped:
+            drop_summary = {}
+            for _, reason in o3_dropped:
+                key = reason.split(":")[0]
+                drop_summary[key] = drop_summary.get(key, 0) + 1
+            print(f"[{session_tag.upper()}] O3 drops: {drop_summary}")
         
         # Analyze market conditions and make recommendation
         market_condition = self.market_analyzer.analyze(
@@ -357,12 +374,17 @@ class SessionRunner:
         session_tag: Literal["morning", "midday", "close"],
         volume_spike: float,
         dropped: list[tuple[str, str]] | None = None,
+        relaxed: bool = False,
     ) -> list[TradeCard]:
         """Build trade cards from ranked candidates.
 
         Includes dedup logic: if a symbol was already alerted today,
         only re-alert if the current price has pulled back at least 50%
         closer to key support (i.e. a materially better entry).
+
+        If *relaxed* is True (Option 2), indicator confirmation is skipped
+        for stocks with catalyst_score >= 55 and the confluence floor is
+        lowered to 0 (only block strong opposing signals).
         """
         cards: list[TradeCard] = []
 
@@ -401,10 +423,19 @@ class SessionRunner:
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
 
+            # In relaxed mode, allow high-catalyst stocks through even
+            # without full indicator confirmation (pre-market data is sparse).
             if not can_long and not can_short:
-                if dropped is not None:
-                    dropped.append((symbol.symbol, "indicator_confirmation_failed"))
-                continue
+                if relaxed and symbol.catalyst_score >= 55:
+                    # Catalyst-driven bypass: default to long if gap >= 0
+                    can_long = symbol.gap_pct >= 0
+                    can_short = not can_long
+                    logging.info(f"[RELAXED] {symbol.symbol} bypassed indicator check (catalyst={symbol.catalyst_score:.0f})")
+                else:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, "indicator_confirmation_failed"))
+                    logging.info(f"[DROP] {symbol.symbol}: indicator_confirmation_failed (vol_spike={volume_spike}, catalyst={symbol.catalyst_score:.0f})")
+                    continue
 
             # Prefer direction that matches the gap; fall back to whichever side is valid
             if symbol.gap_pct >= 0:
@@ -421,13 +452,18 @@ class SessionRunner:
             if card is None:
                 if dropped is not None:
                     dropped.append((symbol.symbol, "rr_below_floor"))
+                logging.info(f"[DROP] {symbol.symbol}: rr_below_floor (support={symbol.key_support:.2f}, resistance={symbol.key_resistance:.2f}, price={symbol.price:.2f})")
                 continue
             card.patterns = list(symbol.patterns)
             confluence = score_confluence(card.patterns, side)
-            # Block cards with weak or opposing signals (imported constant = 10)
-            if confluence < MIN_CONFLUENCE_SCORE:
+            # Block cards with weak or opposing signals
+            # Relaxed mode: only block if strong opposing signal (< 0)
+            # Strict mode: require MIN_CONFLUENCE_SCORE (10)
+            confluence_floor = 0 if relaxed else MIN_CONFLUENCE_SCORE
+            if confluence < confluence_floor:
                 if dropped is not None:
                     dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
+                logging.info(f"[DROP] {symbol.symbol}: low_confluence={confluence:.0f} (floor={confluence_floor}, patterns={symbol.patterns})")
                 continue
             # Blend confluence bonus into the ranker score (30% weight, cap 100)
             card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)

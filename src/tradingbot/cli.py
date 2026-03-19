@@ -69,7 +69,7 @@ def main() -> None:
         )
         print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Pre-Market", card_count, pipeline_info)
+            _ok = _notifier.send_session_summary("Pre-Market", card_count, pipeline_info, night_picks=results.night_research_picks)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
@@ -91,7 +91,7 @@ def main() -> None:
         )
         print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Midday", card_count, pipeline_info)
+            _ok = _notifier.send_session_summary("Midday", card_count, pipeline_info, night_picks=results.night_research_picks)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
@@ -113,7 +113,7 @@ def main() -> None:
         )
         print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Close", card_count, pipeline_info)
+            _ok = _notifier.send_session_summary("Close", card_count, pipeline_info, night_picks=results.night_research_picks)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
