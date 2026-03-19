@@ -108,7 +108,7 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
     # Recommendation banner
     rec_emoji = {"night_research": "🔍", "relaxed_filters": "📊", "strict_filters": "✅"}
     rec_name = {
-        "night_research": "Option 1: Night Research Catalysts",
+        "night_research": "Option 1: News Research Catalysts",
         "relaxed_filters": "Option 2: Relaxed Filters", 
         "strict_filters": "Option 3: Strict Filters (High Probability)"
     }
@@ -121,10 +121,10 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
         "",
     ])
     
-    # Option 1: Night Research
+    # Option 1: News Research (night + morning combined)
     lines.extend([
-        "### 🔍 Option 1: Night Research - Catalyst-Driven Picks",
-        "**Strategy:** Focus on stocks with strong news catalysts. Wait for news-driven momentum.",
+        "### 🔍 Option 1: News Research - Catalyst-Driven Picks",
+        "**Strategy:** Focus on stocks with strong news catalysts from overnight + pre-market research.",
         "**Best for:** Low volatility days when patience is key.",
         "",
     ])

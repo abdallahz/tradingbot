@@ -1253,7 +1253,7 @@
                 color: var(--red);
             }
 
-            /* Night Research Watchlist */
+            /* News Research Watchlist */
             .watchlist-section {
                 background: var(--card);
                 border: 1px solid var(--border);
@@ -1674,13 +1674,13 @@
         </div>
         {% endif %}
 
-        <!-- ── Night Research Watchlist ───────────────────────────────────── -->
+        <!-- ── News Research Watchlist ────────────────────────────────────── -->
         {% if catalyst_picks %}
         <div class="watchlist-section">
             <div class="watchlist-header"
                 onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
                 <div class="watchlist-title">
-                    📰 Night Research Watchlist
+                    📰 News Research Watchlist
                     <span class="watchlist-count">{{ catalyst_picks | length }}</span>
                 </div>
                 <svg class="watchlist-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"

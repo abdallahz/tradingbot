@@ -111,7 +111,7 @@ class TelegramNotifier:
         # When no cards fired, include Option 1 night research picks so the
         # user still has actionable watchlist items from the night research.
         if card_count == 0 and night_picks:
-            text += "\n\n\U0001f4cb *Night Research Watchlist:*"
+            text += "\n\n\U0001f4cb *News Research Watchlist:*"
             for pick in night_picks[:8]:
                 score = getattr(pick, "catalyst_score", 0)
                 reasons = ", ".join(getattr(pick, "reasons", [])) or "catalyst"
