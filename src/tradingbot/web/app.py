@@ -119,7 +119,8 @@ def dashboard():
 
     # Build filter dropdown options from the full (unfiltered) set
     all_symbols = sorted({a.get("symbol") for a in all_alerts if a.get("symbol")})
-    all_sessions = sorted({a.get("session") for a in all_alerts if a.get("session")})
+    # Always show all 3 sessions in the dropdown, even if no alerts exist for one yet
+    all_sessions = ["morning", "midday", "close"]
     all_dates = sorted({a.get("trade_date") or a.get("timestamp", "")[:10]
                         for a in all_alerts
                         if a.get("trade_date") or a.get("timestamp")}, reverse=True)
