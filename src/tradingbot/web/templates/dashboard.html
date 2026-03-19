@@ -1353,6 +1353,124 @@
                 color: rgba(255, 255, 255, .5);
             }
 
+            /* Close Picks (overnight holds) */
+            .close-picks-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                gap: 12px;
+            }
+
+            .close-pick-card {
+                background: rgba(255, 255, 255, .03);
+                border: 1px solid rgba(255, 255, 255, .08);
+                border-radius: 10px;
+                padding: 14px 16px;
+                position: relative;
+            }
+
+            .close-pick-card.long-pick {
+                border-left: 3px solid var(--green);
+            }
+
+            .close-pick-card.short-pick {
+                border-left: 3px solid var(--red);
+            }
+
+            .cp-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 8px;
+            }
+
+            .cp-symbol {
+                font-size: 16px;
+                font-weight: 800;
+                letter-spacing: .5px;
+            }
+
+            .cp-score-badge {
+                font-size: 11px;
+                font-weight: 700;
+                padding: 3px 8px;
+                border-radius: 6px;
+            }
+
+            .cp-score-badge.high {
+                background: rgba(34, 197, 94, .15);
+                color: var(--green);
+            }
+
+            .cp-score-badge.medium {
+                background: rgba(245, 158, 11, .15);
+                color: #f59e0b;
+            }
+
+            .cp-score-badge.low {
+                background: rgba(255, 255, 255, .06);
+                color: rgba(255, 255, 255, .5);
+            }
+
+            .cp-side {
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                margin-bottom: 6px;
+            }
+
+            .cp-side.long {
+                color: var(--green);
+            }
+
+            .cp-side.short {
+                color: var(--red);
+            }
+
+            .cp-metrics {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px 14px;
+                font-size: 12px;
+                color: var(--sub);
+                margin-bottom: 8px;
+            }
+
+            .cp-metrics span {
+                white-space: nowrap;
+            }
+
+            .cp-metrics .val {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .cp-levels {
+                display: flex;
+                gap: 16px;
+                font-size: 11px;
+                color: var(--sub);
+                margin-bottom: 8px;
+            }
+
+            .cp-levels .support-val {
+                color: var(--green);
+                font-weight: 600;
+            }
+
+            .cp-levels .resist-val {
+                color: var(--red);
+                font-weight: 600;
+            }
+
+            .cp-thesis {
+                font-size: 12px;
+                font-style: italic;
+                color: var(--sub);
+                line-height: 1.4;
+                border-top: 1px solid rgba(255, 255, 255, .06);
+                padding-top: 8px;
+            }
+
             /* Legend / Glossary */
             .legend-section {
                 background: var(--card);
@@ -1696,6 +1814,54 @@
                         <span
                             class="wl-score {% if pick.score >= 70 %}high{% elif pick.score >= 55 %}medium{% else %}low{% endif %}">{{
                             pick.score }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── Close Picks — Overnight Holds ──────────────────────────────── -->
+        {% if close_picks %}
+        <div class="watchlist-section">
+            <div class="watchlist-header"
+                onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+                <div class="watchlist-title">
+                    🌙 Close Picks — Overnight Holds
+                    <span class="watchlist-count">{{ close_picks | length }}</span>
+                </div>
+                <svg class="watchlist-chevron open" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="watchlist-body open">
+                <div class="close-picks-grid">
+                    {% for p in close_picks %}
+                    <div class="close-pick-card {{ 'long-pick' if p.side == 'long' else 'short-pick' }}">
+                        <div class="cp-header">
+                            <span class="cp-symbol">{{ p.symbol }}</span>
+                            <span class="cp-score-badge {% if p.score >= 55 %}high{% elif p.score >= 40 %}medium{% else %}low{% endif %}">
+                                {{ p.score }}/100
+                            </span>
+                        </div>
+                        <div class="cp-side {{ p.side }}">
+                            {{ '🟢 LONG' if p.side == 'long' else '🔴 SHORT' }}
+                        </div>
+                        <div class="cp-metrics">
+                            <span>Price <span class="val">${{ "%.2f"|format(p.price) }}</span></span>
+                            <span>Day <span class="val {% if p.change_pct >= 0 %}" style="color:var(--green){% else %}" style="color:var(--red){% endif %}">{{ "%+.1f"|format(p.change_pct) }}%</span></span>
+                            <span>Vol <span class="val">{{ "%.1f"|format(p.relative_volume) }}x</span></span>
+                            {% if p.catalyst_score >= 50 %}
+                            <span>Catalyst <span class="val">{{ "%.0f"|format(p.catalyst_score) }}</span></span>
+                            {% endif %}
+                            <span>RSI <span class="val">{{ "%.0f"|format(p.rsi) }}</span></span>
+                        </div>
+                        <div class="cp-levels">
+                            <span>S: <span class="support-val">${{ "%.2f"|format(p.key_support) }}</span></span>
+                            <span>R: <span class="resist-val">${{ "%.2f"|format(p.key_resistance) }}</span></span>
+                        </div>
+                        <div class="cp-thesis">💡 {{ p.thesis }}</div>
                     </div>
                     {% endfor %}
                 </div>

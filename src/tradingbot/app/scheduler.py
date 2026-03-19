@@ -98,6 +98,7 @@ class Scheduler:
 
         Fetches current snapshots for the full universe at ~3:30 PM,
         scores them for overnight-hold potential, and returns the top picks.
+        Also persists picks to Supabase for the dashboard.
         """
         from tradingbot.scanner.close_hold_scanner import CloseHoldScanner
 
@@ -113,6 +114,16 @@ class Scheduler:
         snapshots = runner._fetch_snapshots("close", universe_str, catalyst_scores)
         scanner = CloseHoldScanner(max_picks=5, min_score=35.0)
         picks = scanner.scan(snapshots)
+
+        # Persist to Supabase for the dashboard
+        try:
+            from dataclasses import asdict
+            from tradingbot.web.alert_store import save_close_picks
+            save_close_picks([asdict(p) for p in picks])
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning(f"[scheduler] save_close_picks failed: {exc}")
+
         return picks
 
     # ── Private helpers ────────────────────────────────────────────────────

@@ -192,6 +192,14 @@ def dashboard():
     except Exception:
         pass
 
+    # Load close-hold overnight picks for the dashboard panel
+    close_picks = []
+    try:
+        from tradingbot.web.alert_store import load_close_picks
+        close_picks = load_close_picks(date_filter or None)
+    except Exception:
+        pass
+
     # Load trade outcome data for P&L summary and per-card badges
     trade_stats = {"total": 0, "wins": 0, "losses": 0, "open": 0,
                    "expired": 0, "win_rate": 0.0, "avg_pnl": 0.0,
@@ -242,6 +250,7 @@ def dashboard():
         all_scan_times=all_scan_times,
         session_labels=SESSION_LABELS,
         catalyst_picks=catalyst_picks,
+        close_picks=close_picks,
         trade_stats=trade_stats,
         perf_history=perf_history,
     )

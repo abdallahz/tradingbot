@@ -700,3 +700,51 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "ai_concerns":    list(getattr(card, "ai_concerns", [])),
         "timestamp":      generated,
     }
+
+
+# ── Close-hold picks persistence ──────────────────────────────────────────────
+
+def save_close_picks(picks: list[dict]) -> None:
+    """Persist today's close-hold overnight picks to Supabase.
+
+    Stores one row per day with the full JSON list, so the dashboard can
+    display them without re-running the scanner.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return
+    try:
+        today_str = _today_et().isoformat()
+        row = {
+            "trade_date": today_str,
+            "picks": json.dumps(picks),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        sb.table("close_picks").upsert(row, on_conflict="trade_date").execute()
+        log.info(f"[alert_store] Close picks saved to Supabase ({len(picks)} picks)")
+    except Exception as exc:
+        log.warning(f"[alert_store] save_close_picks failed: {exc}")
+
+
+def load_close_picks(trade_date: str | None = None) -> list[dict]:
+    """Load close-hold picks from Supabase for a given date (default: today).
+
+    Returns a list of pick dicts, or empty list if none found.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return []
+    try:
+        target = trade_date or _today_et().isoformat()
+        resp = (
+            sb.table("close_picks")
+            .select("picks")
+            .eq("trade_date", target)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            return json.loads(resp.data[0]["picks"])
+    except Exception as exc:
+        log.warning(f"[alert_store] load_close_picks failed: {exc}")
+    return []
