@@ -142,7 +142,7 @@ services:
       - key: SUPABASE_KEY
         sync: false
 
-  # -- Close Scan (30 min before market close) --------------------------------
+  # -- Daily Recap (market close: expire trades + P&L summary) -----------------
   - type: cron
     name: tradingbot-close
     env: python

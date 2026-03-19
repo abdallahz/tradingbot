@@ -121,20 +121,49 @@ def _run_morning() -> None:
 
 
 def _run_close() -> None:
-    log.info("Running close scan…")
-    try:
-        from tradingbot.app.scheduler import Scheduler
-        scheduler = Scheduler(ROOT, use_real_data=True)
-        card_count = scheduler.run_close_only()
-        log.info(f"Close scan complete — {card_count} alert(s) sent.")
-        _notifier().send_session_summary("Close", card_count)
-    except Exception as e:
-        log.error(f"Close scan failed: {e}")
-        _notifier().send_text(f"⚠️ *Close scan failed*\n`{e}`")
+    """EOD job: expire open trades, then send daily P&L recap to Telegram."""
+    log.info("Running close — daily recap + trade expiration…")
 
-    # ── Final tracker tick + expire remaining open trades ──
+    # ── Step 1: Final tracker tick (check TP/Stop one last time) ──
     _run_tracker()
+
+    # ── Step 2: Expire remaining open trades ──
     _run_expire_trades()
+
+    # ── Step 3: Build and send daily recap ──
+    try:
+        from tradingbot.web.alert_store import (
+            get_trade_stats,
+            load_outcomes_for_date,
+        )
+        stats = get_trade_stats()  # today by default
+        outcomes = load_outcomes_for_date()
+        # Count today's scans from sessions table
+        scan_count = 0
+        try:
+            from tradingbot.web.alert_store import _get_supabase, _today_et
+            sb = _get_supabase()
+            if sb:
+                resp = (
+                    sb.table("sessions")
+                    .select("id", count="exact")
+                    .eq("trade_date", _today_et().isoformat())
+                    .execute()
+                )
+                scan_count = resp.count or 0
+        except Exception:
+            pass
+
+        notifier = _notifier()
+        notifier.send_daily_recap(stats, outcomes, scan_count)
+        log.info(
+            f"Daily recap sent — {stats.get('total', 0)} alerts, "
+            f"{stats.get('wins', 0)}W/{stats.get('losses', 0)}L, "
+            f"avg PnL {stats.get('avg_pnl', 0):+.2f}%"
+        )
+    except Exception as e:
+        log.error(f"Daily recap failed: {e}")
+        _notifier().send_text(f"⚠️ *Daily recap failed*\n`{e}`")
 
 def _run_intraday() -> None:
     """Recurring midday scan that runs every 30 min during market hours."""

@@ -136,6 +136,84 @@ class TelegramNotifier:
             text = "\n".join(lines)
         return self._send_message(text)
 
+    def send_daily_recap(
+        self,
+        stats: dict,
+        outcomes: list[dict],
+        scan_count: int = 0,
+    ) -> bool:
+        """Send end-of-day performance recap to Telegram.
+
+        Args:
+            stats: dict from get_trade_stats() with wins/losses/pnl etc.
+            outcomes: list of outcome dicts from load_outcomes_for_date()
+            scan_count: how many scans ran today
+        """
+        if not self._enabled:
+            return False
+
+        total = stats.get("total", 0)
+
+        if total == 0:
+            text = (
+                "📊 *Daily Recap — Market Close*\n\n"
+                "No trade alerts fired today.\n"
+                f"Scans completed: {scan_count}"
+            )
+            return self._send_message(text)
+
+        wins = stats.get("wins", 0)
+        losses = stats.get("losses", 0)
+        expired = stats.get("expired", 0)
+        win_rate = stats.get("win_rate", 0.0)
+        avg_pnl = stats.get("avg_pnl", 0.0)
+        best = stats.get("best", 0.0)
+        worst = stats.get("worst", 0.0)
+
+        pnl_emoji = "🟢" if avg_pnl >= 0 else "🔴"
+        wr_emoji = "🔥" if win_rate >= 60 else "✅" if win_rate >= 40 else "⚠️"
+
+        lines = [
+            "📊 *Daily Recap — Market Close*",
+            "",
+            f"Alerts: *{total}* | Scans: {scan_count}",
+            f"Wins: *{wins}* | Losses: *{losses}* | Expired: {expired}",
+            f"Win Rate: {wr_emoji} *{win_rate:.0f}%*",
+            f"Avg P&L: {pnl_emoji} *{avg_pnl:+.2f}%*",
+            f"Best: *{best:+.2f}%* | Worst: *{worst:+.2f}%*",
+        ]
+
+        # Per-trade breakdown
+        if outcomes:
+            lines.append("")
+            lines.append("*Trade Results:*")
+            for o in outcomes:
+                sym = o.get("symbol", "?")
+                side = o.get("side", "long")
+                status = o.get("status", "open")
+                pnl = float(o.get("pnl_pct") or 0.0)
+                entry = float(o.get("entry_price") or 0.0)
+                exit_p = float(o.get("exit_price") or 0.0)
+
+                status_map = {
+                    "tp1_hit": "🎯 TP1",
+                    "tp2_hit": "🎯🎯 TP2",
+                    "stopped": "🛑 Stop",
+                    "expired": "⏰ Expired",
+                    "open": "⏳ Open",
+                }
+                status_label = status_map.get(status, status)
+                side_arrow = "↗" if side == "long" else "↘"
+                pnl_str = f"{pnl:+.2f}%" if pnl != 0 else "—"
+
+                lines.append(
+                    f"  {side_arrow} `{sym}` {status_label} | "
+                    f"${entry:.2f}→${exit_p:.2f} | {pnl_str}"
+                )
+
+        text = "\n".join(lines)
+        return self._send_message(text)
+
     # ── Message formatters ─────────────────────────────────────────────────
 
     @staticmethod

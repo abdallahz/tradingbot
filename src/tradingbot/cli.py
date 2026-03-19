@@ -104,25 +104,30 @@ def main() -> None:
         return
     
     if args.command == "run-close":
-        card_count, results = scheduler.run_close_only()
+        from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
+        from tradingbot.tracking.trade_tracker import TradeTracker
+
+        # Step 1: Final tracker tick + expire open trades
+        tracker = TradeTracker()
+        tracker.tick()
+        expired = tracker.expire_open_trades()
+        print(f">> Expired {expired} open trade(s)")
+
+        # Step 2: Build daily recap
+        stats = get_trade_stats()
+        outcomes = load_outcomes_for_date()
+        print(f"\n{mode_str} Daily Recap")
+        print(f">> Alerts: {stats['total']} | Wins: {stats['wins']} | Losses: {stats['losses']} | Expired: {stats['expired']}")
+        print(f">> Win Rate: {stats['win_rate']:.0f}% | Avg P&L: {stats['avg_pnl']:+.2f}%")
+        print(f">> Best: {stats['best']:+.2f}% | Worst: {stats['worst']:+.2f}%")
+
+        # Step 3: Send Telegram recap
         _notifier = TelegramNotifier.from_env()
-        pipeline_info = (
-            f"O1={len(results.night_research_picks)} picks | "
-            f"O2={len(results.relaxed_filter_cards)} cards | "
-            f"O3={len(results.strict_filter_cards)} cards"
-        )
-        print(f">> Pipeline: {pipeline_info}")
         if _notifier._enabled:
-            _ok = _notifier.send_session_summary("Close", card_count, pipeline_info, night_picks=results.night_research_picks)
-            print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
+            _ok = _notifier.send_daily_recap(stats, outcomes)
+            print(f">> Telegram recap: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
-            print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
-        print(f"\n{mode_str} Close Scan Complete")
-        print(f">> Watchlist: outputs/close_watchlist.csv")
-        print(f">> Playbook:  outputs/close_playbook.md")
-        from datetime import datetime, timezone
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        print(f">> Archived to: outputs/archive/{today}/\n")
+            print(">> Telegram recap: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
         return
 
     # Legacy run-day command
