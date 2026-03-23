@@ -171,7 +171,7 @@ def dashboard():
         # 1. Try Supabase (persists across dyno restarts)
         try:
             from tradingbot.web.alert_store import load_catalyst_scores
-            raw_scores = load_catalyst_scores()
+            raw_scores = load_catalyst_scores(date_filter or None)
         except Exception:
             pass
 

@@ -293,21 +293,20 @@ def save_catalyst_scores(scores: dict[str, float]) -> None:
         log.warning(f"[alert_store] save_catalyst_scores failed: {exc}")
 
 
-def load_catalyst_scores() -> dict[str, float] | None:
-    """Load today's catalyst scores from Supabase.
+def load_catalyst_scores(trade_date: str | None = None) -> dict[str, float] | None:
+    """Load catalyst scores from Supabase for a given date (default: today).
 
-    Returns the scores dict if found, or None if not available (meaning
-    news research needs to run).
+    Returns the scores dict if found, or None if not available.
     """
     sb = _get_supabase()
     if sb is None:
         return None
     try:
-        today_str = _today_et().isoformat()
+        target = trade_date or _today_et().isoformat()
         resp = (
             sb.table("catalyst_scores")
             .select("scores")
-            .eq("trade_date", today_str)
+            .eq("trade_date", target)
             .execute()
         )
         if resp.data and resp.data[0].get("scores"):
