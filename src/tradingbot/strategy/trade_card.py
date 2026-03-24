@@ -6,7 +6,7 @@ from typing import Literal
 from tradingbot.models import Side, SymbolSnapshot, TradeCard
 
 
-MIN_RR = 2.0
+MIN_RR = 1.5
 
 
 def build_trade_card(
@@ -29,6 +29,17 @@ def build_trade_card(
     """
     entry = round(stock.price, 2)
     atr_buffer = stock.atr * 0.5 if stock.atr > 0 else entry * 0.005
+
+    # Reject if key levels aren't set — a card with TP1=0 is nonsensical
+    if side == "long" and stock.key_resistance <= 0:
+        return None
+    if side == "short" and stock.key_support <= 0:
+        return None
+    # Support/resistance must be on the correct side of price
+    if side == "long" and stock.key_resistance <= entry:
+        return None
+    if side == "short" and stock.key_support >= entry:
+        return None
 
     if side == "long":
         # Stop: just below the key support level

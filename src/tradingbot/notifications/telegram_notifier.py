@@ -206,6 +206,7 @@ class TelegramNotifier:
         wins = stats.get("wins", 0)
         losses = stats.get("losses", 0)
         expired = stats.get("expired", 0)
+        breakeven = stats.get("breakeven", 0)
         win_rate = stats.get("win_rate", 0.0)
         avg_pnl = stats.get("avg_pnl", 0.0)
         best = stats.get("best", 0.0)
@@ -218,7 +219,7 @@ class TelegramNotifier:
             "📊 *Daily Recap — Market Close*",
             "",
             f"Alerts: *{total}* | Scans: {scan_count}",
-            f"Wins: *{wins}* | Losses: *{losses}* | Expired: {expired}",
+            f"Wins: *{wins}* | Losses: *{losses}* | BE: {breakeven} | Expired: {expired}",
             f"Win Rate: {wr_emoji} *{win_rate:.0f}%*",
             f"Avg P&L: {pnl_emoji} *{avg_pnl:+.2f}%*",
             f"Best: *{best:+.2f}%* | Worst: *{worst:+.2f}%*",
@@ -243,6 +244,7 @@ class TelegramNotifier:
                     "tp1_hit": "🎯 TP1",
                     "tp2_hit": "🎯🎯 TP2",
                     "stopped": "🛑 Stop",
+                    "breakeven": "⚖️ BE",
                     "expired": "⏰ Expired",
                     "open": "⏳ Open",
                 }

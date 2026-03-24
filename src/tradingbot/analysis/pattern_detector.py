@@ -281,6 +281,11 @@ def score_confluence(patterns: list[str], side: str = "long") -> float:
     contradictory — the alert should be dropped.
     A negative score means a strong opposing signal is present.
 
+    If the patterns list is empty (insufficient bar data), return a
+    neutral score so the card isn't silently killed just because Alpaca
+    returned < 5 bars.  Only penalise when we have enough data and
+    the detected patterns actually conflict.
+
     Args:
         patterns: List of pattern strings from detect_patterns()
         side:     "long" or "short"
@@ -288,6 +293,9 @@ def score_confluence(patterns: list[str], side: str = "long") -> float:
     Returns:
         float in range -100 to 100 (clamped to 0..100 for practical use)
     """
+    if not patterns:
+        return 15.0  # neutral — insufficient data, not an opposing signal
+
     weights = _LONG_WEIGHTS if side == "long" else _SHORT_WEIGHTS
     raw = sum(weights.get(p, 0) for p in patterns)
     return max(-100.0, min(100.0, float(raw)))

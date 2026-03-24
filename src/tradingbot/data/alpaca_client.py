@@ -205,19 +205,22 @@ class AlpacaClient:
                     # Above PM high + ATR buffer = too much upside, short fails.
                     pullback_high = reclaim_level + atr_val
 
-                    # ── key_support: strongest nearby support for stop placement ──
-                    # Pick the highest meaningful floor: VWAP, EMA20, PM low, prev close
+                    # ── key_support: meaningful floor for stop placement ─────
+                    # Use the LOWEST candidate so the stop has real breathing
+                    # room.  The fixed_stop_pct cap in trade_card.py bounds
+                    # maximum risk, so we want a structurally significant
+                    # level — not just the closest one.
                     support_candidates = [
                         v for v in [vwap, ema20, pm_low, prev_close] if v and v > 0
                     ]
-                    key_support = max(support_candidates) if support_candidates else current_price * 0.98
-                    # Also consider the computed support from bar data if available
+                    key_support = min(support_candidates) if support_candidates else current_price * 0.97
+                    # Also consider the computed support from bar data
                     bar_support = tech.get("support", 0.0)
                     if bar_support > 0:
-                        key_support = max(key_support, bar_support)
+                        key_support = min(key_support, bar_support)
                     # Support must be below current price to be meaningful
                     if key_support >= current_price:
-                        key_support = current_price - atr_val * 0.5
+                        key_support = current_price - atr_val
 
                     # ── key_resistance: nearest ceiling / profit target ───────
                     key_resistance = reclaim_level  # PM high is the primary resistance

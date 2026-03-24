@@ -158,7 +158,14 @@ class TradeTracker:
 
     # ── Evaluate outcome for one trade ─────────────────────────────────────
     def _evaluate(self, trade: dict, price: float) -> str | None:
-        """Return the new status if a level was hit, else None."""
+        """Return the new status if a level was hit, else None.
+
+        Includes a breakeven trail: once the trade is profitable by ≥ 1R
+        (halfway to TP1 at R:R=2, or the full TP1-entry distance at R:R=1.5),
+        the stop is moved to entry so the worst outcome is breakeven.
+        This converts many would-be "expired" trades into scratch trades
+        and lets real winners run to TP1/TP2.
+        """
         side = trade.get("side", "long")
         entry = float(trade.get("entry_price") or 0)
         stop = float(trade.get("stop_price") or 0)
@@ -169,10 +176,22 @@ class TradeTracker:
         if entry <= 0:
             return None
 
+        # ── Breakeven trail: move stop to entry once 1R profit reached ──
+        risk = abs(entry - stop) if stop > 0 else 0
+        if risk > 0 and current_status == "open":
+            if side == "long":
+                unrealised = price - entry
+            else:
+                unrealised = entry - price
+            if unrealised >= risk:
+                # Price has moved ≥ 1R in our favour — trail stop to entry
+                self._trail_stop_to_entry(trade, entry)
+                stop = entry  # use updated stop for the rest of this tick
+
         if side == "long":
             # Check stop first (worst case)
             if stop > 0 and price <= stop:
-                return "stopped"
+                return "breakeven" if stop == entry else "stopped"
             # TP2 beats TP1 (upgrade)
             if tp2 > 0 and price >= tp2:
                 return "tp2_hit"
@@ -180,13 +199,33 @@ class TradeTracker:
                 return "tp1_hit"
         else:  # short
             if stop > 0 and price >= stop:
-                return "stopped"
+                return "breakeven" if stop == entry else "stopped"
             if tp2 > 0 and price <= tp2:
                 return "tp2_hit"
             if tp1 > 0 and price <= tp1 and current_status == "open":
                 return "tp1_hit"
 
         return None
+
+    def _trail_stop_to_entry(self, trade: dict, entry: float) -> None:
+        """Move the stop to entry (breakeven) in the database."""
+        try:
+            from tradingbot.web.alert_store import update_outcome
+            outcome_id = trade.get("id")
+            if outcome_id is None:
+                return
+            from tradingbot.web.alert_store import _get_supabase
+            sb = _get_supabase()
+            if sb is None:
+                return
+            sb.table("trade_outcomes").update(
+                {"stop_price": round(entry, 2)}
+            ).eq("id", outcome_id).execute()
+            log.info(
+                f"[tracker] {trade['symbol']}: stop trailed to breakeven @ ${entry:.2f}"
+            )
+        except Exception as exc:
+            log.warning(f"[tracker] trail stop failed: {exc}")
 
     # ── Calculate P&L % ────────────────────────────────────────────────────
     def _calc_pnl(self, trade: dict, exit_price: float) -> float:

@@ -3,4 +3,4 @@ risk:
   daily_loss_lockout_pct: 1.5
   max_consecutive_losses: 2
   risk_per_trade_pct: 0.5
-  fixed_stop_pct: 1.0
+  fixed_stop_pct: 2.5

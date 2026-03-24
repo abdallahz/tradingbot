@@ -551,13 +551,13 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     """Compute win/loss stats for the given date.
 
     Returns {"total": N, "wins": N, "losses": N, "open": N, "expired": N,
-             "win_rate": 0.0, "avg_pnl": 0.0, "best": 0.0, "worst": 0.0}
+             "breakeven": N, "win_rate": 0.0, "avg_pnl": 0.0, "best": 0.0, "worst": 0.0}
     """
     outcomes = load_outcomes_for_date(trade_date)
     if not outcomes:
         return {
             "total": 0, "wins": 0, "losses": 0, "open": 0,
-            "expired": 0, "win_rate": 0.0, "avg_pnl": 0.0,
+            "expired": 0, "breakeven": 0, "win_rate": 0.0, "avg_pnl": 0.0,
             "best": 0.0, "worst": 0.0,
         }
 
@@ -565,6 +565,7 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     losses = 0
     open_count = 0
     expired = 0
+    breakeven = 0
     pnls: list[float] = []
 
     for o in outcomes:
@@ -576,6 +577,9 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
         elif st == "stopped":
             losses += 1
             pnls.append(pnl)
+        elif st == "breakeven":
+            breakeven += 1
+            pnls.append(0.0)  # scratch trade
         elif st == "expired":
             expired += 1
             pnls.append(pnl)
@@ -583,7 +587,7 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
             open_count += 1
 
     total = len(outcomes)
-    decided = wins + losses  # exclude open + expired from win rate
+    decided = wins + losses  # exclude open, expired, breakeven from win rate
     win_rate = round((wins / decided * 100) if decided > 0 else 0.0, 1)
     avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0.0
     best = round(max(pnls), 2) if pnls else 0.0
@@ -595,6 +599,7 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
         "losses": losses,
         "open": open_count,
         "expired": expired,
+        "breakeven": breakeven,
         "win_rate": win_rate,
         "avg_pnl": avg_pnl,
         "best": best,
@@ -640,6 +645,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
             wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit"))
             losses = sum(1 for r in rows if r.get("status") == "stopped")
             expired = sum(1 for r in rows if r.get("status") == "expired")
+            be = sum(1 for r in rows if r.get("status") == "breakeven")
             total = len(rows)
             decided = wins + losses
             pnls = [float(r.get("pnl_pct") or 0) for r in rows
