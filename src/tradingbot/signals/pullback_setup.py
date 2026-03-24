@@ -29,7 +29,12 @@ def has_valid_setup(stock: SymbolSnapshot, side: Side, volume_multiplier: float)
     has_vol = (
         volume_multiplier == 0.0
         or volume_spike(stock, volume_multiplier)
-        or stock.relative_volume >= volume_multiplier
+        # relative_volume (premarket vs prev-day ratio) is a reliable
+        # fallback when minute-bar data is stale, but require at least
+        # 50K premarket shares so a tiny prev-day denominator can't
+        # inflate the ratio for illiquid names.
+        or (stock.relative_volume >= volume_multiplier
+            and stock.premarket_volume >= 50_000)
     )
     if side == "long":
         has_ema = ema_hold_long(stock)

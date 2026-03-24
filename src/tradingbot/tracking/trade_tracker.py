@@ -178,7 +178,7 @@ class TradeTracker:
 
         # ── Breakeven trail: move stop to entry once 1R profit reached ──
         risk = abs(entry - stop) if stop > 0 else 0
-        if risk > 0 and current_status == "open":
+        if risk > 0 and current_status == "open" and stop != entry:
             if side == "long":
                 unrealised = price - entry
             else:

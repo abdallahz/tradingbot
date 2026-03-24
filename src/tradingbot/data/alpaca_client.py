@@ -215,20 +215,24 @@ class AlpacaClient:
                     pullback_high = reclaim_level + atr_val
 
                     # ── key_support: meaningful floor for stop placement ─────
-                    # Use the LOWEST candidate so the stop has real breathing
-                    # room.  The fixed_stop_pct cap in trade_card.py bounds
-                    # maximum risk, so we want a structurally significant
-                    # level — not just the closest one.
-                    support_candidates = [
-                        v for v in [vwap, ema20, pm_low, prev_close] if v and v > 0
-                    ]
-                    key_support = min(support_candidates) if support_candidates else current_price * 0.97
-                    # Also consider the computed support from bar data
+                    # Collect ALL candidate support levels (including bar-data
+                    # support) and keep only those below the current price.
+                    # Then pick the 2nd-lowest when we have ≥ 3 candidates:
+                    #   - Not the absolute floor (min) which the fixed_stop_pct
+                    #     cap always overrides, making the level meaningless.
+                    #   - Not the tightest (max) which creates stops that trip
+                    #     on normal intraday noise.
                     bar_support = tech.get("support", 0.0)
-                    if bar_support > 0:
-                        key_support = min(key_support, bar_support)
-                    # Support must be below current price to be meaningful
-                    if key_support >= current_price:
+                    support_candidates = [
+                        v for v in [vwap, ema20, pm_low, prev_close, bar_support]
+                        if v and 0 < v < current_price
+                    ]
+                    if len(support_candidates) >= 3:
+                        support_candidates.sort()
+                        key_support = support_candidates[1]  # 2nd-lowest
+                    elif support_candidates:
+                        key_support = min(support_candidates)
+                    else:
                         key_support = current_price - atr_val
 
                     # ── key_resistance: nearest ceiling / profit target ───────
