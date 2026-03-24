@@ -214,35 +214,56 @@ class AlpacaClient:
                     # Above PM high + ATR buffer = too much upside, short fails.
                     pullback_high = reclaim_level + atr_val
 
-                    # ── key_support: meaningful floor for stop placement ─────
-                    # Collect ALL candidate support levels (including bar-data
-                    # support) and keep only those below the current price.
-                    # Then pick the 2nd-lowest when we have ≥ 3 candidates:
-                    #   - Not the absolute floor (min) which the fixed_stop_pct
-                    #     cap always overrides, making the level meaningless.
-                    #   - Not the tightest (max) which creates stops that trip
-                    #     on normal intraday noise.
-                    bar_support = tech.get("support", 0.0)
-                    support_candidates = [
-                        v for v in [vwap, ema20, pm_low, prev_close, bar_support]
-                        if v and 0 < v < current_price
-                    ]
-                    if len(support_candidates) >= 3:
-                        support_candidates.sort()
-                        key_support = support_candidates[1]  # 2nd-lowest
-                    elif support_candidates:
-                        key_support = min(support_candidates)
-                    else:
-                        key_support = current_price - atr_val
+                    # ── Detect breakout vs pullback mode ───────────────────
+                    # When price is already at or above the PM high, this is a
+                    # breakout — the PM high flips from resistance to support.
+                    # Pullback mode: price is below PM high, targeting it.
+                    is_breakout = (
+                        current_price >= reclaim_level * 0.995  # within 0.5%
+                        and reclaim_level > 0
+                    )
 
-                    # ── key_resistance: nearest ceiling / profit target ───────
-                    key_resistance = reclaim_level  # PM high is the primary resistance
+                    bar_support = tech.get("support", 0.0)
                     bar_resistance = tech.get("resistance", 0.0)
-                    if bar_resistance > 0 and bar_resistance > current_price:
-                        key_resistance = max(key_resistance, bar_resistance)
-                    # Resistance must be above current price
-                    if key_resistance <= current_price:
-                        key_resistance = current_price + atr_val
+
+                    if is_breakout:
+                        # ── BREAKOUT: price at/above PM high ──────────────────
+                        # PM high is now support; target is an extension above.
+                        # Stop just below the breakout level (PM high).
+                        key_support = reclaim_level - atr_val * 0.25
+                        # If we have a higher bar-data resistance, use it;
+                        # otherwise project 2× ATR above current price.
+                        if bar_resistance > 0 and bar_resistance > current_price:
+                            key_resistance = bar_resistance
+                        else:
+                            key_resistance = current_price + atr_val * 2
+                    else:
+                        # ── PULLBACK: price below PM high ─────────────────────
+                        # key_support = meaningful floor for stop placement.
+                        # Collect ALL candidate support levels and keep only
+                        # those below the current price.  Pick the 2nd-lowest
+                        # when we have ≥ 3 candidates (not the absolute floor
+                        # which the fixed_stop_pct cap always overrides, and
+                        # not the tightest which trips on intraday noise).
+                        support_candidates = [
+                            v for v in [vwap, ema20, pm_low, prev_close, bar_support]
+                            if v and 0 < v < current_price
+                        ]
+                        if len(support_candidates) >= 3:
+                            support_candidates.sort()
+                            key_support = support_candidates[1]  # 2nd-lowest
+                        elif support_candidates:
+                            key_support = min(support_candidates)
+                        else:
+                            key_support = current_price - atr_val
+
+                        # key_resistance = nearest ceiling / profit target
+                        key_resistance = reclaim_level
+                        if bar_resistance > 0 and bar_resistance > current_price:
+                            key_resistance = max(key_resistance, bar_resistance)
+                        # Resistance must be above current price
+                        if key_resistance <= current_price:
+                            key_resistance = current_price + atr_val
 
                     snapshots.append(
                         SymbolSnapshot(
