@@ -165,14 +165,23 @@ class AlpacaClient:
                     # Pre-market (before open): snap.minute_bar is None — Alpaca only
                     # returns a minute bar during regular market hours. Fall back to
                     # the accumulated pre-market volume so the volume-spike check works.
+                    #
+                    # IMPORTANT: After-hours or stale minute bars can return tiny
+                    # volumes (e.g. 100 shares) that are lower than the per-minute
+                    # average — this creates a false negative on volume_spike.
+                    # Only trust the minute bar if its volume is at least 10% of
+                    # the per-minute baseline; otherwise use premarket_vol.
                     recent_minute_vol = snap.minute_bar.volume if (snap.minute_bar and snap.minute_bar.volume) else 0
-                    recent_volume = recent_minute_vol if recent_minute_vol > 0 else premarket_vol
-                    # Baseline: previous day's avg-per-minute volume is a stable reference.
-                    # Avoid dividing current partial-day volume by 390 (wildly off pre-market).
                     avg_vol_base = prev_volume if prev_volume and prev_volume > 0 else premarket_vol * 5
                     avg_volume_20 = avg_vol_base // 390 if avg_vol_base > 0 else 1
+                    # Sanity gate: minute bar vol must exceed 10% of per-minute avg
+                    # to be considered real intraday data (not a stale after-hours print)
+                    if recent_minute_vol > 0 and recent_minute_vol >= avg_volume_20 * 0.1:
+                        recent_volume = recent_minute_vol
+                    else:
+                        recent_volume = premarket_vol
                     if DEBUG:
-                        mode = "minute-bar" if recent_minute_vol > 0 else "premarket-fallback"
+                        mode = "minute-bar" if (recent_minute_vol > 0 and recent_minute_vol >= avg_volume_20 * 0.1) else "premarket-fallback"
                         print(f"[DEBUG] {symbol} volume: recent={recent_volume:,} ({mode}), avg_per_min={avg_volume_20:,}, spike_ratio={recent_volume/max(1,avg_volume_20):.1f}x")
 
                     # ATR for volatility sizing

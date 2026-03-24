@@ -16,12 +16,21 @@ def has_valid_setup(stock: SymbolSnapshot, side: Side, volume_multiplier: float)
 
     volume_multiplier=0.0 disables the volume gate (always passes).
     Otherwise the stock needs:
-      1. Volume spike  (participation), AND
+      1. Volume confirmation (participation):
+         - volume_spike (recent minute-bar vs per-minute average), OR
+         - relative_volume >= multiplier (premarket vs prev-day ratio —
+           more reliable when minute-bar data is stale/missing)
       2. At least one of: EMA hold, VWAP reclaim  (direction).
 
-    This prevents chasing pure volume spikes with no technical structure.
+    This prevents chasing pure volume spikes with no technical structure,
+    while not penalizing stocks with strong premarket activity but a stale
+    minute-bar reading.
     """
-    has_vol = volume_multiplier == 0.0 or volume_spike(stock, volume_multiplier)
+    has_vol = (
+        volume_multiplier == 0.0
+        or volume_spike(stock, volume_multiplier)
+        or stock.relative_volume >= volume_multiplier
+    )
     if side == "long":
         has_ema = ema_hold_long(stock)
         has_vwap = vwap_reclaim_long(stock)
