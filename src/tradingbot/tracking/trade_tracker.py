@@ -52,27 +52,54 @@ class TradeTracker:
             log.warning(f"[tracker] Failed to init Alpaca client: {exc}")
             return None
 
-    # ── Fetch latest quotes (IEX free feed) ────────────────────────────────
+    # ── Fetch latest prices (IEX free feed) ──────────────────────────────
     def _fetch_quotes(self, symbols: list[str]) -> dict[str, float]:
-        """Return {symbol: last_price} for the given symbols."""
+        """Return {symbol: last_price} for the given symbols.
+
+        Uses latest *trades* (not quotes) because IEX free-feed quotes
+        (bid/ask) are frequently 0 for small-cap names, whereas last
+        trade is almost always populated for any actively-traded symbol.
+        Falls back to latest quote if the trade endpoint fails.
+        """
         client = self._get_alpaca()
         if client is None or not symbols:
             return {}
+
+        # ── Primary: latest trade price (most reliable on IEX) ─────
+        try:
+            from alpaca.data.requests import StockLatestTradeRequest
+            req = StockLatestTradeRequest(
+                symbol_or_symbols=symbols, feed="iex"
+            )
+            trades = client.get_stock_latest_trade(req)
+            prices: dict[str, float] = {}
+            for sym, t in trades.items():
+                price = getattr(t, "price", 0.0) or 0.0
+                if price > 0:
+                    prices[sym] = float(price)
+            if prices:
+                missing = set(symbols) - set(prices.keys())
+                if missing:
+                    log.info(f"[tracker] No trade price for: {missing}")
+                return prices
+        except Exception as exc:
+            log.warning(f"[tracker] Latest-trade fetch failed, trying quotes: {exc}")
+
+        # ── Fallback: latest quote (bid/ask) ───────────────────────
         try:
             from alpaca.data.requests import StockLatestQuoteRequest
             req = StockLatestQuoteRequest(
                 symbol_or_symbols=symbols, feed="iex"
             )
             quotes = client.get_stock_latest_quote(req)
-            prices: dict[str, float] = {}
+            prices = {}
             for sym, q in quotes.items():
-                # IEX quote: use ask_price, bid_price, or last trade
                 price = q.ask_price or q.bid_price or 0.0
                 if price > 0:
                     prices[sym] = float(price)
             return prices
         except Exception as exc:
-            log.warning(f"[tracker] Quote fetch failed: {exc}")
+            log.warning(f"[tracker] Quote fetch also failed: {exc}")
             return {}
 
     # ── Main tick: check all open trades ───────────────────────────────────

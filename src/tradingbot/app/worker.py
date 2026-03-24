@@ -241,6 +241,8 @@ def main() -> None:
     ran_today: dict[str, date] = {}
     # Track last intraday scan time (HH:MM) to avoid re-running same block
     last_intraday_block: str = ""
+    # Track last tracker check (every 5 min, independent of scans)
+    last_tracker_block: str = ""
 
     # ── Startup catch-up: if we're mid-market, fire an immediate intraday scan
     startup = _now_et()
@@ -276,6 +278,20 @@ def main() -> None:
                         last_intraday_block = block_label
                         _run_intraday()
 
+            # ── Independent tracker cycle (every 5 min, 9:35–15:55 ET) ──
+            # Runs much more often than scans so TP/Stop hits aren't missed
+            # between the 30-min scan intervals.
+            if now.weekday() < 5:
+                tracker_start = 9 * 60 + 35   # 5 min after open
+                tracker_end   = 15 * 60 + 55  # 5 min before close
+                if tracker_start <= now_minutes <= tracker_end:
+                    t_block_m = (now_minutes // 5) * 5
+                    t_h, t_min = divmod(t_block_m, 60)
+                    t_label = f"{t_h:02d}:{t_min:02d}"
+                    if t_label != last_tracker_block:
+                        last_tracker_block = t_label
+                        _run_tracker()
+
             # ── Fixed daily jobs ──
             for job_name, scheduled_time in schedule.items():
                 if ran_today.get(job_name) == today:
@@ -301,6 +317,7 @@ def main() -> None:
                     del ran_today[job_name]
             if now.hour == 0 and now.minute < 1:
                 last_intraday_block = ""
+                last_tracker_block = ""
 
         except Exception as e:
             log.error(f"Scheduler loop error: {e}")

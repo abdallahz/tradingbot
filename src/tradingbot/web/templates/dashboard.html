@@ -1841,7 +1841,8 @@
                     <div class="close-pick-card {{ 'long-pick' if p.side == 'long' else 'short-pick' }}">
                         <div class="cp-header">
                             <span class="cp-symbol">{{ p.symbol }}</span>
-                            <span class="cp-score-badge {% if p.score >= 55 %}high{% elif p.score >= 40 %}medium{% else %}low{% endif %}">
+                            <span
+                                class="cp-score-badge {% if p.score >= 55 %}high{% elif p.score >= 40 %}medium{% else %}low{% endif %}">
                                 {{ p.score }}/100
                             </span>
                         </div>
@@ -1850,7 +1851,9 @@
                         </div>
                         <div class="cp-metrics">
                             <span>Price <span class="val">${{ "%.2f"|format(p.price) }}</span></span>
-                            <span>Day <span class="val {% if p.change_pct >= 0 %}" style="color:var(--green){% else %}" style="color:var(--red){% endif %}">{{ "%+.1f"|format(p.change_pct) }}%</span></span>
+                            <span>Day <span class="val {% if p.change_pct >= 0 %}" style="color:var(--green){% else %}"
+                                    style="color:var(--red){% endif %}">{{ "%+.1f"|format(p.change_pct)
+                                    }}%</span></span>
                             <span>Vol <span class="val">{{ "%.1f"|format(p.relative_volume) }}x</span></span>
                             {% if p.catalyst_score >= 50 %}
                             <span>Catalyst <span class="val">{{ "%.0f"|format(p.catalyst_score) }}</span></span>
