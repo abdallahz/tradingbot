@@ -550,10 +550,10 @@ class SessionRunner:
         """Fetch market snapshots and annotate each with its catalyst score."""
         universe_set = set(universe_str)
         if self.use_real_data and self.alpaca_client:
-            # Sort by catalyst score and cap at 50 to avoid Alpaca batch-size limits
+            # Sort by catalyst score (highest first) so the most
+            # promising symbols are fetched in the earliest batches.
             sorted_universe = sorted(universe_str, key=lambda s: catalyst_scores.get(s, 0), reverse=True)
-            fetch_universe = sorted_universe[:50]
-            snapshots = self.alpaca_client.get_premarket_snapshots(fetch_universe)
+            snapshots = self.alpaca_client.get_premarket_snapshots(sorted_universe)
         elif session_type == "morning":
             snapshots = [s for s in get_premarket_snapshots() if s.symbol in universe_set]
         else:
@@ -637,6 +637,20 @@ class SessionRunner:
         if not universe_str:
             sorted_scores = sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)
             universe_str = [s for s, _ in sorted_scores[:50]]
+
+        # Merge live screener movers so we catch intraday runners
+        # that weren't in last night's research universe.
+        if self.use_real_data and self.alpaca_client:
+            screener_syms = self.alpaca_client._get_screener_symbols()
+            new_syms = [s for s in screener_syms if s not in catalyst_scores]
+            if new_syms:
+                # Give new movers a baseline catalyst score of 50
+                # so they pass the >=40 gate and get a fair evaluation.
+                for s in new_syms:
+                    catalyst_scores[s] = 50.0
+                universe_str = list(set(universe_str) | set(new_syms))
+                print(f"[session] +{len(new_syms)} new screener movers added to universe")
+
         stricter = session_type in ["midday", "close"]
         session_tag = session_type  # "morning", "midday", or "close"
         snapshots = self._fetch_snapshots(session_type, universe_str, catalyst_scores)

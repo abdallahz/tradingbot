@@ -55,6 +55,7 @@ class TradeCard:
     ai_confidence: int = 0       # LLM confidence rating 1-10 (0 = not validated)
     ai_reasoning: str = ""       # LLM analysis summary
     ai_concerns: list[str] = field(default_factory=list)  # LLM-flagged concerns
+    risk_level: str = "low"      # "low", "medium", "high" — overall trade risk
 
 
 @dataclass

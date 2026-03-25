@@ -5,9 +5,14 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest, StockSnapshotRequest
+from alpaca.data.historical.screener import ScreenerClient
+from alpaca.data.requests import (
+    StockBarsRequest, StockLatestQuoteRequest, StockSnapshotRequest,
+    MostActivesRequest, MarketMoversRequest,
+)
 from alpaca.data.timeframe import TimeFrame
 import pandas as pd
+import re
 
 from tradingbot.analysis.technical_indicators import compute_indicators, interpret_signals
 from tradingbot.analysis.pattern_detector import detect_patterns
@@ -17,9 +22,20 @@ from tradingbot.models import SymbolSnapshot
 DEBUG = os.environ.get("DEBUG", "").strip() == "1"
 
 
+# Suffixes that indicate warrants, rights, units — not common shares.
+# Only flag W/R/Z/U suffixes on tickers with 5+ chars to avoid false positives
+# on legitimate short tickers like MU, NR, etc.
+_JUNK_SUFFIX = re.compile(
+    r"\.(WS|RT|UN)$"       # dot-separated: VLN.WS, GAB.RT
+    r"|(?<=\w{4})[WRZU]$",  # 5+ char tickers ending in W/R/Z/U: RMSGW, HUBCZ
+    re.IGNORECASE,
+)
+
+
 class AlpacaClient:
     def __init__(self, api_key: str, api_secret: str, paper: bool = True) -> None:
         self.client = StockHistoricalDataClient(api_key, api_secret)
+        self.screener = ScreenerClient(api_key, api_secret)
         self.paper = paper
 
     def _fetch_batch(self, symbols: list[str]) -> tuple[dict, dict, Any, Any]:
@@ -389,47 +405,79 @@ class AlpacaClient:
         
         return ", ".join(warnings) if warnings else None
 
+    # ── Core watchlist (always scanned for catalyst context) ─────────────
+    _CORE_WATCHLIST: list[str] = [
+        # Mega-cap Tech
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
+        "AVGO", "AMD", "INTC", "MU", "SMCI", "ARM", "PLTR", "CRWD",
+        # Financials
+        "JPM", "GS", "V", "MA", "PYPL", "SQ", "COIN",
+        # Healthcare
+        "LLY", "UNH", "MRNA", "BNTX",
+        # Consumer / EV
+        "WMT", "COST", "UBER", "RIVN", "LCID", "NIO",
+        # Energy
+        "XOM", "CVX",
+        # Retail favorites
+        "GME", "AMC", "SOFI", "IONQ", "QUBT", "RGTI", "SOUN", "LUNR",
+        # ETFs (market context)
+        "SPY", "QQQ", "IWM",
+    ]
+
+    def _get_screener_symbols(self) -> list[str]:
+        """Fetch today's most-active and biggest-mover symbols from Alpaca.
+
+        Combines three screener feeds:
+          - Most active by volume  (top 50)
+          - Most active by trades  (top 50)
+          - Market movers – gainers + losers (top 50 each)
+
+        Filters out warrants, rights, and units so only common shares remain.
+        Returns a de-duplicated list (typically 80-150 symbols).
+        """
+        symbols: set[str] = set()
+        try:
+            actives_vol = self.screener.get_most_actives(
+                MostActivesRequest(top=50, by="volume")
+            )
+            for a in actives_vol.most_actives:
+                symbols.add(a.symbol)
+        except Exception as exc:
+            print(f"[ALPACA] screener most-actives (vol) failed: {exc}")
+
+        try:
+            actives_trades = self.screener.get_most_actives(
+                MostActivesRequest(top=50, by="trades")
+            )
+            for a in actives_trades.most_actives:
+                symbols.add(a.symbol)
+        except Exception as exc:
+            print(f"[ALPACA] screener most-actives (trades) failed: {exc}")
+
+        try:
+            movers = self.screener.get_market_movers(
+                MarketMoversRequest(top=50)
+            )
+            for m in movers.gainers:
+                symbols.add(m.symbol)
+            for m in movers.losers:
+                symbols.add(m.symbol)
+        except Exception as exc:
+            print(f"[ALPACA] screener market-movers failed: {exc}")
+
+        # Strip warrants / rights / units (e.g. RMSGW, GAB.RT, VLN.WS)
+        cleaned = {s for s in symbols if not _JUNK_SUFFIX.search(s) and "." not in s}
+        if DEBUG:
+            print(f"[ALPACA] screener returned {len(cleaned)} unique symbols")
+        return list(cleaned)
+
     def get_tradable_universe(self) -> list[str]:
-        """Get list of tradable symbols matching basic criteria."""
-        return [
-            # ── Mega-cap Tech ──────────────────────────────────────────────
-            "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA",
-            "AVGO", "ORCL", "CRM", "AMD", "INTC", "QCOM", "TXN", "MU",
-            "AMAT", "LRCX", "KLAC", "MRVL", "SMCI", "ARM", "DELL", "HPQ",
-            "IBM", "NOW", "SNOW", "PLTR", "PANW", "CRWD", "ZS", "NET",
-            "DDOG", "MDB", "GTLB", "TEAM", "SHOP", "ADBE", "INTU", "ANSS",
-
-            # ── Financials ─────────────────────────────────────────────────
-            "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW",
-            "AXP", "V", "MA", "COF", "PYPL", "SQ", "HOOD", "COIN",
-            "ICE", "CME", "SPGI", "MCO", "BX", "KKR", "APO",
-
-            # ── Healthcare & Biotech ───────────────────────────────────────
-            "LLY", "UNH", "JNJ", "ABBV", "MRK", "PFE", "TMO", "ABT",
-            "DHR", "ISRG", "BSX", "MDT", "SYK", "EW", "REGN", "BIIB",
-            "GILD", "MRNA", "BNTX", "VRTX", "IDXX", "ZBH", "HUM", "CVS",
-
-            # ── Consumer ──────────────────────────────────────────────────
-            "WMT", "COST", "TGT", "HD", "LOW", "NKE", "SBUX",
-            "MCD", "YUM", "CMG", "DPZ", "ABNB", "BKNG", "EXPE", "LYFT",
-            "UBER", "DASH", "RBLX", "SNAP", "PINS", "MTCH",
-
-            # ── Energy ────────────────────────────────────────────────────
-            "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "VLO", "PSX",
-            "OXY", "DVN", "HAL", "BKR",
-
-            # ── Industrials & EV ──────────────────────────────────────────
-            "GE", "HON", "MMM", "CAT", "DE", "BA", "LMT", "RTX",
-            "NOC", "GD", "RIVN", "LCID", "NIO", "LI", "XPEV", "F", "GM",
-
-            # ── Communications & Media ────────────────────────────────────
-            "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "PARA", "WBD",
-            "SPOT", "TTWO", "EA", "ATVI",
-
-            # ── High-momentum / Retail favorites ──────────────────────────
-            "GME", "AMC", "BBBY", "SPCE", "SOFI", "IONQ", "QUBT", "RGTI",
-            "SOUN", "BBAI", "LUNR", "RKT", "OPEN", "CLOV", "WISH",
-
-            # ── ETFs (for market context) ─────────────────────────────────
-            "SPY", "QQQ", "IWM", "DIA", "ARKK", "SOXS", "SOXL", "TQQQ",
-        ]
+        """Build today's scan universe by merging dynamic screener data with a
+        small core watchlist.  This replaces the old hardcoded 170-symbol list
+        so the bot can discover *any* mover in the market."""
+        dynamic = self._get_screener_symbols()
+        merged = set(dynamic) | set(self._CORE_WATCHLIST)
+        universe = sorted(merged)
+        print(f"[ALPACA] universe: {len(self._CORE_WATCHLIST)} core + "
+              f"{len(dynamic)} screener = {len(universe)} total")
+        return universe

@@ -6,7 +6,57 @@ from typing import Literal
 from tradingbot.models import Side, SymbolSnapshot, TradeCard
 
 
-MIN_RR = 1.5
+MIN_RR = 1.5   # Minimum reward:risk ratio (TP1 / stop distance)
+
+
+def _assess_risk(stock: SymbolSnapshot, rr: float) -> str:
+    """Return 'low', 'medium', or 'high' based on trade-quality factors.
+
+    Penalty points (0-10 scale):
+      +2  price < $3            (penny-stock territory)
+      +1  price < $5            (small-cap friction)
+      +2  spread > 1.5%         (execution risk)
+      +1  spread > 0.8%         (wider than ideal)
+      +2  dollar_volume < $500K (thin liquidity)
+      +1  dollar_volume < $2M   (below-average liquidity)
+      +1  R:R < 2.0             (marginal reward)
+      +1  ATR/price > 5%        (highly volatile)
+
+    Mapping:  0-2 -> low,  3-4 -> medium,  5+ -> high
+    """
+    penalty = 0
+
+    # Price level
+    if stock.price < 3:
+        penalty += 2
+    elif stock.price < 5:
+        penalty += 1
+
+    # Spread
+    if stock.spread_pct > 1.5:
+        penalty += 2
+    elif stock.spread_pct > 0.8:
+        penalty += 1
+
+    # Dollar volume (liquidity)
+    if stock.dollar_volume < 500_000:
+        penalty += 2
+    elif stock.dollar_volume < 2_000_000:
+        penalty += 1
+
+    # Risk/reward
+    if rr < 2.0:
+        penalty += 1
+
+    # Volatility
+    if stock.price > 0 and stock.atr / stock.price > 0.05:
+        penalty += 1
+
+    if penalty >= 5:
+        return "high"
+    if penalty >= 3:
+        return "medium"
+    return "low"
 
 
 def build_trade_card(
@@ -112,4 +162,5 @@ def build_trade_card(
         scan_price=entry,
         key_support=round(stock.key_support, 2),
         key_resistance=round(stock.key_resistance, 2),
+        risk_level=_assess_risk(stock, rr),
     )

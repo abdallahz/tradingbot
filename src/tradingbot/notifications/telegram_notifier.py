@@ -282,6 +282,11 @@ class TelegramNotifier:
         else:
             ai_line = ""
 
+        # Risk level badge
+        risk_lvl = getattr(card, "risk_level", "low")
+        risk_icons = {"low": "✅ Low", "medium": "⚡ Medium", "high": "⚠️ High"}
+        risk_line = f"🛡 <b>Risk</b>    : {risk_icons.get(risk_lvl, risk_lvl)}"
+
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
             "",
@@ -302,6 +307,8 @@ class TelegramNotifier:
             "",
             f"📊 <b>Patterns</b> : {patterns}",
             f"📝 <b>Signals</b>  : {signals}",
+            "",
+            risk_line,
         ]
         if ai_line:
             lines.append("")

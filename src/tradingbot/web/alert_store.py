@@ -192,6 +192,7 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "key_resistance":  alert.get("key_resistance"),
                 "reasons":         alert.get("reasons") or [],
                 "patterns":        alert.get("patterns") or [],
+                "risk_level":      alert.get("risk_level", "low"),
             }
             try:
                 result = sb.table("alerts").insert(row).execute()
@@ -246,6 +247,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "session":        r.get("session"),
                 "reasons":        r.get("reasons") or [],
                 "patterns":       r.get("patterns") or [],
+                "risk_level":     r.get("risk_level", "low"),
                 "timestamp":      _format_ts(r.get("created_at", "")),
                 "timestamp_raw":  r.get("created_at", ""),
             })
@@ -717,6 +719,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "ai_confidence":  int(getattr(card, "ai_confidence", 0)),
         "ai_reasoning":   str(getattr(card, "ai_reasoning", "")),
         "ai_concerns":    list(getattr(card, "ai_concerns", [])),
+        "risk_level":     str(getattr(card, "risk_level", "low")),
         "timestamp":      generated,
     }
 

@@ -390,6 +390,41 @@
             font-size: 11px;
         }
 
+        /* ── Risk-level badge ─────────────────────────────── */
+        .risk-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .3px;
+            margin-bottom: 10px;
+        }
+
+        .risk-badge.low {
+            background: rgba(34, 197, 94, .10);
+            border: 1px solid rgba(34, 197, 94, .20);
+            color: var(--green);
+        }
+
+        .risk-badge.medium {
+            background: rgba(245, 158, 11, .10);
+            border: 1px solid rgba(245, 158, 11, .20);
+            color: var(--amber);
+        }
+
+        .risk-badge.high {
+            background: rgba(239, 68, 68, .10);
+            border: 1px solid rgba(239, 68, 68, .20);
+            color: var(--red);
+        }
+
+        .risk-badge .risk-icon {
+            font-size: 12px;
+        }
+
         /* ── Trade Outcome badge ─────────────────────────── */
         .outcome-badge {
             display: flex;
@@ -2038,6 +2073,15 @@
                         <div class="score-bar-fill" style="width:{{ [a.score,100]|min }}%"></div>
                     </div>
                     <span class="score-num">{{ a.score }}</span>
+                </div>
+
+                <!-- Risk level badge -->
+                {% set rl = a.risk_level|default('low') %}
+                <div class="risk-badge {{ rl }}">
+                    <span class="risk-icon">
+                        {% if rl == 'high' %}⚠️{% elif rl == 'medium' %}⚡{% else %}✅{% endif %}
+                    </span>
+                    <span>Risk: {{ rl | upper }}</span>
                 </div>
 
                 <!-- AI Confidence -->
