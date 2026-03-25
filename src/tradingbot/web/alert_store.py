@@ -47,13 +47,26 @@ def _is_weekend(date_str: str) -> bool:
         return False
 
 
+def _normalize_iso(raw: str) -> str:
+    """Normalise fractional seconds to 6 digits so fromisoformat always works."""
+    import re
+    # Match ".NNNNN" fractional part (any length) before tz offset or end
+    return re.sub(
+        r"\.(\d+)",
+        lambda m: "." + m.group(1)[:6].ljust(6, "0"),
+        raw,
+        count=1,
+    )
+
+
 def _format_ts(raw: str) -> str:
     """Convert ISO timestamp to readable format: 'Mar 18, 2026 · 2:34 PM ET'."""
     if not raw:
         return ""
     try:
         import pytz
-        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        cleaned = _normalize_iso(raw.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(cleaned)
         et = pytz.timezone("America/New_York")
         dt_et = dt.astimezone(et)
         hour = dt_et.strftime("%I").lstrip("0") or "12"
@@ -61,7 +74,8 @@ def _format_ts(raw: str) -> str:
     except Exception:
         try:
             # Fallback: simpler format without timezone conversion
-            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            cleaned = _normalize_iso(raw.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(cleaned)
             return dt.strftime("%b %d, %Y · %H:%M UTC")
         except Exception:
             return raw
