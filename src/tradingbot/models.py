@@ -57,6 +57,7 @@ class TradeCard:
     ai_reasoning: str = ""       # LLM analysis summary
     ai_concerns: list[str] = field(default_factory=list)  # LLM-flagged concerns
     risk_level: str = "low"      # "low", "medium", "high" — overall trade risk
+    position_size: int = 0       # Suggested shares for the configured risk budget
 
 
 @dataclass

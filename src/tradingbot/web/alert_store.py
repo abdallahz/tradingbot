@@ -779,6 +779,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "ai_reasoning":   str(getattr(card, "ai_reasoning", "")),
         "ai_concerns":    list(getattr(card, "ai_concerns", [])),
         "risk_level":     str(getattr(card, "risk_level", "low")),
+        "position_size":  int(getattr(card, "position_size", 0)),
         "timestamp":      generated,
     }
 

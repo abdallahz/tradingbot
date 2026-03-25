@@ -18,16 +18,48 @@ class Ranker:
         self.max_candidates = max_candidates
 
     def _normalize_gap(self, stock: SymbolSnapshot) -> float:
-        # Normalize over 5% range using absolute gap — works for both longs (up) and shorts (down)
-        return min(abs(stock.gap_pct) / 5.0, 1.0) * 100
+        """Score gap magnitude (0-100).
+
+        - Peaks at ~6-8% (sweet spot for momentum).
+        - Gaps > 12% are penalised (exhaustion / mean-reversion risk).
+        - Uses a log curve so small gaps still differentiate.
+        """
+        import math
+        g = abs(stock.gap_pct)
+        if g <= 0:
+            return 0.0
+        # Log curve: peaks around 8%, plateaus from 4-10%
+        base = min(1.0, math.log(1 + g / 3.0) / math.log(4.0)) * 100
+        # Exhaustion penalty: every % above 12% costs 5 pts
+        if g > 12:
+            base = max(0.0, base - (g - 12) * 5)
+        return base
 
     def _normalize_rel_vol(self, stock: SymbolSnapshot) -> float:
-        # Normalize over 2x range: 2x relative volume = full score
-        return min(stock.relative_volume / 2.0, 1.0) * 100
+        """Score relative volume (0-100).
+
+        2x relvol = 80 pts, 5x = ~95 pts, 10x = 100.  Diminishing returns
+        above 2x because extremely high relvol often indicates news already
+        priced in, but still worthy of bonus credit.
+        """
+        rv = stock.relative_volume
+        if rv <= 0:
+            return 0.0
+        # Main band: 0-2x → 0-80
+        base = min(rv / 2.0, 1.0) * 80
+        # Bonus band: 2-10x → 0-20
+        if rv > 2.0:
+            base += min((rv - 2.0) / 8.0, 1.0) * 20
+        return base
 
     def _normalize_liquidity(self, stock: SymbolSnapshot) -> float:
-        spread_component = max(0.0, 1.0 - (stock.spread_pct / 0.5))
-        dv_component = min(stock.dollar_volume / 100_000_000.0, 1.0)
+        """Score liquidity quality (0-100).
+
+        Spread component:  tight spread (< 0.5%) = 100, wide (> 2%) = 0.
+        DV component:      $20M DV = 100 (retail-scale threshold, not $100M).
+        """
+        spread_component = max(0.0, 1.0 - (stock.spread_pct / 2.0))
+        dv_component = min(stock.dollar_volume / 20_000_000.0, 1.0)
         return ((spread_component * 0.6) + (dv_component * 0.4)) * 100
 
     def _normalize_momentum(self, stock: SymbolSnapshot) -> float:
@@ -77,11 +109,12 @@ class Ranker:
         return min(strength / 0.01, 1.0) * 100.0
 
     def _score_signal_alignment(self, stock: SymbolSnapshot) -> float:
-        """Score the alignment of technical signals (0-100).
+        """Score alignment of technical signals with the expected trade side (0-100).
 
-        Uses interpret_signals() which was previously dead code.
-        Rewards having multiple bullish signals aligned (for longs) or
-        multiple bearish signals aligned (for shorts).
+        Direction-AWARE: determines expected side from gap_pct, then rewards
+        signals that confirm that direction and penalises opposing signals.
+        This prevents a stock with strong bearish alignment from ranking
+        highly when it would be taken as a long trade.
         """
         signals = interpret_signals(stock.tech_indicators, stock.price)
         if not signals:
@@ -92,37 +125,75 @@ class Ranker:
 
         bull_count = sum(1 for s in signals if s in bullish)
         bear_count = sum(1 for s in signals if s in bearish)
-
-        # Direction-agnostic: reward signal agreement in either direction
         total = bull_count + bear_count
         if total == 0:
             return 50.0
-        alignment = max(bull_count, bear_count) / total  # 0.5 = split, 1.0 = unanimous
-        # Scale: 50 (split) → 100 (unanimous), with count multiplier
-        count_bonus = min(total / 4.0, 1.0)  # More signals = more robust
-        return (50.0 + alignment * 50.0) * count_bonus
+
+        # Determine expected side from gap direction
+        expected_long = stock.gap_pct >= 0
+        if expected_long:
+            confirming = bull_count
+            opposing = bear_count
+        else:
+            confirming = bear_count
+            opposing = bull_count
+
+        # confirming/total ratio: 1.0 = all agree, 0 = all oppose
+        alignment = confirming / total
+        # Scale: 0 (all opposing) → 50 (mixed) → 100 (all confirming)
+        score = alignment * 100.0
+        # Count bonus: more signals = higher confidence (cap at 4)
+        count_bonus = min(total / 4.0, 1.0)
+        return score * count_bonus
 
     def _score_obv_divergence(self, stock: SymbolSnapshot) -> float:
-        """Score OBV (On-Balance Volume) trend alignment (0-100).
+        """Score OBV (On-Balance Volume) trend vs price trend (0-100).
 
-        OBV rising while price consolidated = accumulation (bullish).
-        OBV falling while price stable = distribution (bearish).
-        If OBV confirms the price direction, give a bonus.
+        Compares OBV slope (rate of change) to price return over the
+        available bar history.  Confirmation = bonus, divergence = penalty.
+        Falls back to a simpler check when raw bars are unavailable.
         """
         obv = stock.tech_indicators.get("obv", None)
         if obv is None:
             return 50.0  # neutral when no OBV data
 
-        # Use gap direction as a proxy for recent price direction
-        # OBV > 0 suggests net buying pressure
+        # Try to compute OBV slope from raw bars for a real divergence check
+        raw_bars = getattr(stock, "raw_bars", None) or []
+        if len(raw_bars) >= 10:
+            try:
+                import pandas as _pd
+                closes = [float(b.close) for b in raw_bars[-20:]]
+                vols   = [float(b.volume) for b in raw_bars[-20:]]
+                # OBV series
+                obv_series = [0.0]
+                for i in range(1, len(closes)):
+                    if closes[i] > closes[i - 1]:
+                        obv_series.append(obv_series[-1] + vols[i])
+                    elif closes[i] < closes[i - 1]:
+                        obv_series.append(obv_series[-1] - vols[i])
+                    else:
+                        obv_series.append(obv_series[-1])
+                # Slopes over the window
+                price_return = (closes[-1] - closes[0]) / closes[0] if closes[0] else 0
+                obv_change = obv_series[-1] - obv_series[0]
+                price_up = price_return > 0
+                obv_up   = obv_change > 0
+                if price_up == obv_up:
+                    return 80.0   # confirmation
+                else:
+                    return 25.0   # divergence
+            except Exception:
+                pass
+
+        # Fallback: simple gap-direction vs OBV sign
         if stock.gap_pct >= 0 and obv > 0:
-            return 80.0  # Price up + OBV confirms = strong
+            return 75.0
         elif stock.gap_pct < 0 and obv < 0:
-            return 80.0  # Price down + OBV confirms = strong (for shorts)
+            return 75.0
         elif stock.gap_pct >= 0 and obv < 0:
-            return 25.0  # Price up but OBV diverging = weak
+            return 30.0
         elif stock.gap_pct < 0 and obv > 0:
-            return 25.0  # Price down but OBV diverging = weak
+            return 30.0
         return 50.0
 
     def score(self, stock: SymbolSnapshot) -> float:

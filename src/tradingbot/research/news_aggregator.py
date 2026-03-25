@@ -393,6 +393,7 @@ class CatalystScorerV2:
             
             # Aggregate relevance scores
             total_score = 0.0
+            item_scores: list[float] = []
             for item in news_items:
                 base_score = item.relevance_score
                 headline_lower = item.headline.lower()
@@ -405,10 +406,19 @@ class CatalystScorerV2:
                 # Weight by recency
                 hours_old = (datetime.utcnow() - item.published_at).total_seconds() / 3600
                 recency_weight = max(0.5, 1.0 - (hours_old / self.news_aggregator.max_age_hours))
-                total_score += base_score * recency_weight
+                item_scores.append(base_score * recency_weight)
             
-            # Normalize to 0-100 scale
-            final_score = min(100.0, max(0.0, total_score / len(news_items)))
+            # Scoring formula: reward BOTH quality and breadth of catalysts.
+            # max(scores) * 0.5  — strongest single headline matters most
+            # mean(scores) * 0.3 — average quality across all items
+            # count_bonus  * 0.2 — having more confirming items is a signal
+            max_s  = max(item_scores)
+            mean_s = sum(item_scores) / len(item_scores)
+            # count_bonus: 1 item = 50, 2 = 70, 3+ = 100 (capped)
+            count_bonus = min(100.0, 30.0 + len(item_scores) * 23.3)
+            final_score = min(100.0, max(0.0,
+                max_s * 0.5 + mean_s * 0.3 + count_bonus * 0.2
+            ))
             scores[symbol] = final_score
         
         return scores

@@ -160,10 +160,13 @@ class AlpacaClient:
                     dollar_volume = (prev_volume * prev_close) if (prev_volume and prev_close) else (premarket_vol * current_price * 5)
                     
                     # Compute enhanced technical indicators from 15-min intraday bars
+                    # Pass daily bars too so compute_indicators can derive
+                    # daily ATR, daily S/R, and prev-day high/low.
                     symbol_bars = self._get_bars_list(intraday_bars, symbol)
                     if not symbol_bars:  # fall back to daily if intraday unavailable
                         symbol_bars = self._get_bars_list(bars, symbol)
-                    tech = compute_indicators(symbol_bars)
+                    daily_symbol_bars = self._get_bars_list(bars, symbol)
+                    tech = compute_indicators(symbol_bars, daily_bars=daily_symbol_bars)
                     ema9  = tech.get("ema9",  current_price)
                     ema20 = tech.get("ema20", current_price * 0.99)
                     vwap  = tech.get("vwap",  current_price)
@@ -241,30 +244,42 @@ class AlpacaClient:
 
                     bar_support = tech.get("support", 0.0)
                     bar_resistance = tech.get("resistance", 0.0)
+                    prev_day_high = tech.get("prev_day_high", 0.0)
+                    prev_day_low  = tech.get("prev_day_low", 0.0)
 
                     if is_breakout:
                         # ── BREAKOUT: price at/above PM high ──────────────────
                         # PM high is now support; target is an extension above.
                         # Stop just below the breakout level (PM high).
                         key_support = reclaim_level - atr_val * 0.25
-                        # If we have a higher bar-data resistance, use it;
+                        # Use daily resistance if available and above price;
                         # otherwise project 2× ATR above current price.
                         if bar_resistance > 0 and bar_resistance > current_price:
                             key_resistance = bar_resistance
+                        elif prev_day_high > 0 and prev_day_high > current_price:
+                            key_resistance = prev_day_high
                         else:
                             key_resistance = current_price + atr_val * 2
                     else:
                         # ── PULLBACK: price below PM high ─────────────────────
                         # key_support = meaningful floor for stop placement.
-                        # Collect ALL candidate support levels and keep only
-                        # those below the current price.  Pick the 2nd-lowest
-                        # when we have ≥ 3 candidates (not the absolute floor
-                        # which the fixed_stop_pct cap always overrides, and
-                        # not the tightest which trips on intraday noise).
+                        # Collect ALL candidate support levels — use daily
+                        # levels (prev_day_low, bar_support from 5-day low)
+                        # alongside intraday anchors for more robust S/R.
                         support_candidates = [
-                            v for v in [vwap, ema20, pm_low, prev_close, bar_support]
+                            v for v in [
+                                vwap, ema20, pm_low, prev_close,
+                                bar_support, prev_day_low,
+                            ]
                             if v and 0 < v < current_price
                         ]
+                        # Discard candidates more than 2× ATR from price
+                        # (too far away to be useful as a nearby support)
+                        if atr_val > 0:
+                            support_candidates = [
+                                v for v in support_candidates
+                                if (current_price - v) <= atr_val * 2
+                            ]
                         if len(support_candidates) >= 3:
                             support_candidates.sort()
                             key_support = support_candidates[1]  # 2nd-lowest
@@ -274,7 +289,10 @@ class AlpacaClient:
                             key_support = current_price - atr_val
 
                         # key_resistance = nearest ceiling / profit target
+                        # Prefer structural daily levels over intraday
                         key_resistance = reclaim_level
+                        if prev_day_high > 0 and prev_day_high > current_price:
+                            key_resistance = max(key_resistance, prev_day_high)
                         if bar_resistance > 0 and bar_resistance > current_price:
                             key_resistance = max(key_resistance, bar_resistance)
                         # Resistance must be above current price
@@ -334,10 +352,12 @@ class AlpacaClient:
             return None
 
     def _get_previous_close(self, bars: Any, symbol: str) -> float | None:
-        """Get the most recent daily close price."""
+        """Get the most recent daily close price (yesterday, not today)."""
         symbol_bars = self._get_symbol_bars(bars, symbol)
         if not symbol_bars:
             return None
+        # Sort by timestamp to guarantee ordering
+        symbol_bars = sorted(symbol_bars, key=lambda b: b.timestamp)
         bar = symbol_bars[-2] if len(symbol_bars) >= 2 else symbol_bars[-1]
         return float(bar.close)
     
@@ -346,6 +366,7 @@ class AlpacaClient:
         symbol_bars = self._get_symbol_bars(bars, symbol)
         if not symbol_bars:
             return None
+        symbol_bars = sorted(symbol_bars, key=lambda b: b.timestamp)
         bar = symbol_bars[-2] if len(symbol_bars) >= 2 else symbol_bars[-1]
         return int(bar.volume)
     

@@ -65,6 +65,8 @@ def build_trade_card(
     score: float,
     fixed_stop_pct: float,
     session_tag: Literal["morning", "midday", "close"],
+    risk_per_trade_pct: float = 0.5,
+    account_value: float = 25_000.0,
 ) -> TradeCard | None:
     """Build a level-based trade card.
 
@@ -73,6 +75,9 @@ def build_trade_card(
     TP1    = key resistance (long) or key support (short) — the nearest real level.
     TP2    = TP1 + 1R extension.
     R:R    = (TP1 − entry) / (entry − stop).  Must be ≥ MIN_RR or the card is dropped.
+
+    Position sizing: shares = (account_value × risk_per_trade_pct) / (entry − stop)
+    so that each trade risks exactly the configured % of the account.
 
     The fixed_stop_pct is kept as a MAXIMUM stop distance — if the level-derived
     stop is wider than this %, we cap it so risk stays bounded.
@@ -128,6 +133,15 @@ def build_trade_card(
     if rr < MIN_RR:
         return None
 
+    # ── Position sizing ──────────────────────────────────────────────
+    # shares = (account_value × risk%) / risk_per_share
+    risk_dollars = account_value * (risk_per_trade_pct / 100.0)
+    position_size = int(risk_dollars / risk) if risk > 0 else 0
+    # Safety cap: never exceed $10K notional or 50% of account
+    max_notional = min(10_000.0, account_value * 0.5)
+    if position_size * entry > max_notional and entry > 0:
+        position_size = int(max_notional / entry)
+
     # Patterns: strictly technical/chart patterns
     patterns = list(getattr(stock, "patterns", []))
 
@@ -163,4 +177,5 @@ def build_trade_card(
         key_support=round(stock.key_support, 2),
         key_resistance=round(stock.key_resistance, 2),
         risk_level=_assess_risk(stock, rr),
+        position_size=position_size,
     )

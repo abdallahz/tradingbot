@@ -110,6 +110,7 @@ class SessionRunner:
         )
         risk_defaults = risk_config["risk"]
         self.fixed_stop_pct = risk_defaults["fixed_stop_pct"]
+        self.risk_per_trade_pct = risk_defaults.get("risk_per_trade_pct", 0.5)
         self.risk_manager = RiskManager(
             max_trades_per_day=risk_defaults["max_trades_per_day"],
             daily_loss_lockout_pct=risk_defaults["daily_loss_lockout_pct"],
@@ -476,6 +477,7 @@ class SessionRunner:
                 score=item.score,
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=session_tag,
+                risk_per_trade_pct=self.risk_per_trade_pct,
             )
             if card is None:
                 if dropped is not None:

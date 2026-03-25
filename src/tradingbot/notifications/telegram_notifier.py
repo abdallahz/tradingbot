@@ -287,6 +287,10 @@ class TelegramNotifier:
         risk_icons = {"low": "✅ Low", "medium": "⚡ Medium", "high": "⚠️ High"}
         risk_line = f"🛡 <b>Risk</b>    : {risk_icons.get(risk_lvl, risk_lvl)}"
 
+        # Position sizing line
+        pos_size = getattr(card, "position_size", 0)
+        size_line = f"📐 <b>Size</b>    : <code>{pos_size} shares</code>" if pos_size > 0 else ""
+
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
             "",
@@ -310,6 +314,8 @@ class TelegramNotifier:
             "",
             risk_line,
         ]
+        if size_line:
+            lines.append(size_line)
         if ai_line:
             lines.append("")
             lines.append(ai_line)

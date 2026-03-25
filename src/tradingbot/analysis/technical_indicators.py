@@ -24,18 +24,30 @@ except ImportError:
     logger.debug("'ta' library not installed. Using basic indicators. Run: pip install ta")
 
 
-def compute_indicators(bars_data: list[Any]) -> dict[str, float]:
+def compute_indicators(bars_data: list[Any], daily_bars: list[Any] | None = None) -> dict[str, float]:
     """
     Compute technical indicators from a list of OHLCV bar objects.
 
+    Parameters
+    ----------
+    bars_data : list[Any]
+        Intraday (15-min) bars for EMA / MACD / RSI / VWAP computation.
+    daily_bars : list[Any] | None
+        Daily bars (5-day).  Used for:
+        - ``atr_daily``: proper daily ATR for stop/target sizing
+        - ``support`` / ``resistance``: prior-day and multi-day S/R levels
+        When *None* the function falls back to intraday-derived values.
+
     Returns a dict with:
       - ema9, ema20, ema50         : Exponential moving averages
-      - vwap                       : Volume-weighted average price
+      - vwap                       : Volume-weighted average price (today only)
       - rsi                        : RSI(14) - overbought/oversold
       - macd, macd_signal          : MACD crossover
-      - atr                        : Average True Range (volatility)
+      - atr                        : Daily ATR (preferred) or intraday ATR fallback
+      - atr_intraday               : Raw 15-min ATR (always present if TA available)
       - bb_upper, bb_lower         : Bollinger Bands
-      - support, resistance        : Key price levels from recent bars
+      - support, resistance        : Key daily price levels
+      - prev_day_high, prev_day_low: Prior session high/low
     """
     if not bars_data or len(bars_data) < 2:
         return {}
@@ -70,10 +82,11 @@ def compute_indicators(bars_data: list[Any]) -> dict[str, float]:
             result["macd_signal"] = float(macd_obj.macd_signal().iloc[-1])
             result["macd_hist"]   = float(macd_obj.macd_diff().iloc[-1])
 
-            # ── ATR (volatility) ──────────────────────────────────────
-            result["atr"] = float(
+            # ── Intraday ATR (15-min bars) ────────────────────────────
+            atr_intraday = float(
                 ta.volatility.average_true_range(df["high"], df["low"], df["close"], window=14).iloc[-1]
             )
+            result["atr_intraday"] = atr_intraday
 
             # ── Bollinger Bands ───────────────────────────────────────
             bb = ta.volatility.BollingerBands(df["close"], window=20)
@@ -91,18 +104,82 @@ def compute_indicators(bars_data: list[Any]) -> dict[str, float]:
             result["ema20"] = float(df["close"].ewm(span=20, adjust=False).mean().iloc[-1])
             result["ema50"] = float(df["close"].ewm(span=min(50, len(df)), adjust=False).mean().iloc[-1])
 
-        # ── VWAP (always compute manually) ───────────────────────────
-        typical_price = (df["high"] + df["low"] + df["close"]) / 3
-        result["vwap"] = float(
-            (typical_price * df["volume"]).sum() / df["volume"].sum()
-            if df["volume"].sum() > 0
-            else closes[-1]
-        )
+        # ── VWAP — today's session only ──────────────────────────────
+        # Bars carry a .timestamp attribute.  Identify today's date and
+        # restrict the VWAP calculation to only today's bars so it resets
+        # at the start of each trading day (standard VWAP behaviour).
+        try:
+            bar_dates = [getattr(b, "timestamp", None) for b in bars_data]
+            if bar_dates and bar_dates[-1] is not None:
+                last_date = bar_dates[-1].date() if hasattr(bar_dates[-1], "date") else None
+                if last_date is not None:
+                    today_mask = pd.Series([
+                        (getattr(b, "timestamp", None) is not None
+                         and getattr(b, "timestamp").date() == last_date)
+                        for b in bars_data
+                    ])
+                    df_today = df[today_mask.values]
+                else:
+                    df_today = df
+            else:
+                df_today = df
+        except Exception:
+            df_today = df
 
-        # ── Support / Resistance (last 10 bars) ───────────────────────
-        window = min(10, len(df))
-        result["support"]    = float(df["low"].iloc[-window:].min())
-        result["resistance"] = float(df["high"].iloc[-window:].max())
+        if len(df_today) > 0 and df_today["volume"].sum() > 0:
+            tp = (df_today["high"] + df_today["low"] + df_today["close"]) / 3
+            result["vwap"] = float((tp * df_today["volume"]).sum() / df_today["volume"].sum())
+        else:
+            # Fallback: full-range VWAP (better than nothing)
+            typical_price = (df["high"] + df["low"] + df["close"]) / 3
+            result["vwap"] = float(
+                (typical_price * df["volume"]).sum() / df["volume"].sum()
+                if df["volume"].sum() > 0
+                else closes[-1]
+            )
+
+        # ── Daily ATR & Support/Resistance from daily bars ───────────
+        if daily_bars and len(daily_bars) >= 2:
+            d_closes = [float(b.close) for b in daily_bars]
+            d_highs  = [float(b.high)  for b in daily_bars]
+            d_lows   = [float(b.low)   for b in daily_bars]
+            d_df = pd.DataFrame({"close": d_closes, "high": d_highs, "low": d_lows})
+
+            # Daily ATR (window = min(14, available bars))
+            if TA_AVAILABLE and len(d_df) >= 2:
+                win = min(14, len(d_df))
+                atr_daily = float(
+                    ta.volatility.average_true_range(
+                        d_df["high"], d_df["low"], d_df["close"], window=win
+                    ).iloc[-1]
+                )
+                result["atr"] = atr_daily
+            else:
+                # Fallback: average daily range
+                result["atr"] = float((d_df["high"] - d_df["low"]).mean())
+
+            # Support: lowest low over last 5 daily bars
+            # Resistance: highest high over last 5 daily bars
+            sw = min(5, len(d_df))
+            result["support"]    = float(d_df["low"].iloc[-sw:].min())
+            result["resistance"] = float(d_df["high"].iloc[-sw:].max())
+
+            # Prior-day high/low (the bar before the most recent one)
+            if len(d_df) >= 2:
+                result["prev_day_high"] = float(d_df["high"].iloc[-2])
+                result["prev_day_low"]  = float(d_df["low"].iloc[-2])
+        else:
+            # No daily bars — use intraday-derived values
+            if "atr_intraday" in result:
+                # Scale 15-min ATR → approximate daily by √26 (26 bars/day)
+                result["atr"] = result["atr_intraday"] * (26 ** 0.5)
+            else:
+                result["atr"] = closes[-1] * 0.02
+
+            # Intraday S/R fallback: use full available range (not just 10 bars)
+            window = min(len(df), 52)  # ≈ 2 full trading days of 15-min bars
+            result["support"]    = float(df["low"].iloc[-window:].min())
+            result["resistance"] = float(df["high"].iloc[-window:].max())
 
         return result
 
