@@ -292,18 +292,7 @@ class SessionRunner:
         # Option 1: Night Research — top catalyst picks with smart money overlay
         night_picks = self._get_night_research_picks(snapshots, catalyst_scores, session_tag)
 
-        # Option 2: Relaxed filters scan — also relaxes indicator confirmation
-        relaxed_scan = self.relaxed_scanner.run(snapshots)
-        relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
-        o2_dropped: list[tuple[str, str]] = []
-        relaxed_cards = self._build_cards(
-            ranked=relaxed_ranked,
-            session_tag=session_tag,
-            volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
-            relaxed=True,
-            dropped=o2_dropped,
-        )
-
+        # ── Run O3 FIRST so high-quality strict picks claim the daily cap ──
         # Option 3: Strict filters scan
         strict_scan = self.scanner.run(snapshots)
         if stricter:
@@ -322,6 +311,21 @@ class SessionRunner:
             session_tag=session_tag,
             volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
             dropped=o3_dropped,
+        )
+
+        # Option 2: Relaxed filters scan — uses its OWN trade cap so it
+        # never steals slots from O3.  Alerts are saved & sent but counted
+        # against a separate budget.
+        relaxed_scan = self.relaxed_scanner.run(snapshots)
+        relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
+        o2_dropped: list[tuple[str, str]] = []
+        relaxed_cards = self._build_cards(
+            ranked=relaxed_ranked,
+            session_tag=session_tag,
+            volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
+            relaxed=True,
+            dropped=o2_dropped,
+            independent_cap=True,
         )
 
         print(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
@@ -375,6 +379,7 @@ class SessionRunner:
         volume_spike: float,
         dropped: list[tuple[str, str]] | None = None,
         relaxed: bool = False,
+        independent_cap: bool = False,
     ) -> list[TradeCard]:
         """Build trade cards from ranked candidates.
 
@@ -385,6 +390,11 @@ class SessionRunner:
         If *relaxed* is True (Option 2), indicator confirmation is skipped
         for stocks with catalyst_score >= 55 and the confluence floor is
         lowered to 0 (only block strong opposing signals).
+
+        If *independent_cap* is True, the risk-manager trade count starts
+        at zero instead of counting today's existing alerts.  This gives
+        the caller its own separate daily budget (used by O2 so it never
+        steals O3's slots).
         """
         cards: list[TradeCard] = []
 
@@ -396,7 +406,11 @@ class SessionRunner:
 
         # Pre-seed risk state with today's alert count so the daily cap
         # (max_trades_per_day) persists across 30-minute scan cycles.
-        risk_state = RiskState(trades_taken=len(already_alerted))
+        # When independent_cap is True the counter starts at 0 so this
+        # option gets its own full budget.
+        risk_state = RiskState(
+            trades_taken=0 if independent_cap else len(already_alerted)
+        )
 
         for item in ranked:
             if not self.risk_manager.allow_new_trade(risk_state):
