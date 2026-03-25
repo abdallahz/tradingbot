@@ -115,6 +115,12 @@ class SessionRunner:
             daily_loss_lockout_pct=risk_defaults["daily_loss_lockout_pct"],
             max_consecutive_losses=risk_defaults["max_consecutive_losses"],
         )
+        # Separate (tighter) risk manager for O2 relaxed trades
+        self.o2_risk_manager = RiskManager(
+            max_trades_per_day=risk_defaults.get("o2_max_trades_per_day", 3),
+            daily_loss_lockout_pct=risk_defaults["daily_loss_lockout_pct"],
+            max_consecutive_losses=risk_defaults["max_consecutive_losses"],
+        )
         self.market_analyzer = MarketConditionAnalyzer()
         # AI Trade Validator (paid LLM call per card) — disabled by default
         ai_validation_enabled = False
@@ -326,6 +332,7 @@ class SessionRunner:
             relaxed=True,
             dropped=o2_dropped,
             independent_cap=True,
+            risk_manager_override=self.o2_risk_manager,
         )
 
         print(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
@@ -380,6 +387,7 @@ class SessionRunner:
         dropped: list[tuple[str, str]] | None = None,
         relaxed: bool = False,
         independent_cap: bool = False,
+        risk_manager_override: RiskManager | None = None,
     ) -> list[TradeCard]:
         """Build trade cards from ranked candidates.
 
@@ -395,6 +403,9 @@ class SessionRunner:
         at zero instead of counting today's existing alerts.  This gives
         the caller its own separate daily budget (used by O2 so it never
         steals O3's slots).
+
+        If *risk_manager_override* is provided, it replaces self.risk_manager
+        for this call (used to give O2 a tighter per-day cap).
         """
         cards: list[TradeCard] = []
 
@@ -412,8 +423,10 @@ class SessionRunner:
             trades_taken=0 if independent_cap else len(already_alerted)
         )
 
+        rm = risk_manager_override or self.risk_manager
+
         for item in ranked:
-            if not self.risk_manager.allow_new_trade(risk_state):
+            if not rm.allow_new_trade(risk_state):
                 if dropped is not None:
                     dropped.append((item.snapshot.symbol, "risk_lockout"))
                 break
