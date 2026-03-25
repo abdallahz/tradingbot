@@ -42,7 +42,7 @@ class TradeTracker:
         try:
             from alpaca.data.historical import StockHistoricalDataClient
             key = os.getenv("ALPACA_API_KEY", "").strip()
-            secret = os.getenv("ALPACA_SECRET_KEY", "").strip()
+            secret = os.getenv("ALPACA_API_SECRET", "").strip()
             if not key or not secret:
                 log.warning("[tracker] Alpaca credentials not set")
                 return None

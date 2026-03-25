@@ -4,9 +4,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
-import re
-
-import requests
 
 from tradingbot.research.sec_filings import SECFilingsFetcher
 from tradingbot.research.rss_feeds import RSSFeedFetcher
@@ -40,7 +37,8 @@ class NewsAggregator:
         self.earnings_enabled = earnings_enabled
         self.press_releases_enabled = press_releases_enabled
         self.max_age_hours = max_age_hours
-        self.cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
+        # cutoff_time is computed fresh each call to avoid going stale
+        self._cutoff_hours = max_age_hours
         
         # Initialize SEC fetcher for real data
         self.use_real_sec = use_real_sec

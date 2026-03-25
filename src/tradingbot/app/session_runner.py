@@ -335,19 +335,19 @@ class SessionRunner:
             risk_manager_override=self.o2_risk_manager,
         )
 
-        print(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
+        logging.info(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
         if o2_dropped:
             drop_summary = {}
             for _, reason in o2_dropped:
                 key = reason.split(":")[0]
                 drop_summary[key] = drop_summary.get(key, 0) + 1
-            print(f"[{session_tag.upper()}] O2 drops: {drop_summary}")
+            logging.info(f"[{session_tag.upper()}] O2 drops: {drop_summary}")
         if o3_dropped:
             drop_summary = {}
             for _, reason in o3_dropped:
                 key = reason.split(":")[0]
                 drop_summary[key] = drop_summary.get(key, 0) + 1
-            print(f"[{session_tag.upper()}] O3 drops: {drop_summary}")
+            logging.info(f"[{session_tag.upper()}] O3 drops: {drop_summary}")
         
         # Analyze market conditions and make recommendation
         market_condition = self.market_analyzer.analyze(
@@ -412,7 +412,8 @@ class SessionRunner:
         # Load today's already-alerted symbols for dedup
         try:
             already_alerted = get_today_alerted_symbols()
-        except Exception:
+        except Exception as exc:
+            logging.warning(f"Dedup check failed ({exc}); proceeding without dedup")
             already_alerted = {}
 
         # Pre-seed risk state with today's alert count so the daily cap
@@ -482,6 +483,7 @@ class SessionRunner:
                 logging.info(f"[DROP] {symbol.symbol}: rr_below_floor (support={symbol.key_support:.2f}, resistance={symbol.key_resistance:.2f}, price={symbol.price:.2f})")
                 continue
             card.patterns = list(symbol.patterns)
+            card.catalyst_score = symbol.catalyst_score
             confluence = score_confluence(card.patterns, side)
             # Block cards with weak or opposing signals
             # Relaxed mode: only block if strong opposing signal (< 0)
@@ -676,7 +678,7 @@ class SessionRunner:
                 for s in new_syms:
                     catalyst_scores[s] = 50.0
                 universe_str = list(set(universe_str) | set(new_syms))
-                print(f"[session] +{len(new_syms)} new screener movers added to universe")
+                logging.info(f"[session] +{len(new_syms)} new screener movers added to universe")
 
         stricter = session_type in ["midday", "close"]
         session_tag = session_type  # "morning", "midday", or "close"

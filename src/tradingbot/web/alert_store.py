@@ -196,20 +196,12 @@ def save_alert(alert: dict[str, Any]) -> None:
             }
             try:
                 result = sb.table("alerts").insert(row).execute()
-                print(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']} | result: {result}")
-                log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']} | result: {result}")
+                log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
                 return
             except Exception as exc2:
-                print(f"[alert_store] ERROR: Supabase insert failed: {exc2}")
-                print(f"[alert_store] ALERT DATA: {row}")
-                import traceback
-                traceback.print_exc()
-                log.warning(f"[alert_store] Supabase insert failed: {exc2} — falling back to JSONL")
+                log.exception(f"[alert_store] Supabase insert failed: {exc2} — falling back to JSONL")
         except Exception as exc:
-            print(f"[alert_store] ERROR: Unexpected error in save_alert: {exc}")
-            import traceback
-            traceback.print_exc()
-            log.warning(f"[alert_store] Unexpected error in save_alert: {exc}")
+            log.exception(f"[alert_store] Unexpected error in save_alert: {exc}")
 
     _jsonl_save(alert)
 
@@ -218,8 +210,8 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
     """Return the most-recent alerts (newest first)."""
     sb = _get_supabase()
     if sb is None:
-        log.warning("[alert_store] Supabase unavailable — returning empty list")
-        return []
+        log.warning("[alert_store] Supabase unavailable — falling back to JSONL")
+        return _jsonl_load(limit)
     try:
         resp = (
             sb.table("alerts")
@@ -712,7 +704,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "patterns":       list(card.patterns),
         "reasons":        list(card.reason),
         "risk_reward":    round(float(getattr(card, "risk_reward", 0.0)), 2),
-        "catalyst_score": round(float(getattr(card, "score", 0.0)), 1),
+        "catalyst_score": round(float(getattr(card, "catalyst_score", 50.0)), 1),
         "scan_price":     round(float(getattr(card, "scan_price", card.entry_price)), 2),
         "key_support":    round(float(getattr(card, "key_support", 0.0)), 2),
         "key_resistance": round(float(getattr(card, "key_resistance", 0.0)), 2),

@@ -77,10 +77,10 @@ def _market_status() -> dict:
 @app.route("/")
 def dashboard():
     from flask import request
-    from tradingbot.web.alert_store import load_alerts
+    from tradingbot.web.alert_store import load_alerts, _today_et
     # Get filters from query params
-    # Default to today's date for a day-trading workflow
-    today = date.today().isoformat()
+    # Default to today's date (ET) for a day-trading workflow
+    today = _today_et().isoformat()
     raw_date = request.args.get("date", today)
     date_filter = "" if raw_date == "_all" else raw_date
     symbol_filter = request.args.get("symbol", "")

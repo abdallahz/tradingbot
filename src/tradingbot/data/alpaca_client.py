@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -11,12 +12,13 @@ from alpaca.data.requests import (
     MostActivesRequest, MarketMoversRequest,
 )
 from alpaca.data.timeframe import TimeFrame
-import pandas as pd
 import re
 
 from tradingbot.analysis.technical_indicators import compute_indicators, interpret_signals
 from tradingbot.analysis.pattern_detector import detect_patterns
 from tradingbot.models import SymbolSnapshot
+
+logger = logging.getLogger(__name__)
 
 # Enable debug logging with environment variable: DEBUG=1
 DEBUG = os.environ.get("DEBUG", "").strip() == "1"
@@ -74,7 +76,7 @@ class AlpacaClient:
                 )
             )
         except Exception as e:
-            print(f"[ALPACA] Intraday bars fetch failed: {e}, falling back to daily bars")
+            logger.warning(f"Intraday bars fetch failed: {e}, falling back to daily bars")
             intraday_bars = bars
 
         return quotes, snapshot_data, bars, intraday_bars
@@ -89,9 +91,7 @@ class AlpacaClient:
             try:
                 quotes, snapshot_data, bars, intraday_bars = self._fetch_batch(batch)
             except Exception as e:
-                import traceback
-                print(f"[ALPACA] ERROR batch {batch_idx + 1}: {type(e).__name__}: {e}")
-                traceback.print_exc()
+                logger.exception(f"Batch {batch_idx + 1} failed: {type(e).__name__}: {e}")
                 continue  # skip this batch, try next
 
             # Tally drop reasons for summary
@@ -134,7 +134,7 @@ class AlpacaClient:
                     
                     if DEBUG:
                         warn_str = f" ⚠️ {data_warning}" if data_warning else ""
-                        print(f"[DEBUG] {symbol}: price=${current_price:.2f}, prev=${prev_close:.2f}, gap={gap_pct:.2f}%{warn_str}")
+                        logger.debug(f"{symbol}: price=${current_price:.2f}, prev=${prev_close:.2f}, gap={gap_pct:.2f}%{warn_str}")
                     
                     # Skip symbols with critical data quality issues
                     if data_warning and any(
@@ -175,7 +175,7 @@ class AlpacaClient:
                         rsi  = tech.get("rsi",  0.0)
                         macd = tech.get("macd", 0.0)
                         atr  = tech.get("atr",  0.0)
-                        print(f"[DEBUG] {symbol} indicators: RSI={rsi:.1f}, MACD={macd:.3f}, ATR={atr:.2f}, signals={tech_signals}")
+                        logger.debug(f"{symbol} indicators: RSI={rsi:.1f}, MACD={macd:.3f}, ATR={atr:.2f}, signals={tech_signals}")
 
                     # Get recent volume for volume spike detection.
                     # Pre-market (before open): snap.minute_bar is None — Alpaca only
@@ -198,7 +198,7 @@ class AlpacaClient:
                         recent_volume = premarket_vol
                     if DEBUG:
                         mode = "minute-bar" if (recent_minute_vol > 0 and recent_minute_vol >= avg_volume_20 * 0.1) else "premarket-fallback"
-                        print(f"[DEBUG] {symbol} volume: recent={recent_volume:,} ({mode}), avg_per_min={avg_volume_20:,}, spike_ratio={recent_volume/max(1,avg_volume_20):.1f}x")
+                        logger.debug(f"{symbol} volume: recent={recent_volume:,} ({mode}), avg_per_min={avg_volume_20:,}, spike_ratio={recent_volume/max(1,avg_volume_20):.1f}x")
 
                     # ATR for volatility sizing
                     atr_val = tech.get("atr", current_price * 0.02)
@@ -308,17 +308,16 @@ class AlpacaClient:
                         )
                     )
                 except Exception as e:
-                    print(f"[ALPACA] Error processing {symbol}: {type(e).__name__}: {e}")
+                    logger.warning(f"Error processing {symbol}: {type(e).__name__}: {e}")
                     drop_counts["exception"] = drop_counts.get("exception", 0) + 1
                     continue
 
-        print(f"[ALPACA] {len(snapshots)} snapshots ready")
+        logger.info(f"{len(snapshots)} snapshots ready")
         return snapshots
     
-    def _get_previous_close(self, bars: Any, symbol: str) -> float | None:
-        """Get the most recent daily close price."""
+    def _get_symbol_bars(self, bars: Any, symbol: str) -> list[Any] | None:
+        """Extract the list of bar objects for a symbol from an Alpaca BarSet."""
         try:
-            # BarSet uses dict-like access but isn't a dict
             if hasattr(bars, 'data') and symbol in bars.data:
                 symbol_bars = bars.data[symbol]
             elif hasattr(bars, '__getitem__'):
@@ -328,53 +327,31 @@ class AlpacaClient:
                     return None
             else:
                 return None
-                
             if not symbol_bars or len(symbol_bars) == 0:
                 return None
-                
-            # Get the second-to-last bar (previous trading day)
-            if len(symbol_bars) >= 2:
-                return float(symbol_bars[-2].close)
-            return float(symbol_bars[-1].close)
-        except Exception as e:
-            if DEBUG:
-                print(f"[DEBUG] _get_previous_close error for {symbol}: {type(e).__name__}: {e}")
+            return list(symbol_bars)
+        except Exception:
             return None
+
+    def _get_previous_close(self, bars: Any, symbol: str) -> float | None:
+        """Get the most recent daily close price."""
+        symbol_bars = self._get_symbol_bars(bars, symbol)
+        if not symbol_bars:
+            return None
+        bar = symbol_bars[-2] if len(symbol_bars) >= 2 else symbol_bars[-1]
+        return float(bar.close)
     
     def _get_previous_volume(self, bars: Any, symbol: str) -> int | None:
         """Get the previous trading day's volume."""
-        try:
-            # BarSet uses dict-like access
-            if hasattr(bars, 'data') and symbol in bars.data:
-                symbol_bars = bars.data[symbol]
-            elif hasattr(bars, '__getitem__'):
-                try:
-                    symbol_bars = bars[symbol]
-                except (KeyError, IndexError):
-                    return None
-            else:
-                return None
-                
-            if not symbol_bars or len(symbol_bars) == 0:
-                return None
-                
-            # Get the second-to-last bar (previous trading day)
-            if len(symbol_bars) >= 2:
-                return int(symbol_bars[-2].volume)
-            return int(symbol_bars[-1].volume)
-        except Exception:
+        symbol_bars = self._get_symbol_bars(bars, symbol)
+        if not symbol_bars:
             return None
+        bar = symbol_bars[-2] if len(symbol_bars) >= 2 else symbol_bars[-1]
+        return int(bar.volume)
     
     def _get_bars_list(self, bars: Any, symbol: str) -> list[Any]:
         """Extract a list of bar objects for the given symbol."""
-        try:
-            if hasattr(bars, 'data') and symbol in bars.data:
-                return list(bars.data[symbol])
-            elif hasattr(bars, '__getitem__'):
-                return list(bars[symbol])
-        except Exception:
-            pass
-        return []
+        return self._get_symbol_bars(bars, symbol) or []
 
     def _validate_price_data(
         self, symbol: str, current_price: float, prev_close: float, gap_pct: float, spread_pct: float
@@ -398,10 +375,8 @@ class AlpacaClient:
             warnings.append("low_price_high_gap")
         
         # 4. Check for suspiciously round prices (e.g., exactly $10.00 might be placeholder)
-        if current_price > 0 and current_price == round(current_price) and current_price >= 10:
-            decimal_places = len(str(current_price).split('.')[-1]) if '.' in str(current_price) else 0
-            if decimal_places == 0:
-                warnings.append("round_price")
+        if current_price >= 10 and current_price % 1 == 0:
+            warnings.append("round_price")
         
         return ", ".join(warnings) if warnings else None
 
@@ -443,7 +418,7 @@ class AlpacaClient:
             for a in actives_vol.most_actives:
                 symbols.add(a.symbol)
         except Exception as exc:
-            print(f"[ALPACA] screener most-actives (vol) failed: {exc}")
+            logger.warning(f"screener most-actives (vol) failed: {exc}")
 
         try:
             actives_trades = self.screener.get_most_actives(
@@ -452,7 +427,7 @@ class AlpacaClient:
             for a in actives_trades.most_actives:
                 symbols.add(a.symbol)
         except Exception as exc:
-            print(f"[ALPACA] screener most-actives (trades) failed: {exc}")
+            logger.warning(f"screener most-actives (trades) failed: {exc}")
 
         try:
             movers = self.screener.get_market_movers(
@@ -463,12 +438,11 @@ class AlpacaClient:
             for m in movers.losers:
                 symbols.add(m.symbol)
         except Exception as exc:
-            print(f"[ALPACA] screener market-movers failed: {exc}")
+            logger.warning(f"screener market-movers failed: {exc}")
 
         # Strip warrants / rights / units (e.g. RMSGW, GAB.RT, VLN.WS)
         cleaned = {s for s in symbols if not _JUNK_SUFFIX.search(s) and "." not in s}
-        if DEBUG:
-            print(f"[ALPACA] screener returned {len(cleaned)} unique symbols")
+        logger.debug(f"screener returned {len(cleaned)} unique symbols")
         return list(cleaned)
 
     def get_tradable_universe(self) -> list[str]:
@@ -478,6 +452,6 @@ class AlpacaClient:
         dynamic = self._get_screener_symbols()
         merged = set(dynamic) | set(self._CORE_WATCHLIST)
         universe = sorted(merged)
-        print(f"[ALPACA] universe: {len(self._CORE_WATCHLIST)} core + "
-              f"{len(dynamic)} screener = {len(universe)} total")
+        logger.info(f"universe: {len(self._CORE_WATCHLIST)} core + "
+                    f"{len(dynamic)} screener = {len(universe)} total")
         return universe

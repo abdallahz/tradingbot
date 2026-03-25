@@ -95,12 +95,12 @@ class InsiderTracker:
     
     # Significant insider titles (C-suite and board)
     SIGNIFICANT_TITLES = {
-        "CEO", "Chief Executive Officer",
-        "CFO", "Chief Financial Officer",
-        "COO", "Chief Operating Officer",
-        "CTO", "Chief Technology Officer",
-        "President", "Chairman", "Director",
-        "10%", "10% Owner",
+        "CEO", "CHIEF EXECUTIVE OFFICER",
+        "CFO", "CHIEF FINANCIAL OFFICER",
+        "COO", "CHIEF OPERATING OFFICER",
+        "CTO", "CHIEF TECHNOLOGY OFFICER",
+        "PRESIDENT", "CHAIRMAN", "DIRECTOR",
+        "10%", "10% OWNER",
     }
     
     def __init__(self, user_agent: str = "TradingBot/1.0 (agent@tradingbot.local)") -> None:
@@ -456,27 +456,34 @@ class SmartMoneyTracker:
         """
         results = {}
         
+        # Batch-fetch all insider trades and institutional holdings at once
+        # instead of one API call per symbol (avoids N+1 HTTP requests).
+        all_insider_trades = self.insider_tracker.fetch_insider_trades(
+            symbols, days_lookback=days_lookback
+        )
+        all_institutional = self.institutional_tracker.fetch_institutional_holdings(
+            symbols, quarters_lookback=1
+        )
+        
+        # Group insider trades by symbol
+        trades_by_symbol: dict[str, list] = {s: [] for s in symbols}
+        for trade in all_insider_trades:
+            if trade.symbol in trades_by_symbol:
+                trades_by_symbol[trade.symbol].append(trade)
+        
         for symbol in symbols:
-            # Fetch all smart money data
-            insider_trades = self.insider_tracker.fetch_insider_trades(
-                [symbol],
-                days_lookback=days_lookback
-            )
-            
-            institutional_holdings = self.institutional_tracker.fetch_institutional_holdings(
-                [symbol],
-                quarters_lookback=1
-            )
+            insider_trades = trades_by_symbol.get(symbol, [])
+            institutional_holdings = all_institutional.get(symbol, [])
             
             # Calculate aggregate score
             smart_money_score = self._calculate_smart_money_score(
                 insider_trades,
-                institutional_holdings.get(symbol, [])
+                institutional_holdings,
             )
             
             results[symbol] = {
                 "insider_trades": insider_trades,
-                "institutional_positions": institutional_holdings.get(symbol, []),
+                "institutional_positions": institutional_holdings,
                 "smart_money_score": smart_money_score,
             }
         

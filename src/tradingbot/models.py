@@ -52,6 +52,7 @@ class TradeCard:
     scan_price: float = 0.0   # Price at scan time
     key_support: float = 0.0  # Support level used for stop
     key_resistance: float = 0.0  # Resistance level used for TP
+    catalyst_score: float = 50.0  # Actual catalyst score from news research
     ai_confidence: int = 0       # LLM confidence rating 1-10 (0 = not validated)
     ai_reasoning: str = ""       # LLM analysis summary
     ai_concerns: list[str] = field(default_factory=list)  # LLM-flagged concerns
