@@ -25,6 +25,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("run-morning", help="Run pre-market scan (8:45 AM)")
     sub.add_parser("run-midday", help="Run midday scan (12:00 PM)")
     sub.add_parser("run-close", help="Run close scan (overnight holds + daily recap)")
+    sub.add_parser("run-tracker", help="Run one tracker tick (check open trades for TP/stop hits)")
     return parser
 
 
@@ -103,6 +104,16 @@ def main() -> None:
         print(f">> Archived to: outputs/archive/{today}/\n")
         return
     
+    if args.command == "run-tracker":
+        from tradingbot.tracking.trade_tracker import TradeTracker
+        tracker = TradeTracker()
+        result = tracker.tick()
+        checked = result.get("checked", 0)
+        updates = result.get("updates", 0)
+        seeded = result.get("seeded", 0)
+        print(f"[tracker] checked={checked} updates={updates} seeded={seeded}")
+        return
+
     if args.command == "run-close":
         from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
         from tradingbot.tracking.trade_tracker import TradeTracker
