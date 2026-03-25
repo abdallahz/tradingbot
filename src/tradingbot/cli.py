@@ -115,8 +115,20 @@ def main() -> None:
         return
 
     if args.command == "run-close":
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
         from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
         from tradingbot.tracking.trade_tracker import TradeTracker
+
+        # Time guard: only run between 3:00 PM and 4:30 PM ET
+        # Prevents Blueprint syncs or accidental triggers from corrupting data
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        close_start = now_et.replace(hour=15, minute=0, second=0, microsecond=0)
+        close_end = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
+        if not (close_start <= now_et <= close_end):
+            print(f"[SKIP] run-close called at {now_et.strftime('%H:%M')} ET — "
+                  f"outside 3:00-4:30 PM window. Aborting to prevent data corruption.")
+            return
 
         # Step 1: Close-hold scan (overnight picks)
         picks = scheduler.run_close_hold_scan()
