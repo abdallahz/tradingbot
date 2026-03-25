@@ -175,7 +175,8 @@ def save_alert(alert: dict[str, Any]) -> None:
     sb = _get_supabase()
     if sb is not None:
         try:
-            row = {
+            # Core columns that must exist in every Supabase schema version
+            row: dict[str, Any] = {
                 "trade_date":      trade_date,
                 "session":         alert.get("session", ""),
                 "symbol":          alert.get("symbol", ""),
@@ -194,12 +195,27 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "patterns":        alert.get("patterns") or [],
                 "risk_level":      alert.get("risk_level", "low"),
             }
+            # Optional columns added after initial schema — strip on retry
+            _optional_cols = ["risk_level"]
             try:
-                result = sb.table("alerts").insert(row).execute()
+                sb.table("alerts").insert(row).execute()
                 log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
                 return
-            except Exception as exc2:
-                log.exception(f"[alert_store] Supabase insert failed: {exc2} — falling back to JSONL")
+            except Exception as exc_first:
+                # Retry without optional columns (schema may not have them yet)
+                row_safe = {k: v for k, v in row.items() if k not in _optional_cols}
+                try:
+                    sb.table("alerts").insert(row_safe).execute()
+                    log.warning(
+                        f"[alert_store] Saved {row['symbol']} WITHOUT optional cols "
+                        f"{_optional_cols} — run ALTER TABLE to add them"
+                    )
+                    return
+                except Exception as exc_retry:
+                    log.exception(
+                        f"[alert_store] Supabase insert failed even after "
+                        f"stripping optional cols: {exc_retry} — falling back to JSONL"
+                    )
         except Exception as exc:
             log.exception(f"[alert_store] Unexpected error in save_alert: {exc}")
 
@@ -207,7 +223,11 @@ def save_alert(alert: dict[str, Any]) -> None:
 
 
 def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
-    """Return the most-recent alerts (newest first)."""
+    """Return the most-recent alerts (newest first).
+
+    Primary source: Supabase.  If any JSONL-only orphans exist (from
+    failed inserts), they are merged in so they are never invisible.
+    """
     sb = _get_supabase()
     if sb is None:
         log.warning("[alert_store] Supabase unavailable — falling back to JSONL")
@@ -243,10 +263,57 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "timestamp":      _format_ts(r.get("created_at", "")),
                 "timestamp_raw":  r.get("created_at", ""),
             })
-        return rows
+
+        # ── Merge JSONL orphans (alerts that failed Supabase insert) ──
+        jsonl_records = _jsonl_load(limit)
+        if jsonl_records:
+            # Build a set of (trade_date, symbol, session) already in Supabase
+            seen = {
+                (r.get("trade_date"), r.get("symbol"), r.get("session"))
+                for r in rows
+            }
+            orphan_count = 0
+            for j in jsonl_records:
+                key = (
+                    j.get("trade_date", ""),
+                    j.get("symbol", ""),
+                    j.get("session", ""),
+                )
+                if key not in seen:
+                    # Normalise JSONL record to same shape as Supabase rows
+                    rows.append({
+                        "id":             None,
+                        "trade_date":     j.get("trade_date", ""),
+                        "symbol":         j.get("symbol", ""),
+                        "side":           j.get("side", ""),
+                        "score":          j.get("score"),
+                        "entry":          j.get("entry"),
+                        "stop":           j.get("stop"),
+                        "tp1":            j.get("tp1"),
+                        "tp2":            j.get("tp2"),
+                        "risk_reward":    j.get("risk_reward"),
+                        "scan_price":     j.get("scan_price"),
+                        "key_support":    j.get("key_support", 0),
+                        "key_resistance": j.get("key_resistance", 0),
+                        "session":        j.get("session", ""),
+                        "reasons":        j.get("reasons") or [],
+                        "patterns":       j.get("patterns") or [],
+                        "risk_level":     j.get("risk_level", "low"),
+                        "timestamp":      j.get("timestamp", ""),
+                        "timestamp_raw":  j.get("timestamp", ""),
+                    })
+                    seen.add(key)
+                    orphan_count += 1
+            if orphan_count:
+                log.warning(
+                    f"[alert_store] Merged {orphan_count} JSONL orphan(s) "
+                    f"not found in Supabase — check for missing columns"
+                )
+
+        return rows[:limit]
     except Exception as exc:
         log.warning(f"[alert_store] Supabase load failed: {exc}")
-        return []
+        return _jsonl_load(limit)
 
 
 def get_today_alerted_symbols() -> dict[str, float]:
