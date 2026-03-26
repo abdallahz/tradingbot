@@ -452,16 +452,27 @@ class SessionRunner:
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
 
-            # ── Minimum catalyst gate ─────────────────────────────────
-            # Stocks with no news backing (catalyst < 40) are pure
-            # momentum plays that reverse frequently.  Require at least
-            # a modest catalyst score before generating a trade card.
+            # ── Catalyst / conviction gate ────────────────────────────
+            # Stocks with stock-specific news (catalyst >= 40) pass freely.
+            # Stocks WITHOUT direct news may still be moving on sector/macro
+            # catalysts (crypto rules, oil, gold, etc.) that don't mention
+            # the ticker.  Allow them through ONLY if they show strong
+            # volume conviction: relative_volume >= 3× AND valid setup.
             MIN_CATALYST = 40
             if symbol.catalyst_score < MIN_CATALYST:
-                if dropped is not None:
-                    dropped.append((symbol.symbol, f"low_catalyst:{symbol.catalyst_score:.0f}"))
-                logging.info(f"[DROP] {symbol.symbol}: catalyst_score={symbol.catalyst_score:.0f} < {MIN_CATALYST}")
-                continue
+                has_strong_volume = (
+                    symbol.relative_volume >= 3.0
+                    and symbol.premarket_volume >= 100_000
+                )
+                has_setup = can_long or can_short
+                if not (has_strong_volume and has_setup):
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, f"low_catalyst_weak_vol:{symbol.catalyst_score:.0f}/rv={symbol.relative_volume:.1f}"))
+                    logging.info(
+                        f"[DROP] {symbol.symbol}: catalyst={symbol.catalyst_score:.0f} < {MIN_CATALYST} "
+                        f"and volume not convincing (relvol={symbol.relative_volume:.1f}, pm_vol={symbol.premarket_volume})"
+                    )
+                    continue
 
             # In relaxed mode, allow high-catalyst stocks through even
             # without full indicator confirmation (pre-market data is sparse).
