@@ -96,10 +96,14 @@ def build_trade_card(
     if side == "short" and stock.key_support >= entry:
         return None
 
-    # Maximum realistic TP distance for intraday trades: 3× daily ATR.
+    # Maximum realistic TP distance for intraday trades.
     # Daily S/R levels (5-day range) can be very far from current price,
     # creating unreachable targets that inflate R:R on paper but never hit.
-    max_tp_dist = stock.atr * 3 if stock.atr > 0 else entry * 0.06
+    # Cap at the tighter of 3× daily ATR or 6% of stock price.
+    if stock.atr > 0:
+        max_tp_dist = min(stock.atr * 3, entry * 0.06)
+    else:
+        max_tp_dist = entry * 0.06
 
     if side == "long":
         # Stop: just below the key support level
