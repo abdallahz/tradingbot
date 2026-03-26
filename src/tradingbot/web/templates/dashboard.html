@@ -2216,16 +2216,20 @@
     </div><!-- /shell -->
 
     <!-- ── Auto-refresh hint ──────────────────────────────────────────────── -->
-    <div id="refresh-hint">Auto-refresh in <span id="countdown">30</span>s</div>
+    <div id="refresh-hint">Auto-refresh in <span id="countdown">30:00</span></div>
 
     <script>
-        // Auto-refresh every 30 s to pick up new alerts from the worker
-        let seconds = 30;
+        // Auto-refresh every 30 min to pick up new alerts from the worker
+        let totalSeconds = 30 * 60;
         const cd = document.getElementById('countdown');
         setInterval(() => {
-            seconds--;
-            if (cd) cd.textContent = seconds;
-            if (seconds <= 0) window.location.reload();
+            totalSeconds--;
+            if (cd) {
+                const m = Math.floor(totalSeconds / 60);
+                const s = totalSeconds % 60;
+                cd.textContent = m + ':' + String(s).padStart(2, '0');
+            }
+            if (totalSeconds <= 0) window.location.reload();
         }, 1000);
     </script>
 </body>
