@@ -335,6 +335,47 @@ def api_diag_outcomes():
         return jsonify({"error": str(e)})
 
 
+@app.route("/api/diag/tracker")
+def api_diag_tracker():
+    """Diagnostic: test if the tracker can fetch prices and evaluate trades."""
+    import os
+    result = {}
+
+    # 1. Check Alpaca credentials
+    key = os.getenv("ALPACA_API_KEY", "").strip()
+    secret = os.getenv("ALPACA_API_SECRET", "").strip()
+    result["alpaca_key_set"] = bool(key)
+    result["alpaca_secret_set"] = bool(secret)
+
+    # 2. Try fetching a price for SPY (always liquid)
+    try:
+        from tradingbot.tracking.trade_tracker import TradeTracker
+        tracker = TradeTracker()
+        prices = tracker._fetch_quotes(["SPY", "TSLA", "AAPL"])
+        result["price_fetch"] = {sym: p for sym, p in prices.items()} if prices else "EMPTY — fetch returned nothing"
+    except Exception as e:
+        result["price_fetch_error"] = str(e)
+
+    # 3. Check open outcomes
+    try:
+        from tradingbot.web.alert_store import load_open_outcomes
+        open_trades = load_open_outcomes()
+        result["open_outcomes"] = len(open_trades)
+        result["open_symbols"] = list({t["symbol"] for t in open_trades})[:10]
+    except Exception as e:
+        result["open_outcomes_error"] = str(e)
+
+    # 4. Run a full tick and report
+    try:
+        tracker2 = TradeTracker()
+        tick_result = tracker2.tick()
+        result["tick_result"] = tick_result
+    except Exception as e:
+        result["tick_error"] = str(e)
+
+    return jsonify(result)
+
+
 # ── Entry point (local dev only) ───────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
