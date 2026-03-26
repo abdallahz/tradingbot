@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 # Load .env file for local development (no-op if python-dotenv not installed)
@@ -105,6 +106,14 @@ def main() -> None:
         return
     
     if args.command == "run-tracker":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+        # Diagnostic: verify environment before running
+        has_alpaca = bool(os.getenv("ALPACA_API_KEY", "").strip())
+        has_supabase = bool(os.getenv("SUPABASE_URL", "").strip())
+        print(f"[tracker] env: alpaca={'yes' if has_alpaca else 'NO'} supabase={'yes' if has_supabase else 'NO'}")
+
         from tradingbot.tracking.trade_tracker import TradeTracker
         tracker = TradeTracker()
         result = tracker.tick()
@@ -115,10 +124,17 @@ def main() -> None:
         return
 
     if args.command == "run-close":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
         from datetime import datetime, timezone
         from zoneinfo import ZoneInfo
         from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
         from tradingbot.tracking.trade_tracker import TradeTracker
+
+        # Diagnostic: verify environment
+        has_alpaca = bool(os.getenv("ALPACA_API_KEY", "").strip())
+        has_supabase = bool(os.getenv("SUPABASE_URL", "").strip())
+        print(f"[close] env: alpaca={'yes' if has_alpaca else 'NO'} supabase={'yes' if has_supabase else 'NO'}")
 
         # Time guard: only run between 3:00 PM and 4:30 PM ET
         # Prevents Blueprint syncs or accidental triggers from corrupting data
