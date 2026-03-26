@@ -290,6 +290,47 @@ def api_health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/diag/outcomes")
+def api_diag_outcomes():
+    """Diagnostic: show raw trade_outcomes state."""
+    try:
+        from tradingbot.web.alert_store import _get_supabase, _today_et
+        sb = _get_supabase()
+        if sb is None:
+            return jsonify({"error": "no supabase connection"})
+
+        today = _today_et().isoformat()
+
+        # Count alerts for today
+        alerts_resp = sb.table("alerts").select("id", count="exact").eq("trade_date", today).limit(1).execute()
+        alert_count = alerts_resp.count or 0
+
+        # All outcomes for today
+        outcomes_resp = sb.table("trade_outcomes").select("id, symbol, status, pnl_pct, trade_date, entry_price, stop_price, tp1_price").eq("trade_date", today).execute()
+        outcomes = outcomes_resp.data or []
+
+        # All outcomes all-time
+        all_resp = sb.table("trade_outcomes").select("id, trade_date, status", count="exact").limit(1).execute()
+        total_all = all_resp.count or 0
+
+        # Status breakdown today
+        status_counts = {}
+        for o in outcomes:
+            s = o.get("status", "unknown")
+            status_counts[s] = status_counts.get(s, 0) + 1
+
+        return jsonify({
+            "today": today,
+            "alerts_today": alert_count,
+            "outcomes_today": len(outcomes),
+            "outcomes_all_time": total_all,
+            "status_breakdown": status_counts,
+            "outcomes_sample": outcomes[:10],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 # ── Entry point (local dev only) ───────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
