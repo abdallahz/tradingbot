@@ -525,7 +525,9 @@ class SessionRunner:
                 card.chart_path = chart_path
             cards.append(card)
             risk_state.trades_taken += 1
-            self.notifier.send_trade_alert(card)
+            # Only send Telegram notifications for long trades
+            if card.side == "long":
+                self.notifier.send_trade_alert(card)
             save_alert(card_to_dict(card))
             self._alerts_sent_count += 1
 
