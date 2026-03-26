@@ -292,40 +292,44 @@ def api_health():
 
 @app.route("/api/diag/outcomes")
 def api_diag_outcomes():
-    """Diagnostic: show raw trade_outcomes state."""
+    """Diagnostic: show raw trade_outcomes state across recent days."""
     try:
         from tradingbot.web.alert_store import _get_supabase, _today_et
+        from datetime import timedelta
         sb = _get_supabase()
         if sb is None:
             return jsonify({"error": "no supabase connection"})
 
-        today = _today_et().isoformat()
+        today = _today_et()
+        today_str = today.isoformat()
 
-        # Count alerts for today
-        alerts_resp = sb.table("alerts").select("id", count="exact").eq("trade_date", today).limit(1).execute()
-        alert_count = alerts_resp.count or 0
-
-        # All outcomes for today
-        outcomes_resp = sb.table("trade_outcomes").select("id, symbol, status, pnl_pct, trade_date, entry_price, stop_price, tp1_price").eq("trade_date", today).execute()
-        outcomes = outcomes_resp.data or []
+        # Check last 7 days of alerts and outcomes
+        days_data = []
+        for i in range(7):
+            d = (today - timedelta(days=i)).isoformat()
+            alerts_resp = sb.table("alerts").select("id", count="exact").eq("trade_date", d).limit(1).execute()
+            outcomes_resp = sb.table("trade_outcomes").select("id, symbol, status, pnl_pct").eq("trade_date", d).execute()
+            outcomes = outcomes_resp.data or []
+            status_counts = {}
+            for o in outcomes:
+                s = o.get("status", "unknown")
+                status_counts[s] = status_counts.get(s, 0) + 1
+            days_data.append({
+                "date": d,
+                "alerts": alerts_resp.count or 0,
+                "outcomes": len(outcomes),
+                "statuses": status_counts,
+                "sample": outcomes[:5],
+            })
 
         # All outcomes all-time
         all_resp = sb.table("trade_outcomes").select("id, trade_date, status", count="exact").limit(1).execute()
         total_all = all_resp.count or 0
 
-        # Status breakdown today
-        status_counts = {}
-        for o in outcomes:
-            s = o.get("status", "unknown")
-            status_counts[s] = status_counts.get(s, 0) + 1
-
         return jsonify({
-            "today": today,
-            "alerts_today": alert_count,
-            "outcomes_today": len(outcomes),
+            "today": today_str,
             "outcomes_all_time": total_all,
-            "status_breakdown": status_counts,
-            "outcomes_sample": outcomes[:10],
+            "last_7_days": days_data,
         })
     except Exception as e:
         return jsonify({"error": str(e)})
