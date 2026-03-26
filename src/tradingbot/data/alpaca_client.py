@@ -247,16 +247,23 @@ class AlpacaClient:
                     prev_day_high = tech.get("prev_day_high", 0.0)
                     prev_day_low  = tech.get("prev_day_low", 0.0)
 
+                    # Max distance for a resistance level to be relevant
+                    max_res_dist = atr_val * 2 if atr_val > 0 else current_price * 0.06
+
                     if is_breakout:
                         # ── BREAKOUT: price at/above PM high ──────────────────
                         # PM high is now support; target is an extension above.
                         # Stop just below the breakout level (PM high).
                         key_support = reclaim_level - atr_val * 0.25
-                        # Use daily resistance if available and above price;
-                        # otherwise project 2× ATR above current price.
-                        if bar_resistance > 0 and bar_resistance > current_price:
+                        # Use daily resistance if available, above price,
+                        # and within 2× ATR (ignore stale far-away levels).
+                        if (bar_resistance > 0
+                                and bar_resistance > current_price
+                                and (bar_resistance - current_price) <= max_res_dist):
                             key_resistance = bar_resistance
-                        elif prev_day_high > 0 and prev_day_high > current_price:
+                        elif (prev_day_high > 0
+                                and prev_day_high > current_price
+                                and (prev_day_high - current_price) <= max_res_dist):
                             key_resistance = prev_day_high
                         else:
                             key_resistance = current_price + atr_val * 2
@@ -289,15 +296,20 @@ class AlpacaClient:
                             key_support = current_price - atr_val
 
                         # key_resistance = nearest ceiling / profit target
-                        # Prefer structural daily levels over intraday
-                        key_resistance = reclaim_level
-                        if prev_day_high > 0 and prev_day_high > current_price:
-                            key_resistance = max(key_resistance, prev_day_high)
-                        if bar_resistance > 0 and bar_resistance > current_price:
-                            key_resistance = max(key_resistance, bar_resistance)
-                        # Resistance must be above current price
-                        if key_resistance <= current_price:
-                            key_resistance = current_price + atr_val
+                        # Prefer structural daily levels, but ONLY if within
+                        # 2× ATR (discard stale levels from prior big moves).
+                        resistance_candidates = [reclaim_level]
+                        if (prev_day_high > 0
+                                and prev_day_high > current_price
+                                and (prev_day_high - current_price) <= max_res_dist):
+                            resistance_candidates.append(prev_day_high)
+                        if (bar_resistance > 0
+                                and bar_resistance > current_price
+                                and (bar_resistance - current_price) <= max_res_dist):
+                            resistance_candidates.append(bar_resistance)
+                        # Pick the highest valid candidate above price
+                        above = [r for r in resistance_candidates if r > current_price]
+                        key_resistance = max(above) if above else current_price + atr_val
 
                     snapshots.append(
                         SymbolSnapshot(
