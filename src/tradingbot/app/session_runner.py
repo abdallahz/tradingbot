@@ -452,6 +452,17 @@ class SessionRunner:
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
 
+            # ── Minimum catalyst gate ─────────────────────────────────
+            # Stocks with no news backing (catalyst < 40) are pure
+            # momentum plays that reverse frequently.  Require at least
+            # a modest catalyst score before generating a trade card.
+            MIN_CATALYST = 40
+            if symbol.catalyst_score < MIN_CATALYST:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"low_catalyst:{symbol.catalyst_score:.0f}"))
+                logging.info(f"[DROP] {symbol.symbol}: catalyst_score={symbol.catalyst_score:.0f} < {MIN_CATALYST}")
+                continue
+
             # In relaxed mode, allow high-catalyst stocks through even
             # without full indicator confirmation (pre-market data is sparse).
             if not can_long and not can_short:
