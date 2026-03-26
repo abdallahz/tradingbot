@@ -96,6 +96,11 @@ def build_trade_card(
     if side == "short" and stock.key_support >= entry:
         return None
 
+    # Maximum realistic TP distance for intraday trades: 3× daily ATR.
+    # Daily S/R levels (5-day range) can be very far from current price,
+    # creating unreachable targets that inflate R:R on paper but never hit.
+    max_tp_dist = stock.atr * 3 if stock.atr > 0 else entry * 0.06
+
     if side == "long":
         # Stop: just below the key support level
         level_stop = stock.key_support - atr_buffer
@@ -107,8 +112,9 @@ def build_trade_card(
         if risk <= 0:
             return None
 
-        # TP1 = key resistance; TP2 = TP1 + 1R extension
-        tp1 = round(stock.key_resistance, 2)
+        # TP1 = key resistance, capped at max_tp_dist above entry
+        raw_tp1 = stock.key_resistance
+        tp1 = round(min(raw_tp1, entry + max_tp_dist), 2)
         tp2 = round(tp1 + risk, 2)
         invalidation = round(stock.pullback_low, 2)
     else:
@@ -122,8 +128,9 @@ def build_trade_card(
         if risk <= 0:
             return None
 
-        # TP1 = key support; TP2 = TP1 − 1R extension
-        tp1 = round(stock.key_support, 2)
+        # TP1 = key support, capped at max_tp_dist below entry
+        raw_tp1 = stock.key_support
+        tp1 = round(max(raw_tp1, entry - max_tp_dist), 2)
         tp2 = round(tp1 - risk, 2)
         invalidation = round(stock.pullback_high, 2)
 
