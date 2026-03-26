@@ -1,4 +1,19 @@
 services:
+  # -- Web Dashboard ----------------------------------------------------------
+  - type: web
+    name: tradingbot-dashboard
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: PYTHONPATH=src gunicorn --workers 2 --bind 0.0.0.0:$PORT tradingbot.web.app:app
+    envVars:
+      - key: SUPABASE_URL
+        value: "https://cgkogwtlrxhbexdifsge.supabase.co"
+      - key: SUPABASE_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.10.5"
+
   # -- News Research ----------------------------------------------------------
   - type: cron
     name: tradingbot-news-night
