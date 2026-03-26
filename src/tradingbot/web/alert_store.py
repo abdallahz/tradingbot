@@ -510,9 +510,11 @@ def seed_outcomes_for_today() -> int:
     """
     sb = _get_supabase()
     if sb is None:
+        log.warning("[seed] No Supabase connection")
         return 0
     try:
         today_str = _today_et().isoformat()
+        log.info(f"[seed] today={today_str}")
 
         # Get today's alerts
         alerts_resp = (
@@ -521,17 +523,21 @@ def seed_outcomes_for_today() -> int:
             .eq("trade_date", today_str)
             .execute()
         )
+        alert_count = len(alerts_resp.data) if alerts_resp.data else 0
+        log.info(f"[seed] alerts for {today_str}: {alert_count}")
         if not alerts_resp.data:
             return 0
 
         # Get existing outcomes for today (to avoid duplicates)
         existing_resp = (
             sb.table("trade_outcomes")
-            .select("alert_id")
+            .select("alert_id, status")
             .eq("trade_date", today_str)
             .execute()
         )
         existing_ids = {r["alert_id"] for r in (existing_resp.data or [])}
+        existing_statuses = {r.get("status") for r in (existing_resp.data or [])}
+        log.info(f"[seed] existing outcomes: {len(existing_ids)}, statuses: {existing_statuses}")
 
         count = 0
         for alert in alerts_resp.data:
@@ -562,6 +568,7 @@ def load_open_outcomes() -> list[dict[str, Any]]:
     """Return all trade outcomes with status='open' or 'tp1_hit' (still tracking)."""
     sb = _get_supabase()
     if sb is None:
+        log.warning("[load_open] No Supabase connection")
         return []
     try:
         today_str = _today_et().isoformat()
@@ -572,7 +579,19 @@ def load_open_outcomes() -> list[dict[str, Any]]:
             .in_("status", ["open", "tp1_hit"])
             .execute()
         )
-        return resp.data or []
+        result = resp.data or []
+        log.info(f"[load_open] date={today_str}, open/tp1_hit outcomes: {len(result)}")
+        if not result:
+            # Check how many total outcomes exist for today (any status)
+            all_resp = (
+                sb.table("trade_outcomes")
+                .select("status")
+                .eq("trade_date", today_str)
+                .execute()
+            )
+            all_statuses = [r.get("status") for r in (all_resp.data or [])]
+            log.info(f"[load_open] All outcomes today: {len(all_statuses)}, statuses: {all_statuses}")
+        return result
     except Exception as exc:
         log.warning(f"[alert_store] load_open_outcomes failed: {exc}")
         return []
