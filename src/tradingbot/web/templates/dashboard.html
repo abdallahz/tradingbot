@@ -5,6 +5,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Trading Bot — Dashboard</title>
+    <script>
+        // Apply saved theme before first paint to prevent flash
+        (function () {
+            var t = localStorage.getItem('theme');
+            if (t) document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <style>
         /* ── Reset & base ─────────────────────────────────── */
         *,
@@ -28,6 +35,60 @@
             --blue: #3b82f6;
             --purple: #a855f7;
             --radius: 10px;
+        }
+
+        /* ── Light theme overrides ─────────────────────── */
+        [data-theme="light"] {
+            --bg: #f5f7fa;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --muted: #94a3b8;
+            --text: #1e293b;
+            --sub: #64748b;
+            --green: #16a34a;
+            --red: #dc2626;
+            --amber: #d97706;
+            --blue: #2563eb;
+            --purple: #7c3aed;
+        }
+
+        [data-theme="light"] .logo-icon {
+            box-shadow: 0 2px 8px rgba(59, 130, 246, .25);
+        }
+
+        [data-theme="light"] .card {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .stat-box {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .pnl-summary {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .perf-section {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        /* Theme toggle button */
+        .theme-toggle {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background .2s, border-color .2s;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--blue);
         }
 
         body {
@@ -1593,14 +1654,19 @@
         </style>
 
         <script>
-            // Side toggle buttons
-            document.querySelectorAll('.toggle-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    document.getElementById('side-value').value = btn.dataset.val;
-                });
-            });
+            // ── Theme toggle (persisted in localStorage) ───────────────
+            (function () {
+                const saved = localStorage.getItem('theme');
+                if (saved) document.documentElement.setAttribute('data-theme', saved);
+            })();
+            function toggleTheme() {
+                const html = document.documentElement;
+                const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                const btn = document.getElementById('theme-btn');
+                if (btn) btn.textContent = next === 'light' ? '🌙' : '☀️';
+            }
         </script>
 
         <!-- ── Header ──────────────────────────────────────────────────────── -->
@@ -1613,7 +1679,11 @@
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:14px;">
-                <a href="/stats" style="font-size:13px; font-weight:500; color:#3b82f6; text-decoration:none;">Stats</a>
+                <a href="/stats"
+                    style="font-size:13px; font-weight:500; color:var(--blue); text-decoration:none;">Stats</a>
+                <button id="theme-btn" class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">
+                    <script>document.write(document.documentElement.getAttribute('data-theme') === 'light' ? '🌙' : '☀️')</script>
+                </button>
                 <div class="market-pill">
                     <span class="dot {{ market.color }}"></span>
                     {{ market.label }}
