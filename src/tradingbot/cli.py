@@ -164,7 +164,7 @@ def main() -> None:
         picks = scheduler.run_close_hold_scan()
         print(f"\n{mode_str} Close Scan — Overnight Holds")
         for p in picks:
-            arrow = "↗" if p.side == "long" else "↘"
+            arrow = "↗"
             print(f"  {arrow} {p.symbol} — Score {p.score:.0f} | ${p.price:.2f} ({p.change_pct:+.1f}%) | {p.thesis}")
         if not picks:
             print("  No qualifying setups found.")

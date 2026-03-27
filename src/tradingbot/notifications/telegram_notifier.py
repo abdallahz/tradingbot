@@ -159,7 +159,7 @@ class TelegramNotifier:
         ]
 
         for i, p in enumerate(picks, 1):
-            side_emoji = "🟢" if p.side == "long" else "🔴"
+            side_emoji = "🟢"
             change_str = f"{p.change_pct:+.1f}%"
             lines.append(
                 f"*{i}. {side_emoji} `{p.symbol}`* — Score {p.score:.0f}/100"
@@ -266,7 +266,7 @@ class TelegramNotifier:
     def _format_alert(card: "TradeCard") -> str:
         from tradingbot.analysis.pattern_detector import format_patterns
 
-        side_emoji = "🟢 LONG" if card.side == "long" else "🔴 SHORT"
+        side_emoji = "🟢 LONG"
         patterns   = format_patterns(getattr(card, "patterns", []))
         confluence = getattr(card, "score", 0.0)
         signals    = ", ".join(card.reason) if card.reason else "—"

@@ -167,7 +167,7 @@ class AITradeValidator:
 
 ## Setup
 - **Symbol**: {card.symbol}
-- **Side**: {card.side.upper()}
+- **Side**: LONG
 - **Composite Score**: {card.score}/100
 - **Session**: {card.session_tag}
 
