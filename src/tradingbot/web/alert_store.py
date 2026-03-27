@@ -665,7 +665,7 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     for o in outcomes:
         st = o.get("status", "open")
         pnl = float(o.get("pnl_pct") or 0.0)
-        if st in ("tp1_hit", "tp2_hit"):
+        if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
             wins += 1
             pnls.append(pnl)
         elif st == "stopped":
@@ -736,7 +736,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
         cum_pnl = 0.0
         for d in sorted(by_date.keys())[-days:]:
             rows = by_date[d]
-            wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit"))
+            wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit", "tp1_locked"))
             losses = sum(1 for r in rows if r.get("status") == "stopped")
             expired = sum(1 for r in rows if r.get("status") == "expired")
             be = sum(1 for r in rows if r.get("status") == "breakeven")
