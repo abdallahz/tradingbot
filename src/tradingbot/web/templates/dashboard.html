@@ -72,6 +72,67 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
         }
 
+        /* Light theme: watchlist, legend, close-picks, chevrons */
+        [data-theme="light"] .watchlist-section,
+        [data-theme="light"] .legend-section {
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .watchlist-chevron {
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .watchlist-chip {
+            background: rgba(0, 0, 0, .03);
+            border-color: var(--border);
+        }
+
+        [data-theme="light"] .watchlist-chip .wl-symbol {
+            color: var(--text);
+        }
+
+        [data-theme="light"] .wl-score.low {
+            background: rgba(0, 0, 0, .05);
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .legend-cat-title {
+            color: var(--sub);
+            border-bottom-color: var(--border);
+        }
+
+        [data-theme="light"] .legend-term {
+            color: var(--text);
+        }
+
+        [data-theme="light"] .legend-def {
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .close-pick-card {
+            background: var(--surface);
+            border-color: var(--border);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .cp-score-badge.low {
+            background: rgba(0, 0, 0, .05);
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .cp-thesis {
+            border-top-color: var(--border);
+        }
+
+        [data-theme="light"] .select-chevron {
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .perf-header svg {
+            color: var(--sub);
+        }
+
         /* Theme toggle button */
         .theme-toggle {
             background: var(--surface);
@@ -1330,7 +1391,7 @@
 
             /* News Research Watchlist */
             .watchlist-section {
-                background: var(--card);
+                background: var(--surface);
                 border: 1px solid var(--border);
                 border-radius: 10px;
                 padding: 16px 20px;
@@ -1548,7 +1609,7 @@
 
             /* Legend / Glossary */
             .legend-section {
-                background: var(--card);
+                background: var(--surface);
                 border: 1px solid var(--border);
                 border-radius: 10px;
                 padding: 16px 20px;
