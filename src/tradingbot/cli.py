@@ -111,8 +111,9 @@ def main() -> None:
 
         # Diagnostic: verify environment before running
         has_alpaca = bool(os.getenv("ALPACA_API_KEY", "").strip())
-        has_supabase = bool(os.getenv("SUPABASE_URL", "").strip())
-        print(f"[tracker] env: alpaca={'yes' if has_alpaca else 'NO'} supabase={'yes' if has_supabase else 'NO'}")
+        has_sb_url = bool(os.getenv("SUPABASE_URL", "").strip())
+        has_sb_key = bool(os.getenv("SUPABASE_KEY", "").strip())
+        print(f"[tracker] env: alpaca={'yes' if has_alpaca else 'NO'} sb_url={'yes' if has_sb_url else 'NO'} sb_key={'yes' if has_sb_key else 'NO'}")
 
         from tradingbot.tracking.trade_tracker import TradeTracker
         tracker = TradeTracker()
@@ -133,8 +134,9 @@ def main() -> None:
 
         # Diagnostic: verify environment
         has_alpaca = bool(os.getenv("ALPACA_API_KEY", "").strip())
-        has_supabase = bool(os.getenv("SUPABASE_URL", "").strip())
-        print(f"[close] env: alpaca={'yes' if has_alpaca else 'NO'} supabase={'yes' if has_supabase else 'NO'}")
+        has_sb_url = bool(os.getenv("SUPABASE_URL", "").strip())
+        has_sb_key = bool(os.getenv("SUPABASE_KEY", "").strip())
+        print(f"[close] env: alpaca={'yes' if has_alpaca else 'NO'} sb_url={'yes' if has_sb_url else 'NO'} sb_key={'yes' if has_sb_key else 'NO'}")
 
         # Time guard: only run between 3:00 PM and 4:30 PM ET
         # Prevents Blueprint syncs or accidental triggers from corrupting data
