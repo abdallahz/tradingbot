@@ -12,6 +12,10 @@ services:
         value: "https://cgkogwtlrxhbexdifsge.supabase.co"
       - key: SUPABASE_KEY
         sync: false
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_API_SECRET
+        sync: false
       - key: PYTHON_VERSION
         value: "3.10.5"
 
