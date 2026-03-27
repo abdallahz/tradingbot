@@ -170,6 +170,15 @@ class Scheduler:
         run, and returns (alert_count, results).
         """
         runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+
+        # Auto-tune: apply backtest-derived threshold adjustments
+        # (safe no-op if <20 historical trades exist)
+        try:
+            runner.apply_tuning()
+        except Exception as _exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(f"[scheduler] auto-tune failed: {_exc}")
+
         catalyst_scores = self._load_catalyst_scores()
         results, card_count = runner.run_single_session(session_type, catalyst_scores)
         runner._write_single_session_output(results, session_type)

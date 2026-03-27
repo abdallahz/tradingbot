@@ -196,6 +196,52 @@ class Ranker:
             return 30.0
         return 50.0
 
+    def _score_gap_quality(self, stock: SymbolSnapshot) -> float:
+        """Score gap continuation probability (0-100).
+
+        Not all gaps are equal for momentum trades:
+        - Small gaps (2-6%) with high RVol (≥2x) are the sweet spot —
+          high-conviction continuation setups.  Score: 80-100.
+        - Moderate gaps (6-10%) with strong volume still work.  Score: 60-80.
+        - Large gaps (>10%) with low RVol (<1.5x) are gap-fill candidates —
+          risky for longs above VWAP.  Score: 10-40.
+        - Any gap with catalyst backing (≥60) gets a bonus.
+        """
+        g = abs(stock.gap_pct)
+        rv = stock.relative_volume
+        cat = stock.catalyst_score
+
+        if g < 0.5:
+            return 30.0  # barely gapping, weak signal
+
+        # Base: volume-confirmed gaps score well, unconfirmed poorly
+        if rv >= 3.0:
+            vol_factor = 1.0
+        elif rv >= 2.0:
+            vol_factor = 0.85
+        elif rv >= 1.5:
+            vol_factor = 0.65
+        else:
+            vol_factor = 0.35  # low volume = likely gap fill
+
+        # Gap size factor: sweet spot 2-6%, penalise >10%
+        if g <= 6.0:
+            gap_factor = 0.9 + (g / 60.0)   # 0.9 to ~1.0
+        elif g <= 10.0:
+            gap_factor = 0.8
+        else:
+            gap_factor = max(0.3, 0.8 - (g - 10) * 0.05)  # penalise big gaps
+
+        base = vol_factor * gap_factor * 100.0
+
+        # Catalyst bonus: news-driven gaps fill less often
+        if cat >= 60:
+            base = min(100.0, base + 15)
+        elif cat >= 40:
+            base = min(100.0, base + 5)
+
+        return round(min(100.0, max(0.0, base)), 1)
+
     def score(self, stock: SymbolSnapshot) -> float:
         g  = self._normalize_gap(stock)
         rv = self._normalize_rel_vol(stock)
@@ -206,11 +252,11 @@ class Ranker:
         mc = self._normalize_macd(stock)
         sa = self._score_signal_alignment(stock)
         ob = self._score_obv_divergence(stock)
-        # Weights sum to 1.0 — added signal alignment (5%) and OBV (5%),
-        # reduced gap (20%) and momentum (5%) slightly to make room.
-        return (0.20 * g + 0.18 * rv + 0.12 * lq + 0.15 * c
+        gq = self._score_gap_quality(stock)
+        # Weights sum to 1.0 — gap quality (6%) added, trimmed gap/relvol slightly.
+        return (0.17 * g + 0.16 * rv + 0.11 * lq + 0.15 * c
                 + 0.05 * m + 0.10 * rs + 0.05 * mc
-                + 0.08 * sa + 0.07 * ob)
+                + 0.07 * sa + 0.06 * ob + 0.08 * gq)
 
     def run(self, snapshots: list[SymbolSnapshot]) -> list[RankedCandidate]:
         ranked = [RankedCandidate(snapshot=item, score=self.score(item)) for item in snapshots]
@@ -235,10 +281,11 @@ class CatalystWeightedRanker(Ranker):
         m  = self._normalize_momentum(stock)
         rs = self._normalize_rsi(stock)
         mc = self._normalize_macd(stock)
-        # Weights: catalyst 35%, gap 15%, relVol 12%, liquidity 10%,
-        #          RSI 8%, momentum 5%, MACD 5%, signal_align+OBV → 10% combined
         sa = self._score_signal_alignment(stock)
         ob = self._score_obv_divergence(stock)
-        return (0.15 * g + 0.12 * rv + 0.10 * lq + 0.35 * c
-                + 0.05 * m + 0.08 * rs + 0.05 * mc
-                + 0.05 * sa + 0.05 * ob)
+        gq = self._score_gap_quality(stock)
+        # Weights: catalyst 33%, gap quality 8%, gap 12%, relVol 10%, liquidity 9%,
+        #          RSI 7%, momentum 5%, MACD 5%, signal_align+OBV → 11% combined
+        return (0.12 * g + 0.10 * rv + 0.09 * lq + 0.33 * c
+                + 0.05 * m + 0.07 * rs + 0.05 * mc
+                + 0.05 * sa + 0.06 * ob + 0.08 * gq)

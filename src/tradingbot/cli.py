@@ -27,6 +27,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("run-midday", help="Run midday scan (12:00 PM)")
     sub.add_parser("run-close", help="Run close scan (overnight holds + daily recap)")
     sub.add_parser("run-tracker", help="Run one tracker tick (check open trades for TP/stop hits)")
+    sub.add_parser("auto-tune", help="Run auto-tuner analysis and print recommendations")
     return parser
 
 
@@ -122,6 +123,17 @@ def main() -> None:
         updates = result.get("updates", 0)
         seeded = result.get("seeded", 0)
         print(f"[tracker] checked={checked} updates={updates} seeded={seeded}")
+        return
+
+    if args.command == "auto-tune":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from tradingbot.analysis.auto_tuner import AutoTuner, persist_tuning
+        tuner = AutoTuner()
+        result = tuner.tune()
+        print(result.summary())
+        if result.recommendations:
+            persist_tuning(result)
         return
 
     if args.command == "run-close":

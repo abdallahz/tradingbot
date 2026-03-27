@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from tradingbot.config import ConfigLoader
 from tradingbot.data.alpaca_client import AlpacaClient
@@ -33,6 +34,7 @@ from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer, MarketCondition
+from tradingbot.analysis.market_guard import MarketGuard, MarketHealth
 from tradingbot.analysis.ai_trade_validator import AITradeValidator
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
 from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
@@ -129,9 +131,12 @@ class SessionRunner:
             max_consecutive_losses=risk_defaults["max_consecutive_losses"],
         )
         self.market_analyzer = MarketConditionAnalyzer()
+        self.market_guard = MarketGuard()
         # Current market condition — populated by _run_three_option_session,
         # consumed by _build_cards for dynamic filter thresholds.
         self._market_condition: MarketCondition | None = None
+        # Current broad-market health — populated before _build_cards.
+        self._market_health: MarketHealth | None = None
         # AI Trade Validator (paid LLM call per card) — disabled by default
         ai_validation_enabled = False
         if use_real_data:
@@ -139,6 +144,8 @@ class SessionRunner:
         self.ai_validator = AITradeValidator() if ai_validation_enabled else None
         self.notifier = TelegramNotifier.from_env()
         self._alerts_sent_count: int = 0
+        # Auto-tune overrides (populated by apply_tuning before first scan)
+        self._tuning_overrides: dict[str, float] = {}
         
         # Relaxed scanner for Option 2
         o2_cfg = scanner_config.get("o2_relaxed", {})
@@ -150,6 +157,44 @@ class SessionRunner:
             min_dollar_volume=o2_cfg.get("min_dollar_volume", 0),
             max_spread_pct=o2_cfg.get("max_spread_pct", 5.0),
         )
+
+    def apply_tuning(self) -> None:
+        """Run auto-tuner and apply safe recommendations to this session.
+
+        Called once at session boot (before the first scan cycle).
+        Only recommendations with confidence >= 0.5 are applied.
+        """
+        from tradingbot.analysis.auto_tuner import AutoTuner, persist_tuning
+
+        tuner = AutoTuner(
+            min_trades=20,
+            current_thresholds={
+                "min_catalyst_score": 40,
+                "min_relative_volume": 3.0,
+                "min_ranker_score": self.ranker.min_score,
+                "min_confluence_score": MIN_CONFLUENCE_SCORE,
+                "max_vwap_distance_pct": MAX_VWAP_DISTANCE_PCT_DEFAULT,
+                "max_trades_per_day": self.risk_manager._max_trades_per_day,
+            },
+        )
+        result = tuner.tune()
+        logging.info(f"[AUTO_TUNE] {result.summary()}")
+
+        applied: list[str] = []
+        for rec in result.recommendations:
+            if rec.confidence < 0.5:
+                logging.info(f"[AUTO_TUNE] Skipping {rec.parameter}: confidence {rec.confidence:.0%} < 50%")
+                continue
+            self._tuning_overrides[rec.parameter] = rec.recommended
+            applied.append(f"{rec.parameter}={rec.recommended}")
+
+        if applied:
+            logging.info(f"[AUTO_TUNE] Applied overrides: {', '.join(applied)}")
+            result.applied = True
+        else:
+            logging.info("[AUTO_TUNE] No high-confidence recommendations — using defaults")
+
+        persist_tuning(result)
 
     def run_day(self) -> tuple[WatchlistRun, WatchlistRun]:
         """Legacy method - runs old 2-section output."""
@@ -305,6 +350,15 @@ class SessionRunner:
     ) -> ThreeOptionWatchlist:
         """Run 3 different scan approaches and provide recommendation."""
 
+        # ── SPY/QQQ broad market guard ──
+        if self.use_real_data:
+            self._market_health = self.market_guard.check()
+            logging.info(f"[MARKET_GUARD] {self._market_health.regime}: {self._market_health.reason}")
+            if self._market_health.regime == "red":
+                logging.warning(f"[MARKET_GUARD] RED — halting new entries")
+        else:
+            self._market_health = None
+
         # Option 1: Night Research — top catalyst picks with smart money overlay
         night_picks = self._get_night_research_picks(snapshots, catalyst_scores, session_tag)
 
@@ -443,6 +497,12 @@ class SessionRunner:
 
         rm = risk_manager_override or self.risk_manager
 
+        # Market guard: halt entries if SPY/QQQ in red regime
+        mh = self._market_health
+        if mh and mh.regime == "red":
+            logging.warning(f"[MARKET_GUARD] Skipping all card generation: {mh.reason}")
+            return cards
+
         for item in ranked:
             if not rm.allow_new_trade(risk_state):
                 if dropped is not None:
@@ -484,9 +544,10 @@ class SessionRunner:
                     logging.info(f"[DROP] {symbol.symbol}: ETF family '{sym_family}' already selected")
                     continue
 
-            # ── VWAP distance filter (regime-adaptive) ─────────────────
+            # ── VWAP distance filter (regime-adaptive + auto-tune) ──────
             mc = self._market_condition
             max_vwap = mc.max_vwap_distance_pct if mc else MAX_VWAP_DISTANCE_PCT_DEFAULT
+            max_vwap = self._tuning_overrides.get("max_vwap_distance_pct", max_vwap)
             if symbol.vwap > 0 and symbol.price > 0:
                 vwap_dist_pct = abs(symbol.price - symbol.vwap) / symbol.vwap * 100
                 if vwap_dist_pct > max_vwap:
@@ -500,11 +561,13 @@ class SessionRunner:
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
 
-            # ── Catalyst / conviction gate (regime-adaptive) ──────────
+            # ── Catalyst / conviction gate (regime-adaptive + auto-tune) ──
             # Stocks with stock-specific news (catalyst >= threshold) pass.
             # Stocks WITHOUT direct news need strong volume conviction.
             min_catalyst = mc.min_catalyst_score if mc else 40
+            min_catalyst = self._tuning_overrides.get("min_catalyst_score", min_catalyst)
             min_rvol = mc.min_relative_volume if mc else 3.0
+            min_rvol = self._tuning_overrides.get("min_relative_volume", min_rvol)
             if symbol.catalyst_score < min_catalyst:
                 has_strong_volume = (
                     symbol.relative_volume >= min_rvol
@@ -551,13 +614,22 @@ class SessionRunner:
                     f"(can_long={can_long}, can_short={can_short})")
                 continue
             side: Side = "long"
+            # Apply market guard size multiplier (yellow = 50%, green = 100%)
+            effective_risk_pct = self.risk_per_trade_pct
+            if mh and mh.size_multiplier < 1.0:
+                effective_risk_pct *= mh.size_multiplier
+            # Apply streak-based scaling after consecutive losses
+            streak_mult = rm.streak_size_multiplier(risk_state)
+            if streak_mult < 1.0:
+                effective_risk_pct *= streak_mult
+                logging.info(f"[STREAK] {symbol.symbol}: sizing at {streak_mult:.0%} after {risk_state.consecutive_losses} consecutive losses")
             card = build_trade_card(
                 stock=symbol,
                 side=side,
                 score=item.score,
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=session_tag,
-                risk_per_trade_pct=self.risk_per_trade_pct,
+                risk_per_trade_pct=effective_risk_pct,
             )
             if card is None:
                 if dropped is not None:
@@ -567,10 +639,31 @@ class SessionRunner:
             card.patterns = list(symbol.patterns)
             card.catalyst_score = symbol.catalyst_score
             confluence = score_confluence(card.patterns, side)
+
+            # ── First-15-min fakeout guard ────────────────────────
+            # Between 9:30-9:45 ET the opening cross creates wild wicks
+            # that trigger false breakouts.  Raise the confluence floor
+            # to 15 and widen the stop by 20% so only the strongest
+            # setups fire, and stops aren't clipped by opening noise.
+            _ET = ZoneInfo("America/New_York")
+            now_et = datetime.now(_ET).time()
+            in_opening_window = dt_time(9, 30) <= now_et <= dt_time(9, 45)
+
+            if in_opening_window and not relaxed:
+                confluence_floor = 15  # tighter filter during fakeout window
+                if card.stop_loss and card.entry:
+                    # widen stop by 20% to survive opening wicks
+                    stop_dist = abs(card.entry - card.stop_loss)
+                    widened = stop_dist * 1.20
+                    card.stop_loss = round(card.entry - widened, 2) if side == "long" else round(card.entry + widened, 2)
+                    logging.info(f"[FAKEOUT_GUARD] {symbol.symbol}: widened stop to {card.stop_loss:.2f} (opening window)")
+            else:
+                # Normal confluence floor
+                # Relaxed mode: only block if strong opposing signal (< 0)
+                # Strict mode: require MIN_CONFLUENCE_SCORE (10)
+                confluence_floor = 0 if relaxed else MIN_CONFLUENCE_SCORE
+
             # Block cards with weak or opposing signals
-            # Relaxed mode: only block if strong opposing signal (< 0)
-            # Strict mode: require MIN_CONFLUENCE_SCORE (10)
-            confluence_floor = 0 if relaxed else MIN_CONFLUENCE_SCORE
             if confluence < confluence_floor:
                 if dropped is not None:
                     dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))

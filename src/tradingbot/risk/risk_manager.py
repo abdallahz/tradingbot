@@ -25,6 +25,28 @@ class RiskManager:
             return False
         return True
 
+    def streak_size_multiplier(self, state: RiskState) -> float:
+        """Return a position-size multiplier based on consecutive losses.
+
+        Instead of an all-or-nothing lockout, this gradually scales down
+        position sizes after each loss to preserve capital while still
+        allowing recovery trades:
+            0 losses → 1.00  (full size)
+            1 loss   → 0.75
+            2 losses → 0.50
+            3 losses → 0.35  (minimum before hard lockout)
+
+        After a win, consecutive_losses resets to 0 → back to full size.
+        """
+        losses = state.consecutive_losses
+        if losses <= 0:
+            return 1.0
+        if losses == 1:
+            return 0.75
+        if losses == 2:
+            return 0.50
+        return 0.35  # 3+ losses: stay alive but very small
+
     def update_after_result(self, state: RiskState, pnl_pct: float) -> RiskState:
         state.daily_pnl_pct += pnl_pct
         state.trades_taken += 1
