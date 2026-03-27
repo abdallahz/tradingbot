@@ -290,6 +290,12 @@ def api_health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/healthz")
+def healthz():
+    """Lightweight health check for Render (no DB calls)."""
+    return "ok", 200
+
+
 @app.route("/api/diag/outcomes")
 def api_diag_outcomes():
     """Diagnostic: show raw trade_outcomes state across recent days."""
