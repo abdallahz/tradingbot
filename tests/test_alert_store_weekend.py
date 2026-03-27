@@ -20,7 +20,7 @@ def test_save_alert_skips_weekend(monkeypatch):
     alert = {"trade_date": "2026-03-14", "symbol": "WEEKEND", "side": "long"}
     save_alert(alert)
     # Sunday
-    alert = {"trade_date": "2026-03-15", "symbol": "WEEKEND", "side": "short"}
+    alert = {"trade_date": "2026-03-15", "symbol": "WEEKEND", "side": "long"}
     save_alert(alert)
     # Weekday
     alert = {"trade_date": "2026-03-17", "symbol": "WEEKDAY", "side": "long"}

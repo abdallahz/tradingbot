@@ -4,8 +4,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
-Side = Literal["long", "short"]
-
 
 @dataclass
 class SymbolSnapshot:
@@ -36,7 +34,6 @@ class SymbolSnapshot:
 @dataclass
 class TradeCard:
     symbol: str
-    side: Side
     score: float
     entry_price: float
     stop_price: float

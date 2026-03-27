@@ -196,7 +196,6 @@ class TradeTracker:
         3. TP1_HIT             → trail stop to TP1 level so the runner
            locks in the TP1 gain and aims for TP2.
         """
-        side = trade.get("side", "long")
         entry = float(trade.get("entry_price") or 0)
         stop = float(trade.get("stop_price") or 0)
         tp1 = float(trade.get("tp1_price") or 0)
@@ -210,27 +209,17 @@ class TradeTracker:
 
         # ── Stage 1: Breakeven trail at 0.75R (OPEN) ───────────────
         if risk > 0 and current_status == "open":
-            if side == "long":
-                unrealised = price - entry
-            else:
-                unrealised = entry - price
+            unrealised = price - entry
 
             # Stage 2: lock-in 1R when price reaches 1.5R
             if unrealised >= risk * 1.5:
-                lock_level = entry + risk if side == "long" else entry - risk
-                # Only trail forward (never move stop backwards)
-                if side == "long" and stop < lock_level:
-                    self._trail_stop_to_level(trade, lock_level)
-                    stop = lock_level
-                elif side == "short" and stop > lock_level:
+                lock_level = entry + risk
+                if stop < lock_level:
                     self._trail_stop_to_level(trade, lock_level)
                     stop = lock_level
             # Stage 1: breakeven when price reaches 0.75R
             elif unrealised >= risk * 0.75 and stop != entry:
-                if side == "long" and stop < entry:
-                    self._trail_stop_to_level(trade, entry)
-                    stop = entry
-                elif side == "short" and stop > entry:
+                if stop < entry:
                     self._trail_stop_to_level(trade, entry)
                     stop = entry
 
@@ -238,33 +227,20 @@ class TradeTracker:
         # After TP1 is hit, move stop to TP1 so the remaining position
         # locks in the first target's profit.
         if current_status == "tp1_hit" and tp1 > 0:
-            if side == "long" and stop < tp1:
-                self._trail_stop_to_level(trade, tp1)
-                stop = tp1
-            elif side == "short" and stop > tp1:
+            if stop < tp1:
                 self._trail_stop_to_level(trade, tp1)
                 stop = tp1
 
-        if side == "long":
-            # Check stop first (worst case)
-            if stop > 0 and price <= stop:
-                if stop >= tp1 and tp1 > 0:
-                    return "tp1_locked"
-                return "breakeven" if stop == entry else "stopped"
-            # TP2 beats TP1 (upgrade)
-            if tp2 > 0 and price >= tp2:
-                return "tp2_hit"
-            if tp1 > 0 and price >= tp1 and current_status == "open":
-                return "tp1_hit"
-        else:  # short
-            if stop > 0 and price >= stop:
-                if stop <= tp1 and tp1 > 0:
-                    return "tp1_locked"
-                return "breakeven" if stop == entry else "stopped"
-            if tp2 > 0 and price <= tp2:
-                return "tp2_hit"
-            if tp1 > 0 and price <= tp1 and current_status == "open":
-                return "tp1_hit"
+        # Check stop first (worst case)
+        if stop > 0 and price <= stop:
+            if stop >= tp1 and tp1 > 0:
+                return "tp1_locked"
+            return "breakeven" if stop == entry else "stopped"
+        # TP2 beats TP1 (upgrade)
+        if tp2 > 0 and price >= tp2:
+            return "tp2_hit"
+        if tp1 > 0 and price >= tp1 and current_status == "open":
+            return "tp1_hit"
 
         return None
 

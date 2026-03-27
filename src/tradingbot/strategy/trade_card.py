@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from tradingbot.models import Side, SymbolSnapshot, TradeCard
+from tradingbot.models import SymbolSnapshot, TradeCard
 from tradingbot.data.etf_metadata import get_leverage_factor
 
 
@@ -62,7 +62,6 @@ def _assess_risk(stock: SymbolSnapshot, rr: float) -> str:
 
 def build_trade_card(
     stock: SymbolSnapshot,
-    side: Side,
     score: float,
     fixed_stop_pct: float,
     session_tag: Literal["morning", "midday", "close"],
@@ -87,14 +86,10 @@ def build_trade_card(
     atr_buffer = stock.atr * 0.5 if stock.atr > 0 else entry * 0.005
 
     # Reject if key levels aren't set — a card with TP1=0 is nonsensical
-    if side == "long" and stock.key_resistance <= 0:
+    if stock.key_resistance <= 0:
         return None
-    if side == "short" and stock.key_support <= 0:
-        return None
-    # Support/resistance must be on the correct side of price
-    if side == "long" and stock.key_resistance <= entry:
-        return None
-    if side == "short" and stock.key_support >= entry:
+    # Resistance must be above price for a long trade
+    if stock.key_resistance <= entry:
         return None
 
     # Maximum realistic TP distance for intraday trades.
@@ -106,38 +101,21 @@ def build_trade_card(
     else:
         max_tp_dist = entry * 0.06
 
-    if side == "long":
-        # Stop: just below the key support level
-        level_stop = stock.key_support - atr_buffer
-        # Cap stop so max risk never exceeds fixed_stop_pct
-        max_stop = entry * (1.0 - fixed_stop_pct / 100.0)
-        stop = round(max(level_stop, max_stop), 2)
+    # Long-only: stop below support, targets above entry
+    level_stop = stock.key_support - atr_buffer
+    # Cap stop so max risk never exceeds fixed_stop_pct
+    max_stop = entry * (1.0 - fixed_stop_pct / 100.0)
+    stop = round(max(level_stop, max_stop), 2)
 
-        risk = entry - stop
-        if risk <= 0:
-            return None
+    risk = entry - stop
+    if risk <= 0:
+        return None
 
-        # TP1 = key resistance, capped at max_tp_dist above entry
-        raw_tp1 = stock.key_resistance
-        tp1 = round(min(raw_tp1, entry + max_tp_dist), 2)
-        tp2 = round(tp1 + risk, 2)
-        invalidation = round(stock.pullback_low, 2)
-    else:
-        # Stop: just above the key resistance level
-        level_stop = stock.key_resistance + atr_buffer
-        # Cap stop so max risk never exceeds fixed_stop_pct
-        max_stop = entry * (1.0 + fixed_stop_pct / 100.0)
-        stop = round(min(level_stop, max_stop), 2)
-
-        risk = stop - entry
-        if risk <= 0:
-            return None
-
-        # TP1 = key support, capped at max_tp_dist below entry
-        raw_tp1 = stock.key_support
-        tp1 = round(max(raw_tp1, entry - max_tp_dist), 2)
-        tp2 = round(tp1 - risk, 2)
-        invalidation = round(stock.pullback_high, 2)
+    # TP1 = key resistance, capped at max_tp_dist above entry
+    raw_tp1 = stock.key_resistance
+    tp1 = round(min(raw_tp1, entry + max_tp_dist), 2)
+    tp2 = round(tp1 + risk, 2)
+    invalidation = round(stock.pullback_low, 2)
 
     # R:R based on TP1 (the real level), not TP2
     reward = abs(tp1 - entry)
@@ -171,14 +149,10 @@ def build_trade_card(
     if patterns:
         reasons.extend(patterns)
     if not reasons:
-        if side == "long":
-            reasons = ["volume_spike", "ema9_20_hold", "vwap_reclaim", "pullback_entry"]
-        else:
-            reasons = ["volume_spike", "ema9_20_reject", "vwap_break", "pullback_entry"]
+        reasons = ["volume_spike", "ema9_20_hold", "vwap_reclaim", "pullback_entry"]
 
     return TradeCard(
         symbol=stock.symbol,
-        side=side,
         score=round(score, 2),
         entry_price=entry,
         stop_price=stop,

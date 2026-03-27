@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-from tradingbot.models import Side, SymbolSnapshot
+from tradingbot.models import SymbolSnapshot
 from tradingbot.signals.indicators import (
     ema_hold_long,
-    ema_hold_short,
     volume_spike,
     vwap_reclaim_long,
-    vwap_reclaim_short,
 )
 
 
-def has_valid_setup(stock: SymbolSnapshot, side: Side, volume_multiplier: float) -> bool:
+def has_valid_setup(stock: SymbolSnapshot, volume_multiplier: float) -> bool:
     """Return True if the stock has confirming volume AND at least one
-    directional technical signal.
+    directional technical signal (long-only).
 
     volume_multiplier=0.0 disables the volume gate (always passes).
     Otherwise the stock needs:
@@ -36,11 +34,7 @@ def has_valid_setup(stock: SymbolSnapshot, side: Side, volume_multiplier: float)
         or (stock.relative_volume >= volume_multiplier
             and stock.premarket_volume >= 50_000)
     )
-    if side == "long":
-        has_ema = ema_hold_long(stock)
-        has_vwap = vwap_reclaim_long(stock)
-    else:
-        has_ema = ema_hold_short(stock)
-        has_vwap = vwap_reclaim_short(stock)
+    has_ema = ema_hold_long(stock)
+    has_vwap = vwap_reclaim_long(stock)
     has_direction = has_ema or has_vwap
     return has_vol and has_direction

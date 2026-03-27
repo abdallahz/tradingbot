@@ -95,7 +95,6 @@ def dashboard():
     date_filter = "" if raw_date == "_all" else raw_date
     symbol_filter = request.args.get("symbol", "")
     session_filter = request.args.get("session", "")
-    side_filter = request.args.get("side", "")
     scan_time_filter = request.args.get("scan_time", "")
     all_alerts = load_alerts(500)
 
@@ -153,13 +152,9 @@ def dashboard():
         alerts = [a for a in alerts if a.get("symbol", "") == symbol_filter]
     if session_filter:
         alerts = [a for a in alerts if a.get("session", "") == session_filter]
-    if side_filter:
-        alerts = [a for a in alerts if a.get("side", "") == side_filter]
     if scan_time_filter:
         alerts = [a for a in alerts if a.get("scan_block", "") == scan_time_filter]
     status = _market_status()
-    long_count = sum(1 for a in alerts if a.get("side") == "long")
-    short_count = sum(1 for a in alerts if a.get("side") == "short")
 
     # Pull last-scan time and scan count from the sessions table
     # (written by the worker for every scan, even zero-card ones)
@@ -246,13 +241,10 @@ def dashboard():
         market=status,
         last_scan=last_scan,
         scan_count=scan_count,
-        long_count=long_count,
-        short_count=short_count,
         date_filter=date_filter,
         today=today,
         symbol_filter=symbol_filter,
         session_filter=session_filter,
-        side_filter=side_filter,
         scan_time_filter=scan_time_filter,
         all_symbols=all_symbols,
         all_sessions=all_sessions,

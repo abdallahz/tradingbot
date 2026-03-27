@@ -258,24 +258,15 @@ _LONG_WEIGHTS: dict[str, int] = {
     "bearish_engulfing":  -30,  # strong bearish signal — kills long alert
 }
 
-_SHORT_WEIGHTS: dict[str, int] = {
-    "bearish_engulfing":  25,
-    "doji":               -5,
-    "bull_flag":          -20,
-    "breakout":           -20,
-    "bullish_engulfing":  -25,
-    "support_bounce":     -15,
-    "hammer":             -15,
-    "above_vwap":         -10,
-}
+_SHORT_WEIGHTS: dict[str, int] = {}  # kept for DB compat; unused in long-only mode
 
 # Minimum confluence score required to fire an alert
 MIN_CONFLUENCE_SCORE = 10
 
 
-def score_confluence(patterns: list[str], side: str = "long") -> float:
+def score_confluence(patterns: list[str]) -> float:
     """
-    Return a confluence score (0–100) for the detected patterns.
+    Return a confluence score (0–100) for the detected patterns (long-only).
 
     A score below MIN_CONFLUENCE_SCORE means signals are too weak or
     contradictory — the alert should be dropped.
@@ -288,7 +279,6 @@ def score_confluence(patterns: list[str], side: str = "long") -> float:
 
     Args:
         patterns: List of pattern strings from detect_patterns()
-        side:     "long" or "short"
 
     Returns:
         float in range -100 to 100 (clamped to 0..100 for practical use)
@@ -296,6 +286,5 @@ def score_confluence(patterns: list[str], side: str = "long") -> float:
     if not patterns:
         return 15.0  # neutral — insufficient data, not an opposing signal
 
-    weights = _LONG_WEIGHTS if side == "long" else _SHORT_WEIGHTS
-    raw = sum(weights.get(p, 0) for p in patterns)
+    raw = sum(_LONG_WEIGHTS.get(p, 0) for p in patterns)
     return max(-100.0, min(100.0, float(raw)))

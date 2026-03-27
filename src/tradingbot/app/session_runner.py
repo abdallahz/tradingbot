@@ -17,7 +17,6 @@ from tradingbot.data.mock_data import (
 from tradingbot.models import (
     NightResearchResult,
     RiskState,
-    Side,
     SymbolSnapshot,
     ThreeOptionWatchlist,
     TradeCard,
@@ -558,8 +557,7 @@ class SessionRunner:
                         f"({vwap_dist_pct:.1f}% > {max_vwap}%)")
                     continue
 
-            can_long = has_valid_setup(symbol, "long", volume_spike)
-            can_short = has_valid_setup(symbol, "short", volume_spike)
+            can_long = has_valid_setup(symbol, volume_spike)
 
             # ── Catalyst / conviction gate (regime-adaptive + auto-tune) ──
             # Stocks with stock-specific news (catalyst >= threshold) pass.
@@ -573,8 +571,7 @@ class SessionRunner:
                     symbol.relative_volume >= min_rvol
                     and symbol.premarket_volume >= 100_000
                 )
-                has_setup = can_long or can_short
-                if not (has_strong_volume and has_setup):
+                if not (has_strong_volume and can_long):
                     if dropped is not None:
                         dropped.append((symbol.symbol, f"low_catalyst_weak_vol:{symbol.catalyst_score:.0f}/rv={symbol.relative_volume:.1f}"))
                     logging.info(
@@ -585,9 +582,9 @@ class SessionRunner:
 
             # In relaxed mode, allow high-catalyst stocks through even
             # without full indicator confirmation (pre-market data is sparse).
-            if not can_long and not can_short:
+            if not can_long:
                 if relaxed and symbol.catalyst_score >= 55:
-                    # Catalyst-driven bypass: long-only mode, require positive gap
+                    # Catalyst-driven bypass: require positive gap
                     if symbol.gap_pct >= 0:
                         can_long = True
                         logging.info(f"[RELAXED] {symbol.symbol} bypassed indicator check (catalyst={symbol.catalyst_score:.0f})")
@@ -602,18 +599,13 @@ class SessionRunner:
                     logging.info(f"[DROP] {symbol.symbol}: indicator_confirmation_failed (vol_spike={volume_spike}, catalyst={symbol.catalyst_score:.0f})")
                     continue
 
-            # ── Long-only mode ─────────────────────────────────────
-            # Only generate long trade cards.  Short setups are skipped
-            # entirely — the algo's edge is strongest on gap-up momentum
-            # plays and short signals produced contradictory/noisy cards.
+            # ── Long setup required ────────────────────────────
             if not can_long:
                 if dropped is not None:
-                    dropped.append((symbol.symbol, "long_only_filter"))
+                    dropped.append((symbol.symbol, "no_long_setup"))
                 logging.info(
-                    f"[DROP] {symbol.symbol}: no valid long setup "
-                    f"(can_long={can_long}, can_short={can_short})")
+                    f"[DROP] {symbol.symbol}: no valid long setup")
                 continue
-            side: Side = "long"
             # Apply market guard size multiplier (yellow = 50%, green = 100%)
             effective_risk_pct = self.risk_per_trade_pct
             if mh and mh.size_multiplier < 1.0:
@@ -625,7 +617,6 @@ class SessionRunner:
                 logging.info(f"[STREAK] {symbol.symbol}: sizing at {streak_mult:.0%} after {risk_state.consecutive_losses} consecutive losses")
             card = build_trade_card(
                 stock=symbol,
-                side=side,
                 score=item.score,
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=session_tag,
@@ -638,7 +629,7 @@ class SessionRunner:
                 continue
             card.patterns = list(symbol.patterns)
             card.catalyst_score = symbol.catalyst_score
-            confluence = score_confluence(card.patterns, side)
+            confluence = score_confluence(card.patterns)
 
             # ── First-15-min fakeout guard ────────────────────────
             # Between 9:30-9:45 ET the opening cross creates wild wicks
@@ -655,7 +646,7 @@ class SessionRunner:
                     # widen stop by 20% to survive opening wicks
                     stop_dist = abs(card.entry - card.stop_loss)
                     widened = stop_dist * 1.20
-                    card.stop_loss = round(card.entry - widened, 2) if side == "long" else round(card.entry + widened, 2)
+                    card.stop_loss = round(card.entry - widened, 2)
                     logging.info(f"[FAKEOUT_GUARD] {symbol.symbol}: widened stop to {card.stop_loss:.2f} (opening window)")
             else:
                 # Normal confluence floor
@@ -705,9 +696,8 @@ class SessionRunner:
                 if sym_family:
                     selected_etf_families.add(sym_family)
 
-            # Only send Telegram notifications for long trades
-            if card.side == "long":
-                self.notifier.send_trade_alert(card)
+            # Send Telegram notification
+            self.notifier.send_trade_alert(card)
             save_alert(card_to_dict(card))
             self._alerts_sent_count += 1
 

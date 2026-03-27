@@ -1009,24 +1009,6 @@
                         </svg>
                     </div>
                 </div>
-                <div class="filter-group">
-                    <label for="side">Side</label>
-                    <div class="side-toggle">
-                        <input type="hidden" name="side" id="side-value" value="{{ side_filter }}">
-                        <button type="button" class="toggle-btn {% if not side_filter %}active{% endif %}"
-                            data-val="">All</button>
-                        <button type="button"
-                            class="toggle-btn long-toggle {% if side_filter=='long' %}active{% endif %}"
-                            data-val="long">
-                            <span class="toggle-dot green-dot"></span> Long
-                        </button>
-                        <button type="button"
-                            class="toggle-btn short-toggle {% if side_filter=='short' %}active{% endif %}"
-                            data-val="short">
-                            <span class="toggle-dot red-dot"></span> Short
-                        </button>
-                    </div>
-                </div>
                 <div class="filter-actions">
                     <button type="submit" class="filter-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1038,16 +1020,13 @@
                     </button>
                 </div>
             </form>
-            {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter %}
+            {% if date_filter or symbol_filter or session_filter or scan_time_filter %}
             <div class="active-filters">
                 {% if date_filter %}<span class="chip">📅 {{ date_filter }}</span>{% endif %}
                 {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
                 {% if session_filter %}<span class="chip">🕐 {{ session_labels.get(session_filter, session_filter)
                     }}</span>{% endif %}
                 {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }}</span>{% endif %}
-                {% if side_filter %}<span
-                    class="chip {% if side_filter=='long' %}chip-green{% else %}chip-red{% endif %}">{{ side_filter |
-                    upper }}</span>{% endif %}
             </div>
             {% endif %}
         </div>
@@ -1874,7 +1853,7 @@
             <div class="watchlist-body open">
                 <div class="close-picks-grid">
                     {% for p in close_picks %}
-                    <div class="close-pick-card {{ 'long-pick' if p.side == 'long' else 'short-pick' }}">
+                    <div class="close-pick-card long-pick">
                         <div class="cp-header">
                             <span class="cp-symbol">{{ p.symbol }}</span>
                             <span
@@ -1882,8 +1861,8 @@
                                 {{ p.score }}/100
                             </span>
                         </div>
-                        <div class="cp-side {{ p.side }}">
-                            {{ '🟢 LONG' if p.side == 'long' else '🔴 SHORT' }}
+                        <div class="cp-side long">
+                            🟢 LONG
                         </div>
                         <div class="cp-metrics">
                             <span>Price <span class="val">${{ "%.2f"|format(p.price) }}</span></span>
@@ -2061,11 +2040,10 @@
         <div class="alert-grid">
             {% if alerts %}
             {% for a in alerts %}
-            <div class="card {{ a.side }}-card">
+            <div class="card long-card">
                 <!-- Top row -->
                 <div class="card-top">
                     <div class="card-symbol">{{ a.symbol }}</div>
-                    <span class="side-badge {{ a.side }}">{{ a.side | upper }}</span>
                 </div>
 
                 <!-- Score bar -->

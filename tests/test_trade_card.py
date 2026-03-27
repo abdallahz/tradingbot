@@ -23,7 +23,7 @@ def test_trade_card_long_prices():
         key_support=9.5,
         key_resistance=10.5,
     )
-    card = build_trade_card(stock, "long", 80, 2.5, "morning")
+    card = build_trade_card(stock, 80, 2.5, "morning")
     assert card.entry_price > card.stop_price
     assert card.tp2_price > card.tp1_price > card.entry_price
 
@@ -50,8 +50,7 @@ def test_trade_card_rejects_missing_levels():
         key_support=0.0,
         key_resistance=0.0,
     )
-    assert build_trade_card(stock, "long", 80, 2.5, "morning") is None
-    assert build_trade_card(stock, "short", 80, 2.5, "morning") is None
+    assert build_trade_card(stock, 80, 2.5, "morning") is None
 
 
 def test_trade_card_rejects_wrong_side_levels():
@@ -76,7 +75,7 @@ def test_trade_card_rejects_wrong_side_levels():
         key_support=9.5,
         key_resistance=9.8,   # below entry — should reject
     )
-    assert build_trade_card(stock, "long", 80, 2.5, "morning") is None
+    assert build_trade_card(stock, 80, 2.5, "morning") is None
 
 
 def test_trade_card_breakout_long():
@@ -109,7 +108,7 @@ def test_trade_card_breakout_long():
         key_resistance=15.60,    # price + 2*ATR (breakout extension)
         atr=0.30,
     )
-    card = build_trade_card(stock, "long", 58, 2.5, "morning")
+    card = build_trade_card(stock, 58, 2.5, "morning")
     assert card is not None, "Breakout setup should produce a valid card"
     assert card.entry_price == 15.0
     assert card.tp1_price == 15.60

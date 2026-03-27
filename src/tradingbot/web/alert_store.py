@@ -954,7 +954,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
     return {
         "trade_date":     _today_et().isoformat(),
         "symbol":         card.symbol,
-        "side":           card.side,
+        "side":           "long",
         "score":          round(float(card.score), 1),
         "entry":          round(float(card.entry_price), 2),
         "stop":           round(float(card.stop_price), 2),

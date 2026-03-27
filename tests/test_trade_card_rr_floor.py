@@ -21,5 +21,5 @@ def test_trade_card_rr_floor():
         pullback_high=10.2,
     )
     # Use a stop very close to entry to force low R:R
-    card = build_trade_card(stock, "long", 80, 0.05, "morning")
+    card = build_trade_card(stock, 80, 0.05, "morning")
     assert card is None, "Trade card with R:R below floor should be dropped"

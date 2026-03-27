@@ -10,14 +10,13 @@ Scoring criteria (weights sum to 100):
   • After-hours / closing strength       — 10 %
   • Liquidity (spread + dollar volume)   — 10 %
 
-Supports both directions:
-  - Long  → strong gainers closing near highs (momentum continuation)
-  - Long  → big losers near support (oversold bounce)
+Long-only:
+  - Strong gainers closing near highs (momentum continuation)
+  - Big losers near support (oversold bounce / dip buy)
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 from tradingbot.models import SymbolSnapshot
 
@@ -27,7 +26,6 @@ class CloseHoldPick:
     """A stock recommended for an overnight hold."""
 
     symbol: str
-    side: Literal["long", "short"]
     score: float  # 0-100
     price: float
     change_pct: float  # intraday % change
@@ -102,14 +100,13 @@ class CloseHoldScanner:
             + 0.10 * liq_score
         )
 
-        # ── Decide direction and thesis ────────────────────────────────
-        side, thesis = self._build_thesis(s, change_pct, total)
+        # ── Build thesis ────────────────────────────────────────────
+        thesis = self._build_thesis(s, change_pct, total)
 
         rsi = s.tech_indicators.get("rsi", 50.0)
 
         return CloseHoldPick(
             symbol=s.symbol,
-            side=side,
             score=round(total, 1),
             price=s.price,
             change_pct=round(change_pct, 2),
@@ -181,32 +178,28 @@ class CloseHoldScanner:
 
     def _build_thesis(
         self, s: SymbolSnapshot, change_pct: float, score: float
-    ) -> tuple[Literal["long", "short"], str]:
-        """Determine direction and a one-line thesis for the overnight hold."""
+    ) -> str:
+        """Build a one-line thesis for the overnight long hold."""
         rsi = s.tech_indicators.get("rsi", 50.0)
 
         # Big gainer closing strong → momentum continuation long
         if change_pct >= 3.0 and s.relative_volume >= 1.5:
-            return "long", f"Momentum: +{change_pct:.1f}% on {s.relative_volume:.1f}x vol, expect gap-up"
+            return f"Momentum: +{change_pct:.1f}% on {s.relative_volume:.1f}x vol, expect gap-up"
 
         # Big loser near support + oversold → bounce long
         if change_pct <= -3.0 and rsi <= 35:
-            return "long", f"Oversold bounce: {change_pct:.1f}% drop, RSI {rsi:.0f}, near support ${s.key_support:.2f}"
-
-        # Big loser but NOT oversold → potential continued weakness, short idea
-        if change_pct <= -5.0 and rsi > 40:
-            return "short", f"Breakdown: {change_pct:.1f}% with RSI {rsi:.0f}, weak close"
+            return f"Oversold bounce: {change_pct:.1f}% drop, RSI {rsi:.0f}, near support ${s.key_support:.2f}"
 
         # Moderate gainer with catalyst → news continuation long
         if change_pct >= 1.0 and s.catalyst_score >= 60:
-            return "long", f"Catalyst-driven +{change_pct:.1f}%, score {s.catalyst_score:.0f}, gap potential"
+            return f"Catalyst-driven +{change_pct:.1f}%, score {s.catalyst_score:.0f}, gap potential"
 
         # High volume but small move → accumulation, possible breakout
         if s.relative_volume >= 2.5 and abs(change_pct) < 2.0:
-            return "long", f"Accumulation: {s.relative_volume:.1f}x volume, tight {change_pct:+.1f}% range"
+            return f"Accumulation: {s.relative_volume:.1f}x volume, tight {change_pct:+.1f}% range"
 
         # Default: follow the direction
         if change_pct >= 0:
-            return "long", f"Bullish close: +{change_pct:.1f}%, {s.relative_volume:.1f}x vol"
+            return f"Bullish close: +{change_pct:.1f}%, {s.relative_volume:.1f}x vol"
         else:
-            return "long", f"Dip buy: {change_pct:.1f}%, looking for reversal"
+            return f"Dip buy: {change_pct:.1f}%, looking for reversal"
