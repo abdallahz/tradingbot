@@ -5,7 +5,7 @@ services:
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: PYTHONPATH=src gunicorn --workers 1 --threads 2 --bind 0.0.0.0:$PORT tradingbot.web.app:app
+    startCommand: PYTHONPATH=src gunicorn --workers 1 --threads 2 --timeout 120 --bind 0.0.0.0:$PORT tradingbot.web.app:app
     healthCheckPath: /healthz
     envVars:
       - key: SUPABASE_URL

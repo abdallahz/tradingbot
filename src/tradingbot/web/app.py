@@ -26,6 +26,15 @@ except ImportError:
 
 app = Flask(__name__, template_folder="templates")
 
+# Pre-warm: eagerly import heavy deps so first request doesn't timeout
+try:
+    from supabase import create_client as _warm  # noqa: F401
+    print("[app] supabase import OK")
+except Exception as _e:
+    print(f"[app] supabase import failed: {_e}")
+
+print(f"[app] Flask app ready on module load")
+
 
 def _find_root() -> Path:
     """Walk up from this file until we find config/scanner.yaml (project root)."""
