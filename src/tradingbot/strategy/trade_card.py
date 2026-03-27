@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from tradingbot.models import Side, SymbolSnapshot, TradeCard
+from tradingbot.data.etf_metadata import get_leverage_factor
 
 
 MIN_RR = 1.5   # Minimum reward:risk ratio (TP1 / stop distance)
@@ -145,8 +146,13 @@ def build_trade_card(
         return None
 
     # ── Position sizing ──────────────────────────────────────────────
+    # Adjust risk budget for leveraged ETFs — a 3x ETF moves 3x as far
+    # so we reduce position size proportionally to keep real exposure equal.
+    leverage = abs(get_leverage_factor(stock.symbol))
+    adjusted_risk_pct = risk_per_trade_pct / leverage if leverage > 1 else risk_per_trade_pct
+
     # shares = (account_value × risk%) / risk_per_share
-    risk_dollars = account_value * (risk_per_trade_pct / 100.0)
+    risk_dollars = account_value * (adjusted_risk_pct / 100.0)
     position_size = int(risk_dollars / risk) if risk > 0 else 0
     # Safety cap: never exceed $10K notional or 50% of account
     max_notional = min(10_000.0, account_value * 0.5)

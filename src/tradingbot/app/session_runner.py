@@ -36,6 +36,12 @@ from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
 from tradingbot.analysis.ai_trade_validator import AITradeValidator
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
 from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
+from tradingbot.data.etf_metadata import is_etf, get_etf_family, get_leverage_factor
+
+# Maximum number of ETF alerts per scan pass (individual stocks get priority)
+MAX_ETF_ALERTS = 3
+# Maximum VWAP distance (%) — reject entries extended too far from VWAP
+MAX_VWAP_DISTANCE_PCT = 3.0
 
 
 class SessionRunner:
@@ -417,6 +423,11 @@ class SessionRunner:
             logging.warning(f"Dedup check failed ({exc}); proceeding without dedup")
             already_alerted = {}
 
+        # Track ETF families already selected (for conflict + family dedup)
+        selected_etf_families: set[str] = set()
+        # Count ETFs selected this pass (for concentration cap)
+        etf_count = 0
+
         # Pre-seed risk state with today's alert count so the daily cap
         # (max_trades_per_day) persists across 30-minute scan cycles.
         # When independent_cap is True the counter starts at 0 so this
@@ -448,6 +459,36 @@ class SessionRunner:
                         if dropped is not None:
                             dropped.append((symbol.symbol, f"dedup:pullback_only_{pullback_pct:.0%}"))
                         continue
+
+            # ── ETF conflict / family dedup / concentration cap ─────
+            sym_is_etf = is_etf(symbol.symbol)
+            sym_family = get_etf_family(symbol.symbol)
+
+            if sym_is_etf:
+                # 1) ETF concentration cap — max N ETFs per scan pass
+                if etf_count >= MAX_ETF_ALERTS:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, "etf_concentration_cap"))
+                    logging.info(f"[DROP] {symbol.symbol}: ETF concentration cap reached ({etf_count}/{MAX_ETF_ALERTS})")
+                    continue
+
+                # 2) Index family dedup — only 1 representative per family
+                if sym_family and sym_family in selected_etf_families:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, f"etf_family_dup:{sym_family}"))
+                    logging.info(f"[DROP] {symbol.symbol}: ETF family '{sym_family}' already selected")
+                    continue
+
+            # ── VWAP distance filter ──────────────────────────────────
+            if symbol.vwap > 0 and symbol.price > 0:
+                vwap_dist_pct = abs(symbol.price - symbol.vwap) / symbol.vwap * 100
+                if vwap_dist_pct > MAX_VWAP_DISTANCE_PCT:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, f"vwap_extended:{vwap_dist_pct:.1f}%"))
+                    logging.info(
+                        f"[DROP] {symbol.symbol}: price too far from VWAP "
+                        f"({vwap_dist_pct:.1f}% > {MAX_VWAP_DISTANCE_PCT}%)")
+                    continue
 
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
@@ -547,6 +588,13 @@ class SessionRunner:
                 card.chart_path = chart_path
             cards.append(card)
             risk_state.trades_taken += 1
+
+            # Update ETF tracking after successful selection
+            if sym_is_etf:
+                etf_count += 1
+                if sym_family:
+                    selected_etf_families.add(sym_family)
+
             # Only send Telegram notifications for long trades
             if card.side == "long":
                 self.notifier.send_trade_alert(card)
