@@ -19,6 +19,11 @@ class MarketCondition:
     volatility_level: Literal["low", "medium", "high"]
     recommended_session: SessionType
     recommendation_reason: str
+    # ── Dynamic filter thresholds (regime-adaptive) ──
+    max_vwap_distance_pct: float = 3.0   # default: reject entries > 3% from VWAP
+    min_catalyst_score: int = 40          # default catalyst gate
+    min_relative_volume: float = 3.0      # volume conviction for low-catalyst stocks
+    max_trades_per_day: int = 8           # default daily cap
 
 
 class MarketConditionAnalyzer:
@@ -73,6 +78,7 @@ class MarketConditionAnalyzer:
             volatility_level=volatility,
             recommended_session=recommended,
             recommendation_reason=reason,
+            **self._dynamic_thresholds(volatility, gappers_count),
         )
     
     def _make_recommendation(
@@ -128,3 +134,35 @@ class MarketConditionAnalyzer:
             f"Standard market conditions (avg gap {avg_gap:.1f}%, {gappers_count} gappers). "
             "Focus on morning premarket scan with standard filters."
         )
+
+    @staticmethod
+    def _dynamic_thresholds(
+        volatility: Literal["low", "medium", "high"],
+        gappers_count: int,
+    ) -> dict:
+        """Return regime-adaptive filter thresholds.
+
+        High-volatility days → tighten filters (more noise, need conviction).
+        Low-volatility days  → loosen VWAP + catalyst (fewer setups, take what's there).
+        """
+        if volatility == "high":
+            return {
+                "max_vwap_distance_pct": 2.0,   # tighter: avoid chasing extended gaps
+                "min_catalyst_score": 45,         # raise bar: more noise on wild days
+                "min_relative_volume": 3.5,       # demand stronger volume conviction
+                "max_trades_per_day": 6,          # fewer but higher-quality slots
+            }
+        if volatility == "low":
+            return {
+                "max_vwap_distance_pct": 4.0,     # widen: moves are smaller
+                "min_catalyst_score": 35,          # lower bar to find setups
+                "min_relative_volume": 2.5,        # accept lower volume threshold
+                "max_trades_per_day": 10,          # more slots to compensate for quality
+            }
+        # Medium (default)
+        return {
+            "max_vwap_distance_pct": 3.0,
+            "min_catalyst_score": 40,
+            "min_relative_volume": 3.0,
+            "max_trades_per_day": 8,
+        }

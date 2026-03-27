@@ -32,7 +32,7 @@ from tradingbot.signals.pullback_setup import has_valid_setup
 from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
-from tradingbot.analysis.market_conditions import MarketConditionAnalyzer
+from tradingbot.analysis.market_conditions import MarketConditionAnalyzer, MarketCondition
 from tradingbot.analysis.ai_trade_validator import AITradeValidator
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
 from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
@@ -40,8 +40,8 @@ from tradingbot.data.etf_metadata import is_etf, get_etf_family, get_leverage_fa
 
 # Maximum number of ETF alerts per scan pass (individual stocks get priority)
 MAX_ETF_ALERTS = 3
-# Maximum VWAP distance (%) — reject entries extended too far from VWAP
-MAX_VWAP_DISTANCE_PCT = 3.0
+# Default maximum VWAP distance (%) — overridden by market regime
+MAX_VWAP_DISTANCE_PCT_DEFAULT = 3.0
 
 
 class SessionRunner:
@@ -129,6 +129,9 @@ class SessionRunner:
             max_consecutive_losses=risk_defaults["max_consecutive_losses"],
         )
         self.market_analyzer = MarketConditionAnalyzer()
+        # Current market condition — populated by _run_three_option_session,
+        # consumed by _build_cards for dynamic filter thresholds.
+        self._market_condition: MarketCondition | None = None
         # AI Trade Validator (paid LLM call per card) — disabled by default
         ai_validation_enabled = False
         if use_real_data:
@@ -361,6 +364,8 @@ class SessionRunner:
             morning_snapshots=snapshots,
             catalyst_scores=catalyst_scores,
         )
+        # Store for _build_cards to read dynamic thresholds
+        self._market_condition = market_condition
         
         # Map analyzer recommendation to our 3 options
         if market_condition.recommended_session == "night_research":
@@ -479,30 +484,30 @@ class SessionRunner:
                     logging.info(f"[DROP] {symbol.symbol}: ETF family '{sym_family}' already selected")
                     continue
 
-            # ── VWAP distance filter ──────────────────────────────────
+            # ── VWAP distance filter (regime-adaptive) ─────────────────
+            mc = self._market_condition
+            max_vwap = mc.max_vwap_distance_pct if mc else MAX_VWAP_DISTANCE_PCT_DEFAULT
             if symbol.vwap > 0 and symbol.price > 0:
                 vwap_dist_pct = abs(symbol.price - symbol.vwap) / symbol.vwap * 100
-                if vwap_dist_pct > MAX_VWAP_DISTANCE_PCT:
+                if vwap_dist_pct > max_vwap:
                     if dropped is not None:
                         dropped.append((symbol.symbol, f"vwap_extended:{vwap_dist_pct:.1f}%"))
                     logging.info(
                         f"[DROP] {symbol.symbol}: price too far from VWAP "
-                        f"({vwap_dist_pct:.1f}% > {MAX_VWAP_DISTANCE_PCT}%)")
+                        f"({vwap_dist_pct:.1f}% > {max_vwap}%)")
                     continue
 
             can_long = has_valid_setup(symbol, "long", volume_spike)
             can_short = has_valid_setup(symbol, "short", volume_spike)
 
-            # ── Catalyst / conviction gate ────────────────────────────
-            # Stocks with stock-specific news (catalyst >= 40) pass freely.
-            # Stocks WITHOUT direct news may still be moving on sector/macro
-            # catalysts (crypto rules, oil, gold, etc.) that don't mention
-            # the ticker.  Allow them through ONLY if they show strong
-            # volume conviction: relative_volume >= 3× AND valid setup.
-            MIN_CATALYST = 40
-            if symbol.catalyst_score < MIN_CATALYST:
+            # ── Catalyst / conviction gate (regime-adaptive) ──────────
+            # Stocks with stock-specific news (catalyst >= threshold) pass.
+            # Stocks WITHOUT direct news need strong volume conviction.
+            min_catalyst = mc.min_catalyst_score if mc else 40
+            min_rvol = mc.min_relative_volume if mc else 3.0
+            if symbol.catalyst_score < min_catalyst:
                 has_strong_volume = (
-                    symbol.relative_volume >= 3.0
+                    symbol.relative_volume >= min_rvol
                     and symbol.premarket_volume >= 100_000
                 )
                 has_setup = can_long or can_short
@@ -510,7 +515,7 @@ class SessionRunner:
                     if dropped is not None:
                         dropped.append((symbol.symbol, f"low_catalyst_weak_vol:{symbol.catalyst_score:.0f}/rv={symbol.relative_volume:.1f}"))
                     logging.info(
-                        f"[DROP] {symbol.symbol}: catalyst={symbol.catalyst_score:.0f} < {MIN_CATALYST} "
+                        f"[DROP] {symbol.symbol}: catalyst={symbol.catalyst_score:.0f} < {min_catalyst} "
                         f"and volume not convincing (relvol={symbol.relative_volume:.1f}, pm_vol={symbol.premarket_volume})"
                     )
                     continue
@@ -519,21 +524,33 @@ class SessionRunner:
             # without full indicator confirmation (pre-market data is sparse).
             if not can_long and not can_short:
                 if relaxed and symbol.catalyst_score >= 55:
-                    # Catalyst-driven bypass: default to long if gap >= 0
-                    can_long = symbol.gap_pct >= 0
-                    can_short = not can_long
-                    logging.info(f"[RELAXED] {symbol.symbol} bypassed indicator check (catalyst={symbol.catalyst_score:.0f})")
+                    # Catalyst-driven bypass: long-only mode, require positive gap
+                    if symbol.gap_pct >= 0:
+                        can_long = True
+                        logging.info(f"[RELAXED] {symbol.symbol} bypassed indicator check (catalyst={symbol.catalyst_score:.0f})")
+                    else:
+                        if dropped is not None:
+                            dropped.append((symbol.symbol, "relaxed_negative_gap"))
+                        logging.info(f"[DROP] {symbol.symbol}: negative gap in long-only mode (gap={symbol.gap_pct:.1f}%)")
+                        continue
                 else:
                     if dropped is not None:
                         dropped.append((symbol.symbol, "indicator_confirmation_failed"))
                     logging.info(f"[DROP] {symbol.symbol}: indicator_confirmation_failed (vol_spike={volume_spike}, catalyst={symbol.catalyst_score:.0f})")
                     continue
 
-            # Prefer direction that matches the gap; fall back to whichever side is valid
-            if symbol.gap_pct >= 0:
-                side: Side = "long" if can_long else "short"
-            else:
-                side = "short" if can_short else "long"
+            # ── Long-only mode ─────────────────────────────────────
+            # Only generate long trade cards.  Short setups are skipped
+            # entirely — the algo's edge is strongest on gap-up momentum
+            # plays and short signals produced contradictory/noisy cards.
+            if not can_long:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, "long_only_filter"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: no valid long setup "
+                    f"(can_long={can_long}, can_short={can_short})")
+                continue
+            side: Side = "long"
             card = build_trade_card(
                 stock=symbol,
                 side=side,

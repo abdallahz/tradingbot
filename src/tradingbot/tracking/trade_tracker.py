@@ -190,13 +190,11 @@ class TradeTracker:
     def _evaluate(self, trade: dict, price: float) -> str | None:
         """Return the new status if a level was hit, else None.
 
-        Trailing logic (two stages):
-        1. OPEN → 1R profit reached → trail stop to entry (breakeven).
-        2. TP1_HIT → trail stop to TP1 level so the remaining position
-           locks in the TP1 gain and lets the runner target TP2.
-
-        This prevents winners that hit TP1 but miss TP2 from retracing
-        all the way back through entry to the original stop.
+        Trailing logic (three stages):
+        1. OPEN, price ≥ 0.75R → trail stop to entry (breakeven).
+        2. OPEN, price ≥ 1.5R  → trail stop to entry + 1R (lock in 1R).
+        3. TP1_HIT             → trail stop to TP1 level so the runner
+           locks in the TP1 gain and aims for TP2.
         """
         side = trade.get("side", "long")
         entry = float(trade.get("entry_price") or 0)
@@ -208,19 +206,35 @@ class TradeTracker:
         if entry <= 0:
             return None
 
-        # ── Stage 1: Breakeven trail (OPEN) ─────────────────────────
         risk = abs(entry - stop) if stop > 0 else 0
-        if risk > 0 and current_status == "open" and stop != entry:
+
+        # ── Stage 1: Breakeven trail at 0.75R (OPEN) ───────────────
+        if risk > 0 and current_status == "open":
             if side == "long":
                 unrealised = price - entry
             else:
                 unrealised = entry - price
-            if unrealised >= risk:
-                # Price has moved ≥ 1R in our favour — trail stop to entry
-                self._trail_stop_to_level(trade, entry)
-                stop = entry  # use updated stop for the rest of this tick
 
-        # ── Stage 2: TP1 trail (TP1_HIT) ────────────────────────────
+            # Stage 2: lock-in 1R when price reaches 1.5R
+            if unrealised >= risk * 1.5:
+                lock_level = entry + risk if side == "long" else entry - risk
+                # Only trail forward (never move stop backwards)
+                if side == "long" and stop < lock_level:
+                    self._trail_stop_to_level(trade, lock_level)
+                    stop = lock_level
+                elif side == "short" and stop > lock_level:
+                    self._trail_stop_to_level(trade, lock_level)
+                    stop = lock_level
+            # Stage 1: breakeven when price reaches 0.75R
+            elif unrealised >= risk * 0.75 and stop != entry:
+                if side == "long" and stop < entry:
+                    self._trail_stop_to_level(trade, entry)
+                    stop = entry
+                elif side == "short" and stop > entry:
+                    self._trail_stop_to_level(trade, entry)
+                    stop = entry
+
+        # ── Stage 3: TP1 trail (TP1_HIT) ────────────────────────────
         # After TP1 is hit, move stop to TP1 so the remaining position
         # locks in the first target's profit.
         if current_status == "tp1_hit" and tp1 > 0:

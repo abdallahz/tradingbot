@@ -773,6 +773,181 @@ def _format_date_short(date_str: str) -> str:
         return date_str
 
 
+def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
+    """Return rich analytics for the /stats page.
+
+    Includes: overall stats, by-session breakdown, by-setup-type, best/worst
+    trades, average R:R realized vs planned, and streak info.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return {}
+    try:
+        # Join outcomes with alerts for session + pattern data
+        resp = (
+            sb.table("trade_outcomes")
+            .select("*, alerts!inner(session, patterns, risk_reward, catalyst_score, side)")
+            .not_.is_("status", "null")
+            .order("created_at", desc=True)
+            .limit(2000)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            return {}
+
+        # ── Overall stats ──
+        wins = losses = stopped = expired = breakeven = open_ct = 0
+        all_pnls: list[float] = []
+        win_pnls: list[float] = []
+        loss_pnls: list[float] = []
+        planned_rr: list[float] = []
+        realised_rr: list[float] = []
+
+        by_session: dict[str, dict] = {}
+        by_pattern: dict[str, dict] = {}
+        best_trade = worst_trade = None
+        best_pnl = float("-inf")
+        worst_pnl = float("inf")
+
+        # Streak tracking
+        streak_current = 0
+        streak_type = ""  # "win" or "loss"
+        max_win_streak = max_loss_streak = 0
+
+        for r in rows:
+            st = r.get("status", "open")
+            pnl = float(r.get("pnl_pct") or 0)
+            alert = r.get("alerts", {}) or {}
+            session = alert.get("session", "unknown")
+            patterns = alert.get("patterns") or []
+            rr_planned = float(alert.get("risk_reward") or 0)
+            cat_score = float(alert.get("catalyst_score") or 0)
+
+            # Overall
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                wins += 1
+                win_pnls.append(pnl)
+                all_pnls.append(pnl)
+                # streak
+                if streak_type == "win":
+                    streak_current += 1
+                else:
+                    streak_type = "win"
+                    streak_current = 1
+                max_win_streak = max(max_win_streak, streak_current)
+            elif st == "stopped":
+                losses += 1
+                loss_pnls.append(pnl)
+                all_pnls.append(pnl)
+                if streak_type == "loss":
+                    streak_current += 1
+                else:
+                    streak_type = "loss"
+                    streak_current = 1
+                max_loss_streak = max(max_loss_streak, streak_current)
+            elif st == "breakeven":
+                breakeven += 1
+                all_pnls.append(0.0)
+            elif st == "expired":
+                expired += 1
+                all_pnls.append(pnl)
+            else:
+                open_ct += 1
+
+            # Best/worst
+            if st not in ("open",) and pnl > best_pnl:
+                best_pnl = pnl
+                best_trade = {
+                    "symbol": r.get("symbol"), "pnl": pnl,
+                    "status": st, "date": r.get("trade_date"),
+                }
+            if st not in ("open",) and pnl < worst_pnl:
+                worst_pnl = pnl
+                worst_trade = {
+                    "symbol": r.get("symbol"), "pnl": pnl,
+                    "status": st, "date": r.get("trade_date"),
+                }
+
+            # R:R analysis (only for closed trades)
+            if st not in ("open",) and rr_planned > 0:
+                entry = float(r.get("entry_price") or 0)
+                stop = float(r.get("stop_price") or 0)
+                exit_p = float(r.get("exit_price") or 0)
+                if entry > 0 and stop > 0 and exit_p > 0:
+                    risk = abs(entry - stop)
+                    if risk > 0:
+                        actual_rr = (exit_p - entry) / risk  # long only
+                        planned_rr.append(rr_planned)
+                        realised_rr.append(round(actual_rr, 2))
+
+            # By session
+            s_stats = by_session.setdefault(session, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
+            s_stats["total"] += 1
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                s_stats["wins"] += 1
+            elif st == "stopped":
+                s_stats["losses"] += 1
+            if st not in ("open",):
+                s_stats["pnl"] += pnl
+
+            # By pattern
+            if isinstance(patterns, list):
+                for p in patterns:
+                    p_stats = by_pattern.setdefault(p, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
+                    p_stats["total"] += 1
+                    if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                        p_stats["wins"] += 1
+                    elif st == "stopped":
+                        p_stats["losses"] += 1
+                    if st not in ("open",):
+                        p_stats["pnl"] += pnl
+
+        total = len(rows)
+        decided = wins + losses
+        # Calculate win rates for sessions
+        for s in by_session.values():
+            d = s["wins"] + s["losses"]
+            s["win_rate"] = round((s["wins"] / d * 100) if d > 0 else 0, 1)
+            s["pnl"] = round(s["pnl"], 2)
+        for p in by_pattern.values():
+            d = p["wins"] + p["losses"]
+            p["win_rate"] = round((p["wins"] / d * 100) if d > 0 else 0, 1)
+            p["pnl"] = round(p["pnl"], 2)
+
+        # Sort patterns by total trades (most common first)
+        by_pattern_sorted = dict(sorted(by_pattern.items(), key=lambda x: -x[1]["total"]))
+
+        return {
+            "total": total,
+            "wins": wins,
+            "losses": losses,
+            "open": open_ct,
+            "expired": expired,
+            "breakeven": breakeven,
+            "win_rate": round((wins / decided * 100) if decided > 0 else 0, 1),
+            "avg_pnl": round(sum(all_pnls) / len(all_pnls), 2) if all_pnls else 0,
+            "total_pnl": round(sum(all_pnls), 2),
+            "avg_win": round(sum(win_pnls) / len(win_pnls), 2) if win_pnls else 0,
+            "avg_loss": round(sum(loss_pnls) / len(loss_pnls), 2) if loss_pnls else 0,
+            "profit_factor": round(
+                abs(sum(win_pnls) / sum(loss_pnls)) if loss_pnls and sum(loss_pnls) != 0
+                else float("inf"), 2
+            ) if win_pnls else 0,
+            "best_trade": best_trade,
+            "worst_trade": worst_trade,
+            "max_win_streak": max_win_streak,
+            "max_loss_streak": max_loss_streak,
+            "avg_planned_rr": round(sum(planned_rr) / len(planned_rr), 2) if planned_rr else 0,
+            "avg_realised_rr": round(sum(realised_rr) / len(realised_rr), 2) if realised_rr else 0,
+            "by_session": by_session,
+            "by_pattern": by_pattern_sorted,
+        }
+    except Exception as exc:
+        log.warning(f"[alert_store] get_detailed_analytics failed: {exc}")
+        return {}
+
+
 def card_to_dict(card: Any) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
     generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

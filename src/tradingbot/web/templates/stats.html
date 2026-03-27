@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Trading Bot — Performance Stats</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #0d0f14; --surface: #161a23; --border: #252b38; --muted: #4a5568;
+            --text: #e2e8f0; --sub: #8896ab; --green: #22c55e; --red: #ef4444;
+            --amber: #f59e0b; --blue: #3b82f6; --purple: #a855f7; --radius: 10px;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg); color: var(--text); min-height: 100vh;
+            font-size: 14px; line-height: 1.5; }
+        a { color: var(--blue); text-decoration: none; }
+        .shell { max-width: 1280px; margin: 0 auto; padding: 0 20px 60px; }
+
+        header { display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo-icon { width: 36px; height: 36px; border-radius: 8px;
+            background: linear-gradient(135deg, #3b82f6, #a855f7);
+            display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .logo-text { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        .logo-sub { font-size: 11px; color: var(--sub); }
+        .nav-links { display: flex; gap: 16px; font-size: 13px; }
+
+        h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: var(--text); }
+
+        /* KPI Grid */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+        .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 16px; text-align: center; }
+        .kpi-val { font-size: 26px; font-weight: 700; margin: 4px 0; }
+        .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--sub); }
+        .green { color: var(--green); }
+        .red { color: var(--red); }
+        .amber { color: var(--amber); }
+        .blue { color: var(--blue); }
+
+        /* Tables */
+        .section { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 18px; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 8px 10px; color: var(--sub); font-weight: 500;
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border); }
+        td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+        tr:last-child td { border-bottom: none; }
+
+        /* Chart */
+        .chart-container { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 18px; margin-bottom: 24px; }
+        .chart-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .chart-label { width: 60px; font-size: 11px; color: var(--sub); text-align: right; flex-shrink: 0; }
+        .chart-bar { height: 20px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }
+        .chart-value { font-size: 11px; color: var(--sub); flex-shrink: 0; }
+
+        /* Streaks */
+        .streak-row { display: flex; gap: 20px; justify-content: center; margin-top: 8px; }
+        .streak { font-size: 13px; }
+
+        /* Best / Worst badge */
+        .trade-badge { display: inline-block; padding: 4px 10px; border-radius: 6px;
+            font-size: 12px; font-weight: 600; }
+        .trade-badge.win { background: rgba(34,197,94,0.15); color: var(--green); }
+        .trade-badge.loss { background: rgba(239,68,68,0.15); color: var(--red); }
+
+        /* Two-col layout */
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+        .empty-state { padding: 40px; text-align: center; color: var(--sub); }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <header>
+        <div class="logo">
+            <div class="logo-icon">&#x1F4C8;</div>
+            <div>
+                <div class="logo-text">Performance Stats</div>
+                <div class="logo-sub">AI Trading Bot Analytics</div>
+            </div>
+        </div>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/stats" style="color: var(--text); font-weight: 600;">Stats</a>
+        </div>
+    </header>
+
+{% if not analytics %}
+    <div class="empty-state">
+        <p>No trade data yet. Stats will appear after the first completed trades.</p>
+    </div>
+{% else %}
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi">
+            <div class="kpi-label">Total Trades</div>
+            <div class="kpi-val">{{ analytics.total }}</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Win Rate</div>
+            <div class="kpi-val {% if analytics.win_rate >= 50 %}green{% elif analytics.win_rate >= 35 %}amber{% else %}red{% endif %}">
+                {{ analytics.win_rate }}%
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Total P&amp;L</div>
+            <div class="kpi-val {% if analytics.total_pnl > 0 %}green{% elif analytics.total_pnl < 0 %}red{% else %}{% endif %}">
+                {{ '%+.2f'|format(analytics.total_pnl) }}%
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Profit Factor</div>
+            <div class="kpi-val {% if analytics.profit_factor >= 1.5 %}green{% elif analytics.profit_factor >= 1 %}amber{% else %}red{% endif %}">
+                {{ analytics.profit_factor }}
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Avg Win</div>
+            <div class="kpi-val green">{{ '%+.2f'|format(analytics.avg_win) }}%</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Avg Loss</div>
+            <div class="kpi-val red">{{ '%+.2f'|format(analytics.avg_loss) }}%</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Avg Planned R:R</div>
+            <div class="kpi-val blue">{{ analytics.avg_planned_rr }}R</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Avg Realised R:R</div>
+            <div class="kpi-val {% if analytics.avg_realised_rr >= 1 %}green{% else %}amber{% endif %}">
+                {{ analytics.avg_realised_rr }}R
+            </div>
+        </div>
+    </div>
+
+    <!-- Outcome Breakdown -->
+    <div class="section">
+        <h2>Outcome Breakdown</h2>
+        <table>
+            <tr><th>Status</th><th>Count</th><th>%</th></tr>
+            <tr><td>&#x2705; Wins (TP1/TP2/Locked)</td><td>{{ analytics.wins }}</td>
+                <td>{{ '%.1f'|format(analytics.wins / analytics.total * 100 if analytics.total else 0) }}%</td></tr>
+            <tr><td>&#x274C; Stopped</td><td>{{ analytics.losses }}</td>
+                <td>{{ '%.1f'|format(analytics.losses / analytics.total * 100 if analytics.total else 0) }}%</td></tr>
+            <tr><td>&#x2696;&#xFE0F; Breakeven</td><td>{{ analytics.breakeven }}</td>
+                <td>{{ '%.1f'|format(analytics.breakeven / analytics.total * 100 if analytics.total else 0) }}%</td></tr>
+            <tr><td>&#x23F3; Expired</td><td>{{ analytics.expired }}</td>
+                <td>{{ '%.1f'|format(analytics.expired / analytics.total * 100 if analytics.total else 0) }}%</td></tr>
+            <tr><td>&#x1F504; Open</td><td>{{ analytics.open }}</td>
+                <td>{{ '%.1f'|format(analytics.open / analytics.total * 100 if analytics.total else 0) }}%</td></tr>
+        </table>
+        <div class="streak-row">
+            <span class="streak green">Best win streak: {{ analytics.max_win_streak }}</span>
+            <span class="streak red">Worst loss streak: {{ analytics.max_loss_streak }}</span>
+        </div>
+    </div>
+
+    <div class="two-col">
+        <!-- Best / Worst Trades -->
+        <div class="section">
+            <h2>Notable Trades</h2>
+            {% if analytics.best_trade %}
+            <p style="margin-bottom:8px;">
+                Best: <strong>{{ analytics.best_trade.symbol }}</strong>
+                <span class="trade-badge win">{{ '%+.2f'|format(analytics.best_trade.pnl) }}%</span>
+                <span style="color:var(--sub);font-size:12px;">({{ analytics.best_trade.date }})</span>
+            </p>
+            {% endif %}
+            {% if analytics.worst_trade %}
+            <p>
+                Worst: <strong>{{ analytics.worst_trade.symbol }}</strong>
+                <span class="trade-badge loss">{{ '%+.2f'|format(analytics.worst_trade.pnl) }}%</span>
+                <span style="color:var(--sub);font-size:12px;">({{ analytics.worst_trade.date }})</span>
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- By Session -->
+        <div class="section">
+            <h2>By Session</h2>
+            <table>
+                <tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>P&amp;L</th></tr>
+                {% for session, s in analytics.by_session.items() %}
+                <tr>
+                    <td>{{ session|capitalize }}</td>
+                    <td>{{ s.total }}</td>
+                    <td class="{% if s.win_rate >= 50 %}green{% elif s.win_rate >= 35 %}amber{% else %}red{% endif %}">
+                        {{ s.win_rate }}%</td>
+                    <td class="{% if s.pnl > 0 %}green{% elif s.pnl < 0 %}red{% endif %}">
+                        {{ '%+.2f'|format(s.pnl) }}%</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+
+    <!-- By Pattern/Setup -->
+    <div class="section">
+        <h2>By Setup Pattern</h2>
+        <table>
+            <tr><th>Pattern</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Total P&amp;L</th></tr>
+            {% for pattern, p in analytics.by_pattern.items() %}
+            {% if p.total >= 2 %}
+            <tr>
+                <td>{{ pattern }}</td>
+                <td>{{ p.total }}</td>
+                <td>{{ p.wins }}</td>
+                <td>{{ p.losses }}</td>
+                <td class="{% if p.win_rate >= 50 %}green{% elif p.win_rate >= 35 %}amber{% else %}red{% endif %}">
+                    {{ p.win_rate }}%</td>
+                <td class="{% if p.pnl > 0 %}green{% elif p.pnl < 0 %}red{% endif %}">
+                    {{ '%+.2f'|format(p.pnl) }}%</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- Cumulative P&L Chart -->
+    {% if perf_history %}
+    <div class="chart-container">
+        <h2>Cumulative P&amp;L (Last 90 Days)</h2>
+        {% set max_pnl = perf_history|map(attribute='cum_pnl')|map('abs')|max %}
+        {% for day in perf_history %}
+        <div class="chart-bar-row">
+            <span class="chart-label">{{ day.date_label }}</span>
+            {% if day.cum_pnl >= 0 %}
+            <div class="chart-bar" style="width: {{ (day.cum_pnl / max_pnl * 300) if max_pnl else 2 }}px; background: var(--green);"></div>
+            {% else %}
+            <div class="chart-bar" style="width: {{ (day.cum_pnl|abs / max_pnl * 300) if max_pnl else 2 }}px; background: var(--red);"></div>
+            {% endif %}
+            <span class="chart-value {% if day.cum_pnl >= 0 %}green{% else %}red{% endif %}">
+                {{ '%+.2f'|format(day.cum_pnl) }}%
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Daily Breakdown -->
+    {% if perf_history %}
+    <div class="section">
+        <h2>Daily Breakdown</h2>
+        <table>
+            <tr><th>Date</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Day P&amp;L</th><th>Cum P&amp;L</th></tr>
+            {% for day in perf_history|reverse %}
+            <tr>
+                <td>{{ day.date_label }}</td>
+                <td>{{ day.total }}</td>
+                <td>{{ day.wins }}</td>
+                <td>{{ day.losses }}</td>
+                <td class="{% if day.win_rate >= 50 %}green{% elif day.win_rate >= 35 %}amber{% else %}red{% endif %}">
+                    {{ day.win_rate }}%</td>
+                <td class="{% if day.day_pnl > 0 %}green{% elif day.day_pnl < 0 %}red{% endif %}">
+                    {{ '%+.2f'|format(day.day_pnl) }}%</td>
+                <td class="{% if day.cum_pnl > 0 %}green{% elif day.cum_pnl < 0 %}red{% endif %}">
+                    {{ '%+.2f'|format(day.cum_pnl) }}%</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+{% endif %}
+</div>
+</body>
+</html>

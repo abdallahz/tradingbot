@@ -4,6 +4,7 @@ app.py — Flask web dashboard for the AI Trading Bot.
 Routes
 ------
 GET  /            Main dashboard (market status + recent alerts)
+GET  /stats       Performance analytics dashboard
 POST /scan        Trigger an on-demand scan (runs in background thread)
 GET  /api/alerts  JSON list of recent alerts
 GET  /api/status  JSON health + scan status
@@ -265,10 +266,52 @@ def dashboard():
     )
 
 
+@app.route("/stats")
+def stats_page():
+    """Performance analytics dashboard."""
+    try:
+        from tradingbot.web.alert_store import get_detailed_analytics, get_performance_history
+        analytics = get_detailed_analytics(90)
+        perf_history = get_performance_history(90)
+    except Exception:
+        analytics = {}
+        perf_history = []
+    return render_template("stats.html", analytics=analytics, perf_history=perf_history)
+
+
 @app.route("/api/alerts")
 def api_alerts():
     from tradingbot.web.alert_store import load_alerts
     return jsonify(load_alerts(100))
+
+
+@app.route("/api/backtest")
+def api_backtest():
+    """Run backtesting analysis and return JSON results."""
+    try:
+        from tradingbot.analysis.backtest import Backtester
+        bt = Backtester()
+        report = bt.run()
+        return jsonify({
+            "run_at": report.run_at,
+            "total_trades": report.total_trades,
+            "decided_trades": report.decided_trades,
+            "win_rate": report.win_rate,
+            "total_pnl": report.total_pnl,
+            "avg_pnl": report.avg_pnl,
+            "profit_factor": report.profit_factor,
+            "filter_reports": {
+                k: {"name": v.name, "total_passed": v.total_passed,
+                     "wins": v.wins, "losses": v.losses,
+                     "win_rate": v.win_rate, "avg_pnl": v.avg_pnl}
+                for k, v in report.filter_reports.items()
+            },
+            "pattern_stats": report.pattern_stats,
+            "what_if": report.what_if,
+            "summary": report.summary(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 @app.route("/api/status")
