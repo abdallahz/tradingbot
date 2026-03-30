@@ -469,6 +469,24 @@ class TelegramNotifier:
             f"TP 1   : <code>${card.tp1_price:.2f}</code>  (resistance)",
             f"TP 2   : <code>${card.tp2_price:.2f}</code>  (extended)",
             f"R:R    : <code>{card.risk_reward:.1f}:1</code>",
+        ])
+
+        # Trail guide: tell the trader exactly when to move their stop
+        risk_per_share = abs(card.entry_price - card.stop_price)
+        if risk_per_share > 0:
+            be_trigger = round(card.entry_price + risk_per_share * 0.75, 2)
+            lock_trigger = round(card.entry_price + risk_per_share * 1.5, 2)
+            lock_stop = round(card.entry_price + risk_per_share, 2)
+            lines.extend([
+                "",
+                "📐 <b>Trail Guide</b> (move your stop at each level)",
+                f"  ① Price hits <code>${be_trigger:.2f}</code> (0.75R) → stop → <code>${card.entry_price:.2f}</code> (breakeven)",
+                f"  ② Price hits <code>${lock_trigger:.2f}</code> (1.5R)  → stop → <code>${lock_stop:.2f}</code> (lock +1R)",
+                f"  ③ TP1 fills  <code>${card.tp1_price:.2f}</code>       → sell ½, stop → <code>${card.tp1_price:.2f}</code>",
+                f"  ④ TP2 fills  <code>${card.tp2_price:.2f}</code>       → close remaining",
+            ])
+
+        lines.extend([
             "",
             f"📊 <b>Patterns</b> : {patterns}",
             f"📝 <b>Signals</b>  : {signals}",
