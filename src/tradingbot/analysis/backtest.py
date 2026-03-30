@@ -120,7 +120,7 @@ class Backtester:
         for t in trades:
             st = t.get("status", "open")
             pnl = float(t.get("pnl_pct") or 0)
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 wins += 1
                 win_pnls.append(pnl)
                 all_pnls.append(pnl)
@@ -196,7 +196,7 @@ class Backtester:
                 pnl = float(t.get("pnl_pct") or 0)
                 if lo <= cat <= hi:
                     fr.total_passed += 1
-                    if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                    if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                         fr.wins += 1
                     elif st == "stopped":
                         fr.losses += 1
@@ -223,7 +223,7 @@ class Backtester:
                 pnl = float(t.get("pnl_pct") or 0)
                 if lo <= sc <= hi:
                     fr.total_passed += 1
-                    if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                    if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                         fr.wins += 1
                     elif st == "stopped":
                         fr.losses += 1
@@ -247,7 +247,7 @@ class Backtester:
                 fr.total_passed += 1
                 st = t.get("status", "open")
                 pnl = float(t.get("pnl_pct") or 0)
-                if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                     fr.wins += 1
                 elif st == "stopped":
                     fr.losses += 1
@@ -271,7 +271,7 @@ class Backtester:
                 fr.total_passed += 1
                 st = t.get("status", "open")
                 pnl = float(t.get("pnl_pct") or 0)
-                if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                     fr.wins += 1
                 elif st == "stopped":
                     fr.losses += 1
@@ -292,7 +292,7 @@ class Backtester:
                     fr.total_passed += 1
                     st = t.get("status", "open")
                     pnl = float(t.get("pnl_pct") or 0)
-                    if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                    if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                         fr.wins += 1
                     elif st == "stopped":
                         fr.losses += 1
@@ -318,7 +318,7 @@ class Backtester:
             for p in pats:
                 ps = patterns.setdefault(p, {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0})
                 ps["total"] += 1
-                if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                     ps["wins"] += 1
                 elif st == "stopped":
                     ps["losses"] += 1
@@ -410,7 +410,7 @@ class Backtester:
         for t in trades:
             st = t.get("status", "open")
             pnl = float(t.get("pnl_pct") or 0)
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 base_wins += 1
                 base_pnls.append(pnl)
             elif st == "stopped":
@@ -428,7 +428,7 @@ class Backtester:
         for t in filtered:
             st = t.get("status", "open")
             pnl = float(t.get("pnl_pct") or 0)
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 alt_wins += 1
                 alt_pnls.append(pnl)
             elif st == "stopped":

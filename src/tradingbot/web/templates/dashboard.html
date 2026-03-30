@@ -612,6 +612,11 @@
             color: #15803d;
         }
 
+        .outcome-badge.trailed_out {
+            background: #d4edda;
+            color: #155724;
+        }
+
         .outcome-badge.stopped {
             background: rgba(239, 68, 68, .12);
             border: 1px solid rgba(239, 68, 68, .25);
@@ -2278,7 +2283,8 @@
                             <span class="legend-term">Trade Tracker</span>
                             <span class="legend-def">Monitors each alert's price vs Entry/Stop/TP1/TP2 levels during
                                 market hours.
-                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🛑 Stopped = stop loss
+                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, � Trailed Out =
+                                profitable stop trail, �🛑 Stopped = stop loss
                                 hit,
                                 ⏰ Expired = market closed with no hit. P&amp;L % shown for resolved trades.</span>
                         </div>
@@ -2370,6 +2376,7 @@
                     <span class="outcome-icon">
                         {% if a.outcome.status == 'tp1_hit' %}🎯
                         {% elif a.outcome.status == 'tp2_hit' %}🏆
+                        {% elif a.outcome.status == 'trailed_out' %}📈
                         {% elif a.outcome.status == 'stopped' %}🛑
                         {% elif a.outcome.status == 'expired' %}⏰
                         {% else %}⏳{% endif %}
@@ -2377,6 +2384,7 @@
                     <span>
                         {% if a.outcome.status == 'tp1_hit' %}TP1 Hit
                         {% elif a.outcome.status == 'tp2_hit' %}TP2 Hit
+                        {% elif a.outcome.status == 'trailed_out' %}Trailed Out
                         {% elif a.outcome.status == 'stopped' %}Stopped Out
                         {% elif a.outcome.status == 'expired' %}Expired
                         {% else %}Tracking{% endif %}

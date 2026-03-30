@@ -15,7 +15,7 @@ Outcome lifecycle:
   1. Card alerted → status = "open"
   2. Price hits TP1 → status = "tp1_hit"
   3. Price hits TP2 → status = "tp2_hit"  (upgrade from tp1_hit)
-  4. Price hits stop → status = "stopped"
+  4. Price hits stop → status = "stopped" (or "trailed_out" if profitable)
   5. Market close (16:00 ET) → status = "expired" (if still open)
 
 The tracker is called from the worker loop every scan cycle during
@@ -433,7 +433,12 @@ class TradeTracker:
         if stop > 0 and eff_low <= stop:
             if stop >= tp1 and tp1 > 0:
                 return "tp1_locked"
-            return "breakeven" if stop == entry else "stopped"
+            if stop == entry:
+                return "breakeven"
+            # Profitable trail-out (stop was raised above entry)
+            if stop > entry:
+                return "trailed_out"
+            return "stopped"
 
         return None
 

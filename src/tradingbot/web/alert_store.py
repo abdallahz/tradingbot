@@ -672,7 +672,7 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     for o in outcomes:
         st = o.get("status", "open")
         pnl = float(o.get("pnl_pct") or 0.0)
-        if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+        if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
             wins += 1
             pnls.append(pnl)
         elif st == "stopped":
@@ -834,7 +834,7 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             cat_score = float(alert.get("catalyst_score") or 0)
 
             # Overall
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 wins += 1
                 win_pnls.append(pnl)
                 all_pnls.append(pnl)
@@ -893,7 +893,7 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             # By session
             s_stats = by_session.setdefault(session, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
             s_stats["total"] += 1
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 s_stats["wins"] += 1
             elif st == "stopped":
                 s_stats["losses"] += 1
@@ -905,7 +905,7 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
                 for p in patterns:
                     p_stats = by_pattern.setdefault(p, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
                     p_stats["total"] += 1
-                    if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                    if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                         p_stats["wins"] += 1
                     elif st == "stopped":
                         p_stats["losses"] += 1
@@ -916,7 +916,7 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             grade = alert.get("confluence_grade") or "N/A"
             g_stats = by_grade.setdefault(grade, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
             g_stats["total"] += 1
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 g_stats["wins"] += 1
             elif st == "stopped":
                 g_stats["losses"] += 1
@@ -927,7 +927,7 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             vol_cls = alert.get("volume_classification") or "N/A"
             v_stats = by_volume_class.setdefault(vol_cls, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
             v_stats["total"] += 1
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
                 v_stats["wins"] += 1
             elif st == "stopped":
                 v_stats["losses"] += 1

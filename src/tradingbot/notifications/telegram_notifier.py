@@ -272,6 +272,7 @@ class TelegramNotifier:
                 status_map = {
                     "tp1_hit": "🎯 TP1",
                     "tp2_hit": "🎯🎯 TP2",
+                    "trailed_out": "📈 Trailed",
                     "stopped": "🛑 Stop",
                     "breakeven": "⚖️ BE",
                     "expired": "⏰ Expired",

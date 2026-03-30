@@ -51,6 +51,11 @@ class TestEvaluateSnapshotOnly:
         trade = _make_trade()
         assert self.tracker._evaluate(trade, 9.45) == "stopped"
 
+    def test_trailed_out_when_stop_above_entry(self):
+        """When stop has been trailed above entry, hitting it is a profit."""
+        trade = _make_trade(entry=10.0, stop=10.30, tp1=10.50, tp2=11.0)
+        assert self.tracker._evaluate(trade, 10.25) == "trailed_out"
+
     def test_no_change(self):
         trade = _make_trade()
         assert self.tracker._evaluate(trade, 10.20) is None
@@ -107,6 +112,12 @@ class TestEvaluateWithBarHighLow:
         trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
         result = self.tracker._evaluate(trade, 9.80, session_low=9.45)
         assert result == "stopped"
+
+    def test_trailed_out_via_bar_low(self):
+        """Stop trailed above entry, bar low hit it → trailed_out."""
+        trade = _make_trade(entry=10.0, stop=10.30, tp1=10.50, tp2=11.0)
+        result = self.tracker._evaluate(trade, 10.35, session_low=10.25)
+        assert result == "trailed_out"
 
     def test_stop_not_hit_when_bar_above(self):
         """Bar low above stop → no stop hit."""
