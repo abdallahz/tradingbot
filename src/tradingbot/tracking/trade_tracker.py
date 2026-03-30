@@ -470,7 +470,11 @@ class TradeTracker:
 
     # ── Expire remaining open trades at market close ───────────────────────
     def expire_open_trades(self) -> int:
-        """Mark any remaining open trades as 'expired'.  Called at EOD."""
+        """Mark any remaining open trades as 'expired'.  Called at EOD.
+
+        Before expiring, performs a final bar-based check so that a TP
+        hit during the session is never overwritten by an expire.
+        """
         from tradingbot.web.alert_store import (
             load_open_outcomes,
             update_outcome,
@@ -484,6 +488,10 @@ class TradeTracker:
         symbols = list({t["symbol"] for t in open_trades})
         print(f"[tracker-expire] Expiring {len(open_trades)} trades for {len(symbols)} symbols")
         prices = self._fetch_quotes(symbols)
+
+        # Also fetch bar data for a final TP/stop check before expiring.
+        bar_extremes = self._fetch_session_bars(open_trades)
+
         if not prices:
             print(
                 f"[tracker-expire] WARNING: No quotes returned for {len(symbols)} symbols — "
@@ -495,11 +503,45 @@ class TradeTracker:
             sym = trade["symbol"]
             entry = float(trade.get("entry_price") or 0)
             price = prices.get(sym, 0.0)
+
             # If no live quote, fall back to entry_price (PnL=0 is better
             # than exit=$0.00 which looks broken in the recap)
             if price <= 0 and entry > 0:
                 price = entry
                 print(f"[tracker-expire] {sym}: NO quote, using entry ${entry:.2f} as exit → PnL=0")
+
+            # ── Final bar-based check: did a TP actually hit today? ───
+            extremes = bar_extremes.get(sym, {})
+            sess_high = extremes.get("high", 0.0)
+            sess_low = extremes.get("low", 0.0)
+            bar_status = self._evaluate(trade, price, sess_high, sess_low)
+
+            if bar_status and bar_status in ("tp1_hit", "tp2_hit"):
+                # A TP was hit during the session — record the win, not an expire.
+                tp1 = float(trade.get("tp1_price") or 0)
+                tp2 = float(trade.get("tp2_price") or 0)
+                if bar_status == "tp2_hit" and tp2 > 0:
+                    exit_price = tp2 if price < tp2 else price
+                elif bar_status == "tp1_hit" and tp1 > 0:
+                    exit_price = tp1 if price < tp1 else price
+                else:
+                    exit_price = price
+                pnl = self._calc_pnl(trade, exit_price)
+                update_outcome(
+                    outcome_id=trade["id"],
+                    status=bar_status,
+                    exit_price=exit_price,
+                    pnl_pct=pnl,
+                    hit_at=now_str,
+                )
+                count += 1
+                print(
+                    f"[tracker-expire] {sym} TP detected via bars → "
+                    f"{bar_status} @ ${exit_price:.2f} (PnL: {pnl:+.2f}%)"
+                )
+                continue
+
+            # No TP hit — expire normally
             pnl = self._calc_pnl(trade, price) if price > 0 else 0.0
             update_outcome(
                 outcome_id=trade["id"],

@@ -178,3 +178,90 @@ class TestEvaluateWithBarHighLow:
             trade, 9.80, session_high=10.55, session_low=9.45
         )
         assert result == "tp1_hit"
+
+
+class TestExpireWithBarCheck:
+    """expire_open_trades should detect TP hits via bars before expiring."""
+
+    def test_expire_detects_tp_via_bars(self):
+        """ATPC scenario: snapshot below entry but bars show TP2 hit.
+        expire_open_trades should record tp2_hit, not expired."""
+        tracker = TradeTracker()
+        tracker._trail_stop_to_level = lambda t, lvl: None
+
+        trades = [_make_trade(
+            symbol="ATPC", entry=2.71, stop=2.55,
+            tp1=2.82, tp2=2.86, alerted_at="2026-03-27T14:00:00+00:00",
+        )]
+        # _fetch_quotes → snapshot below entry
+        tracker._fetch_quotes = lambda syms: {"ATPC": 2.60}
+        # _fetch_session_bars → high shows TP2 was hit
+        tracker._fetch_session_bars = lambda t: {"ATPC": {"high": 2.88, "low": 2.54}}
+
+        recorded: list[dict] = []
+
+        def fake_load():
+            return trades
+
+        def fake_update(**kwargs):
+            recorded.append(kwargs)
+
+        def patched_expire():
+            from tradingbot.web import alert_store as _as
+            _orig_load = _as.load_open_outcomes
+            _orig_update = _as.update_outcome
+            _as.load_open_outcomes = fake_load
+            _as.update_outcome = fake_update
+            try:
+                return tracker.expire_open_trades()
+            finally:
+                _as.load_open_outcomes = _orig_load
+                _as.update_outcome = _orig_update
+
+        count = patched_expire()
+
+        assert count == 1
+        assert len(recorded) == 1
+        assert recorded[0]["status"] == "tp2_hit"
+        assert recorded[0]["exit_price"] == 2.86  # TP2 price, not snapshot
+        assert recorded[0]["pnl_pct"] > 0  # should be a win
+
+    def test_expire_no_tp_expires_normally(self):
+        """When bars don't show a TP hit, expire normally."""
+        tracker = TradeTracker()
+        tracker._trail_stop_to_level = lambda t, lvl: None
+
+        trades = [_make_trade(
+            symbol="FAIL", entry=10.0, stop=9.50,
+            tp1=10.50, tp2=11.0, alerted_at="2026-03-27T14:00:00+00:00",
+        )]
+        tracker._fetch_quotes = lambda syms: {"FAIL": 9.80}
+        tracker._fetch_session_bars = lambda t: {"FAIL": {"high": 10.20, "low": 9.55}}
+
+        recorded: list[dict] = []
+
+        def fake_load():
+            return trades
+
+        def fake_update(**kwargs):
+            recorded.append(kwargs)
+
+        def patched_expire():
+            from tradingbot.web import alert_store as _as
+            _orig_load = _as.load_open_outcomes
+            _orig_update = _as.update_outcome
+            _as.load_open_outcomes = fake_load
+            _as.update_outcome = fake_update
+            try:
+                return tracker.expire_open_trades()
+            finally:
+                _as.load_open_outcomes = _orig_load
+                _as.update_outcome = _orig_update
+
+        count = patched_expire()
+
+        assert count == 1
+        assert len(recorded) == 1
+        assert recorded[0]["status"] == "expired"
+        assert recorded[0]["exit_price"] == 9.80
+        assert recorded[0]["pnl_pct"] < 0  # loss
