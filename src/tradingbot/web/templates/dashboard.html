@@ -133,6 +133,47 @@
             color: var(--sub);
         }
 
+        /* Light theme: grade badges, volume pills, false-positive tags */
+        [data-theme="light"] .grade-badge.grade-A {
+            background: rgba(22, 163, 74, .10);
+            border-color: rgba(22, 163, 74, .30);
+        }
+
+        [data-theme="light"] .grade-badge.grade-B {
+            background: rgba(37, 99, 235, .10);
+            border-color: rgba(37, 99, 235, .30);
+        }
+
+        [data-theme="light"] .grade-badge.grade-C {
+            background: rgba(217, 119, 6, .10);
+            border-color: rgba(217, 119, 6, .25);
+        }
+
+        [data-theme="light"] .grade-badge.grade-F {
+            background: rgba(220, 38, 38, .10);
+            border-color: rgba(220, 38, 38, .30);
+        }
+
+        [data-theme="light"] .vol-pill.accumulation {
+            background: rgba(22, 163, 74, .10);
+        }
+
+        [data-theme="light"] .vol-pill.distribution {
+            background: rgba(220, 38, 38, .10);
+        }
+
+        [data-theme="light"] .vol-pill.climax {
+            background: rgba(124, 58, 237, .10);
+        }
+
+        [data-theme="light"] .vol-pill.thin_fade {
+            background: rgba(217, 119, 6, .10);
+        }
+
+        [data-theme="light"] .fp-tag {
+            background: rgba(220, 38, 38, .08);
+        }
+
         /* Theme toggle button */
         .theme-toggle {
             background: var(--surface);
@@ -596,6 +637,95 @@
         .outcome-pnl {
             margin-left: auto;
             font-weight: 700;
+        }
+
+        /* ── Confluence grade badge ────────────────────── */
+        .grade-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .3px;
+            margin-bottom: 6px;
+            margin-right: 6px;
+        }
+
+        .grade-badge.grade-A {
+            background: rgba(34, 197, 94, .12);
+            border: 1px solid rgba(34, 197, 94, .25);
+            color: var(--green);
+        }
+
+        .grade-badge.grade-B {
+            background: rgba(59, 130, 246, .12);
+            border: 1px solid rgba(59, 130, 246, .25);
+            color: var(--blue);
+        }
+
+        .grade-badge.grade-C {
+            background: rgba(245, 158, 11, .12);
+            border: 1px solid rgba(245, 158, 11, .20);
+            color: var(--amber);
+        }
+
+        .grade-badge.grade-F {
+            background: rgba(239, 68, 68, .12);
+            border: 1px solid rgba(239, 68, 68, .25);
+            color: var(--red);
+        }
+
+        /* ── Volume classification pill ───────────────── */
+        .vol-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: .3px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .vol-pill.accumulation {
+            background: rgba(34, 197, 94, .10);
+            color: var(--green);
+        }
+
+        .vol-pill.distribution {
+            background: rgba(239, 68, 68, .10);
+            color: var(--red);
+        }
+
+        .vol-pill.climax {
+            background: rgba(168, 85, 247, .10);
+            color: var(--purple);
+        }
+
+        .vol-pill.thin_fade {
+            background: rgba(245, 158, 11, .10);
+            color: var(--amber);
+        }
+
+        /* ── False-positive warnings ──────────────────── */
+        .fp-warnings {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .fp-tag {
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: rgba(239, 68, 68, .08);
+            color: var(--red);
+            font-weight: 600;
         }
 
         .outcome-pnl.positive {
@@ -2179,6 +2309,38 @@
                     </div>
                     <span class="score-num">{{ a.score }}</span>
                 </div>
+
+                <!-- Confluence grade + Volume classification row -->
+                {% set cg = a.confluence_grade|default('') %}
+                {% set vc = a.volume_classification|default('') %}
+                {% if cg or vc %}
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:4px">
+                    {% if cg %}
+                    <div class="grade-badge grade-{{ cg }}">
+                        <span>{% if cg == 'A' %}🅰️{% elif cg == 'B' %}🅱️{% elif cg == 'C' %}©️{% else %}❌{% endif
+                            %}</span>
+                        <span>Grade {{ cg }}{% if a.confluence_score %} · {{ "%.0f"|format(a.confluence_score) }}{%
+                            endif %}</span>
+                    </div>
+                    {% endif %}
+                    {% if vc %}
+                    <div class="vol-pill {{ vc }}">
+                        <span>{% if vc == 'accumulation' %}🟢{% elif vc == 'distribution' %}🔴{% elif vc == 'climax'
+                            %}⚡{% else %}⚠️{% endif %}</span>
+                        <span>{{ vc | replace('_',' ') }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- False-positive warnings -->
+                {% if a.false_positive_flags %}
+                <div class="fp-warnings">
+                    {% for w in a.false_positive_flags %}
+                    <span class="fp-tag">⚠ {{ w | replace('_',' ') }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
 
                 <!-- Risk level badge -->
                 {% set rl = a.risk_level|default('low') %}

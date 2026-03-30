@@ -5,6 +5,12 @@ Polls Alpaca IEX (free tier) for current quotes and compares against
 each open card's entry, stop, TP1, TP2 levels.  Records outcomes in
 the Supabase ``trade_outcomes`` table.
 
+In addition to the point-in-time snapshot price, the tracker fetches
+intraday 15-min bars and checks the high/low of each bar to catch TP
+or stop hits that occurred between polling cycles.  Only bars **after**
+the alert's creation time are considered — a pre-alert spike does not
+count.
+
 Outcome lifecycle:
   1. Card alerted → status = "open"
   2. Price hits TP1 → status = "tp1_hit"
@@ -20,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytz
@@ -130,6 +136,142 @@ class TradeTracker:
               + (f" | missing: {still_missing}" if still_missing else ""))
         return prices
 
+    # ── Fetch intraday high/low since alert time (IEX 15-min bars) ───────
+    def _fetch_session_bars(
+        self,
+        trades: list[dict],
+    ) -> dict[str, dict[str, float]]:
+        """Return {symbol: {"high": session_high, "low": session_low}}.
+
+        For each open trade, fetch 15-min bars for today and filter to
+        only bars whose timestamp is >= the alert's ``alerted_at`` time.
+        This prevents a pre-alert spike from counting as a TP hit.
+
+        Returns the maximum bar high and minimum bar low *since* the alert.
+        If a symbol has no bars after the alert time, it is omitted from
+        the result dict.
+        """
+        client = self._get_alpaca()
+        if client is None or not trades:
+            return {}
+
+        # Group trades by symbol and find earliest alert time per symbol
+        from datetime import date as _date
+        sym_alert_times: dict[str, datetime] = {}
+        for t in trades:
+            sym = t["symbol"]
+            alerted_raw = t.get("alerted_at")
+            if not alerted_raw:
+                # If no alerted_at stored, fall back to market open (9:30 ET)
+                today = _date.today()
+                alerted_dt = ET.localize(
+                    datetime(today.year, today.month, today.day, 9, 30)
+                )
+            elif isinstance(alerted_raw, str):
+                # Parse ISO timestamp from Supabase
+                try:
+                    alerted_dt = datetime.fromisoformat(
+                        alerted_raw.replace("Z", "+00:00")
+                    )
+                except (ValueError, TypeError):
+                    today = _date.today()
+                    alerted_dt = ET.localize(
+                        datetime(today.year, today.month, today.day, 9, 30)
+                    )
+            else:
+                alerted_dt = alerted_raw
+
+            # Ensure timezone-aware
+            if alerted_dt.tzinfo is None:
+                alerted_dt = ET.localize(alerted_dt)
+
+            # Keep earliest alert per symbol (conservative)
+            if sym not in sym_alert_times or alerted_dt < sym_alert_times[sym]:
+                sym_alert_times[sym] = alerted_dt
+
+        symbols = list(sym_alert_times.keys())
+        if not symbols:
+            return {}
+
+        # Fetch 15-min bars for today
+        try:
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+
+            now_utc = datetime.now(timezone.utc)
+            # Start from market open today (9:30 ET → UTC)
+            today = datetime.now(ET).date()
+            market_open = ET.localize(
+                datetime(today.year, today.month, today.day, 4, 0)
+            ).astimezone(timezone.utc)
+
+            intraday_tf = TimeFrame(15, TimeFrameUnit.Minute)  # type: ignore[call-arg]
+            req = StockBarsRequest(
+                symbol_or_symbols=symbols,
+                timeframe=intraday_tf,
+                start=market_open,
+                end=now_utc,
+                feed="iex",
+            )
+            bars_response = client.get_stock_bars(req)
+        except Exception as exc:
+            log.warning(f"[tracker] Intraday bar fetch failed: {exc}")
+            return {}
+
+        # Process bars: filter to post-alert bars and compute high/low
+        result: dict[str, dict[str, float]] = {}
+        try:
+            # bars_response[sym] gives list of Bar objects
+            for sym in symbols:
+                sym_bars = bars_response.get(sym, []) if hasattr(bars_response, 'get') else []
+                # Also try dict-style access
+                if not sym_bars:
+                    try:
+                        sym_bars = bars_response[sym]
+                    except (KeyError, TypeError):
+                        sym_bars = []
+
+                alert_time = sym_alert_times[sym]
+                # Ensure alert_time is UTC for comparison
+                if alert_time.tzinfo is None:
+                    alert_time = ET.localize(alert_time)
+                alert_utc = alert_time.astimezone(timezone.utc)
+
+                highs: list[float] = []
+                lows: list[float] = []
+                for bar in sym_bars:
+                    bar_ts = getattr(bar, "timestamp", None)
+                    if bar_ts is None:
+                        continue
+                    # Ensure bar timestamp is timezone-aware
+                    if bar_ts.tzinfo is None:
+                        bar_ts = bar_ts.replace(tzinfo=timezone.utc)
+                    # Only bars AFTER (or at) the alert time
+                    if bar_ts >= alert_utc:
+                        h = getattr(bar, "high", 0.0) or 0.0
+                        lo = getattr(bar, "low", 0.0) or 0.0
+                        if h > 0:
+                            highs.append(float(h))
+                        if lo > 0:
+                            lows.append(float(lo))
+
+                if highs or lows:
+                    result[sym] = {
+                        "high": max(highs) if highs else 0.0,
+                        "low": min(lows) if lows else 0.0,
+                    }
+                    log.info(
+                        f"[tracker] {sym} bars since alert: "
+                        f"high=${max(highs) if highs else 0:.2f}, "
+                        f"low=${min(lows) if lows else 0:.2f} "
+                        f"({len(highs)} bars after {alert_utc.strftime('%H:%M')} UTC)"
+                    )
+        except Exception as exc:
+            log.warning(f"[tracker] Bar processing error: {exc}")
+
+        print(f"[tracker] session bars: {len(result)}/{len(symbols)} symbols with post-alert data")
+        return result
+
     # ── Main tick: check all open trades ───────────────────────────────────
     def tick(self) -> dict[str, Any]:
         """Run one tracking cycle.  Returns summary stats."""
@@ -158,6 +300,9 @@ class TradeTracker:
             log.info(f"[tracker] No prices returned for {len(symbols)} symbols")
             return {"checked": len(open_trades), "updates": 0, "seeded": seeded}
 
+        # Step 3b: Fetch intraday bar highs/lows (post-alert only)
+        bar_extremes = self._fetch_session_bars(open_trades)
+
         # Step 4: Check each open trade against its levels
         updates = 0
         now_str = datetime.now(timezone.utc).isoformat()
@@ -167,28 +312,65 @@ class TradeTracker:
             if price is None:
                 continue
 
-            new_status = self._evaluate(trade, price)
+            # Get session high/low from bars (if available)
+            extremes = bar_extremes.get(sym, {})
+            sess_high = extremes.get("high", 0.0)
+            sess_low = extremes.get("low", 0.0)
+
+            new_status = self._evaluate(trade, price, sess_high, sess_low)
             if new_status and new_status != trade["status"]:
-                pnl = self._calc_pnl(trade, price)
+                # For TP hits detected via bar high, use the TP price
+                # as exit (more accurate than current snapshot).
+                exit_price = price
+                if new_status == "tp1_hit" and sess_high >= float(trade.get("tp1_price") or 0):
+                    tp1_val = float(trade.get("tp1_price") or 0)
+                    if tp1_val > 0 and price < tp1_val:
+                        exit_price = tp1_val  # bar confirmed the hit
+                elif new_status == "tp2_hit" and sess_high >= float(trade.get("tp2_price") or 0):
+                    tp2_val = float(trade.get("tp2_price") or 0)
+                    if tp2_val > 0 and price < tp2_val:
+                        exit_price = tp2_val  # bar confirmed the hit
+
+                pnl = self._calc_pnl(trade, exit_price)
                 update_outcome(
                     outcome_id=trade["id"],
                     status=new_status,
-                    exit_price=price,
+                    exit_price=exit_price,
                     pnl_pct=pnl,
                     hit_at=now_str,
                 )
                 updates += 1
+                bar_tag = " (bar-detected)" if exit_price != price else ""
                 log.info(
                     f"[tracker] {sym} {trade['side']}: "
-                    f"{trade['status']} → {new_status} @ ${price:.2f} "
+                    f"{trade['status']} → {new_status} @ ${exit_price:.2f}{bar_tag} "
                     f"(PnL: {pnl:+.2f}%)"
                 )
 
         return {"checked": len(open_trades), "updates": updates, "seeded": seeded}
 
     # ── Evaluate outcome for one trade ─────────────────────────────────────
-    def _evaluate(self, trade: dict, price: float) -> str | None:
+    def _evaluate(
+        self,
+        trade: dict,
+        price: float,
+        session_high: float = 0.0,
+        session_low: float = 0.0,
+    ) -> str | None:
         """Return the new status if a level was hit, else None.
+
+        Parameters
+        ----------
+        trade : dict
+            The trade outcome row from Supabase.
+        price : float
+            The latest point-in-time price (snapshot / latest trade).
+        session_high : float
+            The highest bar high *since the alert was created*.
+            Used to detect TP hits that occurred between polling cycles.
+        session_low : float
+            The lowest bar low *since the alert was created*.
+            Used to detect stop hits that occurred between polling cycles.
 
         Trailing logic (three stages):
         1. OPEN, price ≥ 0.75R → trail stop to entry (breakeven).
@@ -207,9 +389,16 @@ class TradeTracker:
 
         risk = abs(entry - stop) if stop > 0 else 0
 
+        # Effective high / low: combine snapshot price with
+        # bar-based session extremes (post-alert only).
+        eff_high = max(price, session_high) if session_high > 0 else price
+        eff_low = min(price, session_low) if session_low > 0 else price
+
         # ── Stage 1: Breakeven trail at 0.75R (OPEN) ───────────────
         if risk > 0 and current_status == "open":
-            unrealised = price - entry
+            # Use eff_high for trailing — if bars show we hit 0.75R,
+            # we should have trailed even if snapshot is lower now.
+            unrealised = eff_high - entry
 
             # Stage 2: lock-in 1R when price reaches 1.5R
             if unrealised >= risk * 1.5:
@@ -231,16 +420,20 @@ class TradeTracker:
                 self._trail_stop_to_level(trade, tp1)
                 stop = tp1
 
-        # Check stop first (worst case)
-        if stop > 0 and price <= stop:
+        # ── TP checks FIRST (use eff_high) ──────────────────────────
+        # If bar data shows the high hit a target, that happened
+        # earlier in the session — a day trader would have taken
+        # partial there.  TP takes priority over a later retrace.
+        if tp2 > 0 and eff_high >= tp2:
+            return "tp2_hit"
+        if tp1 > 0 and eff_high >= tp1 and current_status == "open":
+            return "tp1_hit"
+
+        # ── Stop check (use eff_low for between-poll dips) ──────────
+        if stop > 0 and eff_low <= stop:
             if stop >= tp1 and tp1 > 0:
                 return "tp1_locked"
             return "breakeven" if stop == entry else "stopped"
-        # TP2 beats TP1 (upgrade)
-        if tp2 > 0 and price >= tp2:
-            return "tp2_hit"
-        if tp1 > 0 and price >= tp1 and current_status == "open":
-            return "tp1_hit"
 
         return None
 

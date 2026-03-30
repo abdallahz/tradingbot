@@ -35,6 +35,12 @@ from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENC
 from tradingbot.analysis.market_conditions import MarketConditionAnalyzer, MarketCondition
 from tradingbot.analysis.market_guard import MarketGuard, MarketHealth
 from tradingbot.analysis.ai_trade_validator import AITradeValidator
+from tradingbot.analysis.confluence_engine import evaluate_confluence, should_fire_alert
+from tradingbot.analysis.volume_quality import classify_volume_profile, is_move_exhausted
+from tradingbot.analysis.institutional_alert import (
+    build_institutional_context,
+    format_institutional_alert,
+)
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
 from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
 from tradingbot.data.etf_metadata import is_etf, get_etf_family, get_leverage_factor
@@ -651,8 +657,9 @@ class SessionRunner:
             else:
                 # Normal confluence floor
                 # Relaxed mode: only block if strong opposing signal (< 0)
-                # Strict mode: require MIN_CONFLUENCE_SCORE (10)
-                confluence_floor = 0 if relaxed else MIN_CONFLUENCE_SCORE
+                # Strict mode: require MIN_CONFLUENCE_SCORE (10, or auto-tuned)
+                _tuned_min = self._tuning_overrides.get("min_confluence_score")
+                confluence_floor = 0 if relaxed else (_tuned_min if _tuned_min is not None else MIN_CONFLUENCE_SCORE)
 
             # Block cards with weak or opposing signals
             if confluence < confluence_floor:
@@ -679,6 +686,60 @@ class SessionRunner:
                         dropped.append((symbol.symbol, f"ai_rejected:confidence={validation.confidence}"))
                     continue
 
+            # ── Confluence engine (multi-factor false-positive filter) ──
+            spy_pct = mh.spy_change_pct if mh else 0.0
+            qqq_pct = mh.qqq_change_pct if mh else 0.0
+            open_price = symbol.tech_indicators.get("vwap", symbol.price)  # best proxy for open
+            confluence_result = evaluate_confluence(
+                current_price=symbol.price,
+                open_price=open_price,
+                ema9=symbol.ema9,
+                ema20=symbol.ema20,
+                vwap=symbol.vwap,
+                atr=symbol.atr,
+                spread_pct=symbol.spread_pct,
+                bars_data=getattr(symbol, "raw_bars", []),
+                relative_volume=symbol.relative_volume,
+                spy_change_pct=spy_pct,
+                qqq_change_pct=qqq_pct,
+                rsi=symbol.tech_indicators.get("rsi", 50.0),
+                macd_hist=symbol.tech_indicators.get("macd_hist", 0.0),
+                catalyst_score=symbol.catalyst_score,
+                patterns=list(symbol.patterns),
+                gap_pct=symbol.gap_pct,
+            )
+
+            # Attach confluence grade to card for alert formatting
+            card.confluence_grade = confluence_result.grade
+            card.confluence_score = confluence_result.composite_score
+            card.false_positive_flags = list(confluence_result.false_positive_flags)
+
+            # In strict mode, veto low-grade setups for high win-rate
+            if not relaxed and confluence_result.vetoed:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"confluence_veto:{confluence_result.veto_reason}"))
+                logging.info(f"[DROP] {symbol.symbol}: {confluence_result.veto_reason}")
+                continue
+
+            # Build volume profile for alert context
+            vol_profile = classify_volume_profile(
+                getattr(symbol, "raw_bars", []),
+                symbol.relative_volume,
+                symbol.price,
+                symbol.vwap,
+            )
+            card.volume_classification = vol_profile.classification
+
+            # Build institutional context for enriched alerts
+            inst_ctx = build_institutional_context(
+                card=card,
+                snapshot=symbol,
+                confluence_result=confluence_result,
+                volume_profile=vol_profile,
+                spy_change=spy_pct,
+                qqq_change=qqq_pct,
+            )
+
             chart_path = generate_chart(
                 symbol=symbol.symbol,
                 bars_data=symbol.raw_bars,
@@ -696,8 +757,8 @@ class SessionRunner:
                 if sym_family:
                     selected_etf_families.add(sym_family)
 
-            # Send Telegram notification
-            self.notifier.send_trade_alert(card)
+            # Send institutional-grade Telegram notification
+            self.notifier.send_institutional_alert(card, inst_ctx)
             save_alert(card_to_dict(card))
             self._alerts_sent_count += 1
 

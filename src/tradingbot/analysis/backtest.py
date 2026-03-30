@@ -161,7 +161,11 @@ class Backtester:
                 return []
             resp = (
                 sb.table("trade_outcomes")
-                .select("*, alerts!inner(session, patterns, risk_reward, catalyst_score, side, score)")
+                .select(
+                    "*, alerts!inner(session, patterns, risk_reward, "
+                    "catalyst_score, side, score, confluence_grade, "
+                    "confluence_score, volume_classification)"
+                )
                 .not_.is_("status", "null")
                 .order("created_at", desc=True)
                 .limit(5000)
@@ -225,6 +229,54 @@ class Backtester:
                         fr.losses += 1
                     if st not in ("open",):
                         pnls.append(pnl)
+            d = fr.wins + fr.losses
+            fr.win_rate = round((fr.wins / d * 100) if d else 0, 1)
+            fr.avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0
+            reports[bucket_name] = fr
+
+        # Filter: Confluence grade buckets
+        for grade in ("A", "B", "C", "F"):
+            bucket_name = f"grade_{grade}"
+            fr = FilterReport(name=bucket_name)
+            pnls = []
+            for t in trades:
+                alert = t.get("alerts", {}) or {}
+                g = (alert.get("confluence_grade") or "").upper()
+                if g != grade:
+                    continue
+                fr.total_passed += 1
+                st = t.get("status", "open")
+                pnl = float(t.get("pnl_pct") or 0)
+                if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                    fr.wins += 1
+                elif st == "stopped":
+                    fr.losses += 1
+                if st not in ("open",):
+                    pnls.append(pnl)
+            d = fr.wins + fr.losses
+            fr.win_rate = round((fr.wins / d * 100) if d else 0, 1)
+            fr.avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0
+            reports[bucket_name] = fr
+
+        # Filter: Volume classification buckets
+        for vcls in ("accumulation", "distribution", "climax", "thin_fade"):
+            bucket_name = f"vol_{vcls}"
+            fr = FilterReport(name=bucket_name)
+            pnls = []
+            for t in trades:
+                alert = t.get("alerts", {}) or {}
+                vc = (alert.get("volume_classification") or "").lower()
+                if vc != vcls:
+                    continue
+                fr.total_passed += 1
+                st = t.get("status", "open")
+                pnl = float(t.get("pnl_pct") or 0)
+                if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                    fr.wins += 1
+                elif st == "stopped":
+                    fr.losses += 1
+                if st not in ("open",):
+                    pnls.append(pnl)
             d = fr.wins + fr.losses
             fr.win_rate = round((fr.wins / d * 100) if d else 0, 1)
             fr.avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0
@@ -309,6 +361,36 @@ class Backtester:
                 name="score_70",
                 description="Require ranker score >= 70",
                 filter_fn=lambda t: float((t.get("alerts") or {}).get("score", 0)) >= 70,
+            )
+        )
+
+        # Scenario 4: What if only Grade A+B trades were taken?
+        scenarios.append(
+            self._run_scenario(
+                trades,
+                name="grade_AB",
+                description="Only fire on confluence Grade A or B",
+                filter_fn=lambda t: (t.get("alerts") or {}).get("confluence_grade", "").upper() in ("A", "B"),
+            )
+        )
+
+        # Scenario 5: What if only Grade A trades were taken?
+        scenarios.append(
+            self._run_scenario(
+                trades,
+                name="grade_A_only",
+                description="Only fire on confluence Grade A",
+                filter_fn=lambda t: (t.get("alerts") or {}).get("confluence_grade", "").upper() == "A",
+            )
+        )
+
+        # Scenario 6: What if accumulation-volume-only trades were taken?
+        scenarios.append(
+            self._run_scenario(
+                trades,
+                name="vol_accumulation_only",
+                description="Only fire on accumulation volume profile",
+                filter_fn=lambda t: (t.get("alerts") or {}).get("volume_classification", "").lower() == "accumulation",
             )
         )
 

@@ -55,6 +55,11 @@ class TradeCard:
     ai_concerns: list[str] = field(default_factory=list)  # LLM-flagged concerns
     risk_level: str = "low"      # "low", "medium", "high" — overall trade risk
     position_size: int = 0       # Suggested shares for the configured risk budget
+    # Confluence engine fields (institutional grading)
+    confluence_grade: str = ""        # "A", "B", "C", "F" from confluence engine
+    confluence_score: float = 0.0     # 0-100 composite from multi-factor analysis
+    volume_classification: str = ""   # accumulation / distribution / climax / thin_fade
+    false_positive_flags: list[str] = field(default_factory=list)  # risk warnings
 
 
 @dataclass

@@ -45,6 +45,11 @@ class Scheduler:
 
     def run_now(self) -> tuple:
         runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+        try:
+            runner.apply_tuning()
+        except Exception as _exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(f"[scheduler] auto-tune failed: {_exc}")
         return runner.run_day_three_options()
     
     def run_news_only(self) -> dict[str, float]:
@@ -103,6 +108,11 @@ class Scheduler:
         from tradingbot.scanner.close_hold_scanner import CloseHoldScanner
 
         runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+        try:
+            runner.apply_tuning()
+        except Exception as _exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(f"[scheduler] auto-tune failed (close-hold): {_exc}")
         catalyst_scores = self._load_catalyst_scores()
 
         # Build universe (same logic as run_single_session)

@@ -194,6 +194,25 @@ def main() -> None:
             print(f">> Telegram recap: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
         else:
             print(">> Telegram: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
+
+        # Step 5: Send nightly digest (confluence + volume + auto-tuner insights)
+        try:
+            from tradingbot.web.alert_store import get_detailed_analytics
+            from tradingbot.analysis.auto_tuner import AutoTuner
+            analytics = get_detailed_analytics(90)
+            tuner_text = ""
+            try:
+                tuner = AutoTuner(min_trades=20)
+                result = tuner.tune()
+                if result.recommendations:
+                    tuner_text = result.summary()
+            except Exception:
+                pass
+            if analytics and _notifier._enabled:
+                _ok = _notifier.send_daily_digest(analytics, tuner_text)
+                print(f">> Telegram digest: {'sent' if _ok else 'FAILED'}")
+        except Exception as _exc:
+            print(f">> Telegram digest: SKIPPED ({_exc})")
         return
 
     # Legacy run-day command

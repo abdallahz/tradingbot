@@ -196,7 +196,13 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "risk_level":      alert.get("risk_level", "low"),
             }
             # Optional columns added after initial schema — strip on retry
-            _optional_cols = ["risk_level"]
+            _optional_cols = [
+                "risk_level",
+                "confluence_grade",
+                "confluence_score",
+                "volume_classification",
+                "false_positive_flags",
+            ]
             try:
                 sb.table("alerts").insert(row).execute()
                 log.info(f"[alert_store] Supabase alert saved: {row['symbol']} {row['side']}")
@@ -516,10 +522,10 @@ def seed_outcomes_for_today() -> int:
         today_str = _today_et().isoformat()
         log.info(f"[seed] today={today_str}")
 
-        # Get today's alerts
+        # Get today's alerts (include created_at for time-filtered tracking)
         alerts_resp = (
             sb.table("alerts")
-            .select("id, symbol, side, entry_price, stop_price, tp1_price, tp2_price, session, trade_date")
+            .select("id, symbol, side, entry_price, stop_price, tp1_price, tp2_price, session, trade_date, created_at")
             .eq("trade_date", today_str)
             .execute()
         )
@@ -555,6 +561,7 @@ def seed_outcomes_for_today() -> int:
                 "tp1_price":   alert.get("tp1_price"),
                 "tp2_price":   alert.get("tp2_price"),
                 "status":      "open",
+                "alerted_at":  alert.get("created_at"),
             }
             sb.table("trade_outcomes").insert(row).execute()
             count += 1
@@ -786,7 +793,7 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
         # Join outcomes with alerts for session + pattern data
         resp = (
             sb.table("trade_outcomes")
-            .select("*, alerts!inner(session, patterns, risk_reward, catalyst_score, side)")
+            .select("*, alerts!inner(session, patterns, risk_reward, catalyst_score, side, confluence_grade, volume_classification)")
             .not_.is_("status", "null")
             .order("created_at", desc=True)
             .limit(2000)
@@ -806,6 +813,8 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
 
         by_session: dict[str, dict] = {}
         by_pattern: dict[str, dict] = {}
+        by_grade: dict[str, dict] = {}
+        by_volume_class: dict[str, dict] = {}
         best_trade = worst_trade = None
         best_pnl = float("-inf")
         worst_pnl = float("inf")
@@ -903,6 +912,28 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
                     if st not in ("open",):
                         p_stats["pnl"] += pnl
 
+            # By confluence grade
+            grade = alert.get("confluence_grade") or "N/A"
+            g_stats = by_grade.setdefault(grade, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
+            g_stats["total"] += 1
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                g_stats["wins"] += 1
+            elif st == "stopped":
+                g_stats["losses"] += 1
+            if st not in ("open",):
+                g_stats["pnl"] += pnl
+
+            # By volume classification
+            vol_cls = alert.get("volume_classification") or "N/A"
+            v_stats = by_volume_class.setdefault(vol_cls, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
+            v_stats["total"] += 1
+            if st in ("tp1_hit", "tp2_hit", "tp1_locked"):
+                v_stats["wins"] += 1
+            elif st == "stopped":
+                v_stats["losses"] += 1
+            if st not in ("open",):
+                v_stats["pnl"] += pnl
+
         total = len(rows)
         decided = wins + losses
         # Calculate win rates for sessions
@@ -917,6 +948,21 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
 
         # Sort patterns by total trades (most common first)
         by_pattern_sorted = dict(sorted(by_pattern.items(), key=lambda x: -x[1]["total"]))
+
+        # Calculate win rates for grades and volume classifications
+        for g in by_grade.values():
+            d = g["wins"] + g["losses"]
+            g["win_rate"] = round((g["wins"] / d * 100) if d > 0 else 0, 1)
+            g["pnl"] = round(g["pnl"], 2)
+        for v in by_volume_class.values():
+            d = v["wins"] + v["losses"]
+            v["win_rate"] = round((v["wins"] / d * 100) if d > 0 else 0, 1)
+            v["pnl"] = round(v["pnl"], 2)
+
+        # Sort grades A > B > C > F > N/A
+        grade_order = {"A": 0, "B": 1, "C": 2, "F": 3, "N/A": 4}
+        by_grade_sorted = dict(sorted(by_grade.items(), key=lambda x: grade_order.get(x[0], 5)))
+        by_volume_sorted = dict(sorted(by_volume_class.items(), key=lambda x: -x[1]["total"]))
 
         return {
             "total": total,
@@ -942,6 +988,8 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             "avg_realised_rr": round(sum(realised_rr) / len(realised_rr), 2) if realised_rr else 0,
             "by_session": by_session,
             "by_pattern": by_pattern_sorted,
+            "by_grade": by_grade_sorted,
+            "by_volume_class": by_volume_sorted,
         }
     except Exception as exc:
         log.warning(f"[alert_store] get_detailed_analytics failed: {exc}")
@@ -974,6 +1022,10 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "ai_concerns":    list(getattr(card, "ai_concerns", [])),
         "risk_level":     str(getattr(card, "risk_level", "low")),
         "position_size":  int(getattr(card, "position_size", 0)),
+        "confluence_grade":     str(getattr(card, "confluence_grade", "")),
+        "confluence_score":     round(float(getattr(card, "confluence_score", 0.0)), 1),
+        "volume_classification": str(getattr(card, "volume_classification", "")),
+        "false_positive_flags": list(getattr(card, "false_positive_flags", [])),
         "timestamp":      generated,
     }
 

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS trade_outcomes (
     exit_price  NUMERIC(12,4),
     pnl_pct     NUMERIC(8,2),
     hit_at      TIMESTAMPTZ,
+    alerted_at  TIMESTAMPTZ,               -- when the alert was created (for bar-time filtering)
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -33,3 +34,7 @@ CREATE POLICY "Allow all for service role" ON trade_outcomes
     FOR ALL
     USING (true)
     WITH CHECK (true);
+
+-- ── Migration: add alerted_at column (run once on existing tables) ──────────
+-- ALTER TABLE trade_outcomes
+--   ADD COLUMN IF NOT EXISTS alerted_at TIMESTAMPTZ;
