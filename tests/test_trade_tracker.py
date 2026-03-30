@@ -276,3 +276,46 @@ class TestExpireWithBarCheck:
         assert recorded[0]["status"] == "expired"
         assert recorded[0]["exit_price"] == 9.80
         assert recorded[0]["pnl_pct"] < 0  # loss
+
+    def test_expire_tp_exit_uses_tp_price_not_snapshot(self):
+        """APLZ scenario: stock ran 30% (snapshot=$31), but TP2=$25.73.
+        Exit price must be TP2, not the inflated snapshot."""
+        tracker = TradeTracker()
+        tracker._trail_stop_to_level = lambda t, lvl: None
+
+        trades = [_make_trade(
+            symbol="APLZ", entry=24.38, stop=23.00,
+            tp1=25.36, tp2=25.73, alerted_at="2026-03-30T14:00:00+00:00",
+        )]
+        # Snapshot is way above TP2 — stock kept running
+        tracker._fetch_quotes = lambda syms: {"APLZ": 31.07}
+        tracker._fetch_session_bars = lambda t: {"APLZ": {"high": 32.0, "low": 24.00}}
+
+        recorded: list[dict] = []
+
+        def fake_load():
+            return trades
+
+        def fake_update(**kwargs):
+            recorded.append(kwargs)
+
+        def patched_expire():
+            from tradingbot.web import alert_store as _as
+            _orig_load = _as.load_open_outcomes
+            _orig_update = _as.update_outcome
+            _as.load_open_outcomes = fake_load
+            _as.update_outcome = fake_update
+            try:
+                return tracker.expire_open_trades()
+            finally:
+                _as.load_open_outcomes = _orig_load
+                _as.update_outcome = _orig_update
+
+        count = patched_expire()
+
+        assert count == 1
+        assert len(recorded) == 1
+        assert recorded[0]["status"] == "tp2_hit"
+        assert recorded[0]["exit_price"] == 25.73  # TP2, not $31.07 snapshot
+        expected_pnl = round(((25.73 - 24.38) / 24.38) * 100, 2)
+        assert recorded[0]["pnl_pct"] == expected_pnl  # ~5.54%, not 27.44%

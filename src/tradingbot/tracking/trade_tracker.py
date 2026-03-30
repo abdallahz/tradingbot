@@ -319,17 +319,19 @@ class TradeTracker:
 
             new_status = self._evaluate(trade, price, sess_high, sess_low)
             if new_status and new_status != trade["status"]:
-                # For TP hits detected via bar high, use the TP price
-                # as exit (more accurate than current snapshot).
+                # For TP hits, use the TP price as the exit — that's
+                # where the limit order would have filled.  The live
+                # snapshot may be above (stock kept running) or below
+                # (retraced), but we exited at the target.
                 exit_price = price
-                if new_status == "tp1_hit" and sess_high >= float(trade.get("tp1_price") or 0):
+                if new_status == "tp1_hit":
                     tp1_val = float(trade.get("tp1_price") or 0)
-                    if tp1_val > 0 and price < tp1_val:
-                        exit_price = tp1_val  # bar confirmed the hit
-                elif new_status == "tp2_hit" and sess_high >= float(trade.get("tp2_price") or 0):
+                    if tp1_val > 0:
+                        exit_price = tp1_val
+                elif new_status == "tp2_hit":
                     tp2_val = float(trade.get("tp2_price") or 0)
-                    if tp2_val > 0 and price < tp2_val:
-                        exit_price = tp2_val  # bar confirmed the hit
+                    if tp2_val > 0:
+                        exit_price = tp2_val
 
                 pnl = self._calc_pnl(trade, exit_price)
                 update_outcome(
@@ -523,12 +525,13 @@ class TradeTracker:
 
             if bar_status and bar_status in ("tp1_hit", "tp2_hit"):
                 # A TP was hit during the session — record the win, not an expire.
+                # Use the TP price as exit (limit fill), not the snapshot.
                 tp1 = float(trade.get("tp1_price") or 0)
                 tp2 = float(trade.get("tp2_price") or 0)
                 if bar_status == "tp2_hit" and tp2 > 0:
-                    exit_price = tp2 if price < tp2 else price
+                    exit_price = tp2
                 elif bar_status == "tp1_hit" and tp1 > 0:
-                    exit_price = tp1 if price < tp1 else price
+                    exit_price = tp1
                 else:
                     exit_price = price
                 pnl = self._calc_pnl(trade, exit_price)
