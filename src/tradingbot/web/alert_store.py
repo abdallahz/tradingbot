@@ -743,7 +743,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
         cum_pnl = 0.0
         for d in sorted(by_date.keys())[-days:]:
             rows = by_date[d]
-            wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit", "tp1_locked"))
+            wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"))
             losses = sum(1 for r in rows if r.get("status") == "stopped")
             expired = sum(1 for r in rows if r.get("status") == "expired")
             be = sum(1 for r in rows if r.get("status") == "breakeven")
