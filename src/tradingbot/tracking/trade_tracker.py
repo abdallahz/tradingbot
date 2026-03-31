@@ -383,6 +383,14 @@ class TradeTracker:
         eff_high = max(price, session_high) if session_high > 0 else price
         eff_low = min(price, session_low) if session_low > 0 else price
 
+        # Track whether we move the stop in THIS evaluation.
+        # If we do, the bar-low may include the entry candle's natural
+        # low (== entry price), which would falsely trigger a breakeven
+        # stop in the same tick.  In that case we defer the stop check
+        # to the next polling cycle when we have fresh data.
+        stop_trailed_this_tick = False
+        original_stop = stop
+
         # ── Stage 1: Breakeven trail at 0.75R (OPEN) ───────────────
         if risk > 0 and current_status == "open":
             # Use eff_high for trailing — if bars show we hit 0.75R,
@@ -395,11 +403,13 @@ class TradeTracker:
                 if stop < lock_level:
                     self._trail_stop_to_level(trade, lock_level)
                     stop = lock_level
+                    stop_trailed_this_tick = True
             # Stage 1: breakeven when price reaches 0.75R
             elif unrealised >= risk * 0.75 and stop != entry:
                 if stop < entry:
                     self._trail_stop_to_level(trade, entry)
                     stop = entry
+                    stop_trailed_this_tick = True
 
         # ── Stage 3: TP1 trail (TP1_HIT) ────────────────────────────
         # After TP1 is hit, move stop to TP1 so the remaining position
@@ -408,6 +418,7 @@ class TradeTracker:
             if stop < tp1:
                 self._trail_stop_to_level(trade, tp1)
                 stop = tp1
+                stop_trailed_this_tick = True
 
         # ── TP checks FIRST (use eff_high) ──────────────────────────
         # If bar data shows the high hit a target, that happened
@@ -419,7 +430,12 @@ class TradeTracker:
             return "tp1_hit"
 
         # ── Stop check (use eff_low for between-poll dips) ──────────
-        if stop > 0 and eff_low <= stop:
+        # If the stop was just trailed this tick, only use the live
+        # snapshot price for the stop check — bar low may contain the
+        # entry candle's natural low which would falsely trigger.
+        stop_check_low = price if stop_trailed_this_tick else eff_low
+
+        if stop > 0 and stop_check_low <= stop:
             if stop >= tp1 and tp1 > 0:
                 return "tp1_locked"
             if stop == entry:
@@ -432,7 +448,9 @@ class TradeTracker:
         return None
 
     def _trail_stop_to_level(self, trade: dict, level: float) -> None:
-        """Move the stop to the given level in the database."""
+        """Move the stop to the given level in the database AND in-memory dict."""
+        # Update in-memory dict so _resolve_exit_price reads the correct value
+        trade["stop_price"] = round(level, 2)
         try:
             outcome_id = trade.get("id")
             if outcome_id is None:

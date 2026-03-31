@@ -190,6 +190,50 @@ class TestEvaluateWithBarHighLow:
         )
         assert result == "tp1_hit"
 
+    # ── Same-tick trail guard (ONDS bug fix) ──────────────────────────
+
+    def test_no_false_breakeven_on_entry_bar(self):
+        """ONDS scenario: bar high triggers 0.75R trail to entry, but
+        bar low IS the entry price (the candle where we bought).
+        Should NOT trigger breakeven in the same tick — the price
+        never actually came back down.  entry=8.38, stop=8.17, R=0.21,
+        0.75R trigger=$8.54."""
+        trailed_to = []
+        self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
+
+        trade = _make_trade(entry=8.38, stop=8.17, tp1=8.88, tp2=9.09)
+        # Bar high >= $8.54 (triggers trail), bar low = $8.38 (entry bar)
+        # Snapshot price = $8.60 (above entry, no stop hit on live price)
+        result = self.tracker._evaluate(trade, 8.60, session_high=8.65, session_low=8.38)
+        assert 8.38 in trailed_to  # trail to breakeven fired
+        assert result is None  # should NOT be "breakeven"
+
+    def test_real_breakeven_when_snapshot_at_entry(self):
+        """If the live snapshot price IS at entry after trail, that IS
+        a real breakeven — the current price confirms the stop hit."""
+        trailed_to = []
+        self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
+
+        trade = _make_trade(entry=8.38, stop=8.17, tp1=8.88, tp2=9.09)
+        # Bar high triggers trail, AND live price is at/below entry
+        result = self.tracker._evaluate(trade, 8.38, session_high=8.65, session_low=8.30)
+        assert 8.38 in trailed_to
+        assert result == "breakeven"  # live price confirms stop hit
+
+    def test_no_false_lock1r_stop_on_same_tick(self):
+        """1.5R trail fires and moves stop to entry+R, but bar low
+        includes the entry candle.  Should not trigger stop."""
+        trailed_to = []
+        self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
+
+        # entry=10, stop=9.00, R=1.00, 1.5R=$11.50, lock at $11.00
+        # TP1=$12.00, TP2=$13.00 — set high enough that 1.5R lock doesn't hit TP
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.00, tp2=13.0)
+        # Bar high=11.60 triggers 1.5R lock (>=11.50), bar low near entry, snapshot above lock
+        result = self.tracker._evaluate(trade, 11.20, session_high=11.60, session_low=9.90)
+        assert 11.0 in trailed_to  # lock at entry+R
+        assert result is None  # should NOT trigger stop from bar low
+
 
 class TestExpireWithBarCheck:
     """expire_open_trades should detect TP hits via bars before expiring."""
