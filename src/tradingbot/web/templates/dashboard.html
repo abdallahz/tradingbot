@@ -1204,7 +1204,8 @@
                     </svg>
                     Filters
                 </div>
-                {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter %}
+                {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter or status_filter
+                %}
                 <a href="/" class="filter-clear-all">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1278,6 +1279,24 @@
                         </svg>
                     </div>
                 </div>
+                <div class="filter-group">
+                    <label for="status">Status</label>
+                    <div class="select-wrap">
+                        <select id="status" name="status">
+                            <option value="">All Statuses</option>
+                            {% set status_options = [('open', 'Open'), ('tp1_hit', '🎯 TP1 Hit'), ('tp2_hit', '🏆 TP2
+                            Hit'), ('tp1_locked', '🔒 TP1 Locked'), ('trailed_out', '📈 Trailed Out'), ('breakeven', '⚖️
+                            Breakeven'), ('stopped', '🛑 Stopped'), ('expired', '⏰ Expired')] %}
+                            {% for val, lbl in status_options %}
+                            <option value="{{ val }}" {% if val==status_filter %}selected{% endif %}>{{ lbl }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </div>
                 <div class="filter-actions">
                     <button type="submit" class="filter-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1289,13 +1308,17 @@
                     </button>
                 </div>
             </form>
-            {% if date_filter or symbol_filter or session_filter or scan_time_filter %}
+            {% if date_filter or symbol_filter or session_filter or scan_time_filter or status_filter %}
             <div class="active-filters">
                 {% if date_filter %}<span class="chip">📅 {{ date_filter }}</span>{% endif %}
                 {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
                 {% if session_filter %}<span class="chip">🕐 {{ session_labels.get(session_filter, session_filter)
                     }}</span>{% endif %}
                 {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }}</span>{% endif %}
+                {% if status_filter %}{% set status_label_map = {'open':'Open','tp1_hit':'TP1 Hit','tp2_hit':'TP2
+                Hit','tp1_locked':'TP1 Locked','trailed_out':'Trailed
+                Out','breakeven':'Breakeven','stopped':'Stopped','expired':'Expired'} %}<span class="chip">🏷 {{
+                    status_label_map.get(status_filter, status_filter) }}</span>{% endif %}
             </div>
             {% endif %}
         </div>
