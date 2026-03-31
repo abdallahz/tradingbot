@@ -143,26 +143,26 @@ class TestEvaluateWithBarHighLow:
     # ── Trailing stop still works with bar data ───────────────────────
 
     def test_breakeven_trail_from_bar_high(self):
-        """Bar high showed 0.75R move → should have trailed to breakeven.
+        """Bar high showed 1R move → should have trailed to breakeven.
         Then if eff_low is above stop, no stop hit."""
         trailed_to = []
         self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
 
-        # entry=10, stop=9.50, risk=0.50, 0.75R=10.375
-        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
-        # price below 0.75R but session_high hit 10.40 (>= 0.75R)
-        result = self.tracker._evaluate(trade, 10.10, session_high=10.40)
+        # entry=10, stop=9.50, risk=0.50, 1R=10.50
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=11.00, tp2=12.0)
+        # price below 1R but session_high hit 10.55 (>= 1R)
+        result = self.tracker._evaluate(trade, 10.10, session_high=10.55)
         # The trailing should fire (breakeven)
         assert 10.0 in trailed_to  # trailed stop to entry
 
     def test_lock_1r_from_bar_high(self):
-        """Bar high showed 1.5R move → should lock stop at entry+1R."""
+        """Bar high showed 2R move → should lock stop at entry+1R."""
         trailed_to = []
         self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
 
-        # entry=10, stop=9.50, risk=0.50, 1.5R=10.75
-        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
-        result = self.tracker._evaluate(trade, 10.30, session_high=10.80)
+        # entry=10, stop=9.50, risk=0.50, 2R=11.00
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=11.50, tp2=12.0)
+        result = self.tracker._evaluate(trade, 10.80, session_high=11.05)
         # Should've trailed to entry + risk (10 + 0.50 = 10.50)
         assert 10.50 in trailed_to
 
@@ -193,18 +193,18 @@ class TestEvaluateWithBarHighLow:
     # ── Same-tick trail guard (ONDS bug fix) ──────────────────────────
 
     def test_no_false_breakeven_on_entry_bar(self):
-        """ONDS scenario: bar high triggers 0.75R trail to entry, but
+        """ONDS scenario: bar high triggers 1R trail to entry, but
         bar low IS the entry price (the candle where we bought).
         Should NOT trigger breakeven in the same tick — the price
         never actually came back down.  entry=8.38, stop=8.17, R=0.21,
-        0.75R trigger=$8.54."""
+        1R trigger=$8.59."""
         trailed_to = []
         self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
 
         trade = _make_trade(entry=8.38, stop=8.17, tp1=8.88, tp2=9.09)
-        # Bar high >= $8.54 (triggers trail), bar low = $8.38 (entry bar)
-        # Snapshot price = $8.60 (above entry, no stop hit on live price)
-        result = self.tracker._evaluate(trade, 8.60, session_high=8.65, session_low=8.38)
+        # Bar high >= $8.59 (triggers 1R trail), bar low = $8.38 (entry bar)
+        # Snapshot price = $8.65 (above entry, no stop hit on live price)
+        result = self.tracker._evaluate(trade, 8.65, session_high=8.65, session_low=8.38)
         assert 8.38 in trailed_to  # trail to breakeven fired
         assert result is None  # should NOT be "breakeven"
 
@@ -215,22 +215,22 @@ class TestEvaluateWithBarHighLow:
         self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
 
         trade = _make_trade(entry=8.38, stop=8.17, tp1=8.88, tp2=9.09)
-        # Bar high triggers trail, AND live price is at/below entry
+        # Bar high >= 1R=$8.59 triggers trail, AND live price is at/below entry
         result = self.tracker._evaluate(trade, 8.38, session_high=8.65, session_low=8.30)
         assert 8.38 in trailed_to
         assert result == "breakeven"  # live price confirms stop hit
 
     def test_no_false_lock1r_stop_on_same_tick(self):
-        """1.5R trail fires and moves stop to entry+R, but bar low
+        """2R trail fires and moves stop to entry+R, but bar low
         includes the entry candle.  Should not trigger stop."""
         trailed_to = []
         self.tracker._trail_stop_to_level = lambda t, lvl: trailed_to.append(lvl)
 
-        # entry=10, stop=9.00, R=1.00, 1.5R=$11.50, lock at $11.00
-        # TP1=$12.00, TP2=$13.00 — set high enough that 1.5R lock doesn't hit TP
-        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.00, tp2=13.0)
-        # Bar high=11.60 triggers 1.5R lock (>=11.50), bar low near entry, snapshot above lock
-        result = self.tracker._evaluate(trade, 11.20, session_high=11.60, session_low=9.90)
+        # entry=10, stop=9.00, R=1.00, 2R=$12.00, lock at $11.00
+        # TP1=$13.00, TP2=$14.00 — set high enough that 2R lock doesn't hit TP
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=13.00, tp2=14.0)
+        # Bar high=12.10 triggers 2R lock (>=12.00), bar low near entry, snapshot above lock
+        result = self.tracker._evaluate(trade, 11.20, session_high=12.10, session_low=9.90)
         assert 11.0 in trailed_to  # lock at entry+R
         assert result is None  # should NOT trigger stop from bar low
 
@@ -461,3 +461,55 @@ class TestBlendedPnL:
         pnl = TradeTracker._calc_pnl(trade, 25.73, "tp2_hit")
         expected = round(((((25.36-24.38)/24.38) + ((25.73-24.38)/24.38)) / 2) * 100, 2)
         assert pnl == expected
+
+
+class TestTrailingThresholds:
+    """Verify the 1R/2R trailing thresholds (upgraded from 0.75R/1.5R)."""
+
+    def setup_method(self):
+        self.tracker = TradeTracker()
+        self.trailed_to: list[float] = []
+        self.tracker._trail_stop_to_level = lambda t, lvl: self.trailed_to.append(lvl)
+
+    def test_no_trail_below_1r(self):
+        """Price at 0.9R → should NOT trail to breakeven yet."""
+        # entry=10, stop=9.00, R=1.00, 0.9R=10.90
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.00, tp2=13.0)
+        result = self.tracker._evaluate(trade, 10.90)
+        assert len(self.trailed_to) == 0
+        assert result is None
+
+    def test_trail_at_1r(self):
+        """Price at exactly 1R → should trail to breakeven."""
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.00, tp2=13.0)
+        result = self.tracker._evaluate(trade, 11.00)
+        assert 10.0 in self.trailed_to
+
+    def test_no_lock_below_2r(self):
+        """Price at 1.9R → should trail to breakeven but NOT lock 1R."""
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.50, tp2=13.5)
+        self.tracker._evaluate(trade, 11.90)
+        # Should have breakeven (10.0) but not lock (11.0)
+        assert 10.0 in self.trailed_to
+        assert 11.0 not in self.trailed_to
+
+    def test_lock_at_2r(self):
+        """Price at exactly 2R → should lock stop at entry+1R."""
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=13.00, tp2=14.0)
+        self.tracker._evaluate(trade, 12.00)
+        assert 11.0 in self.trailed_to  # entry+R = 10+1 = 11
+
+    def test_old_075r_no_longer_trails(self):
+        """Regression: 0.75R should NOT trigger breakeven anymore."""
+        # entry=10, stop=9.00, R=1.00, 0.75R=10.75
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.00, tp2=13.0)
+        self.tracker._evaluate(trade, 10.75)
+        assert len(self.trailed_to) == 0  # old threshold, should not fire
+
+    def test_old_15r_no_longer_locks(self):
+        """Regression: 1.5R should trigger breakeven but NOT lock 1R."""
+        trade = _make_trade(entry=10.0, stop=9.00, tp1=12.50, tp2=13.5)
+        self.tracker._evaluate(trade, 11.50)
+        # Should breakeven (at 1R=11.00 achieved) but NOT lock at 1R
+        assert 10.0 in self.trailed_to
+        assert 11.0 not in self.trailed_to

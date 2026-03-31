@@ -67,6 +67,7 @@ def build_trade_card(
     session_tag: Literal["morning", "midday", "close"],
     risk_per_trade_pct: float = 0.5,
     account_value: float = 25_000.0,
+    stop_buffer_multiplier: float = 1.0,
 ) -> TradeCard | None:
     """Build a level-based trade card.
 
@@ -81,9 +82,12 @@ def build_trade_card(
 
     The fixed_stop_pct is kept as a MAXIMUM stop distance — if the level-derived
     stop is wider than this %, we cap it so risk stays bounded.
+
+    stop_buffer_multiplier widens the ATR buffer in weak markets (from MarketGuard):
+      green=1.0, yellow=1.5, red=2.0 (red halts entries, so effectively 1.0-1.5).
     """
     entry = round(stock.price, 2)
-    atr_buffer = stock.atr * 0.5 if stock.atr > 0 else entry * 0.005
+    atr_buffer = stock.atr * 0.5 * stop_buffer_multiplier if stock.atr > 0 else entry * 0.005
 
     # Reject if key levels aren't set — a card with TP1=0 is nonsensical
     if stock.key_resistance <= 0:
@@ -110,6 +114,19 @@ def build_trade_card(
     risk = entry - stop
     if risk <= 0:
         return None
+
+    # ── ATR minimum stop distance ──────────────────────────────────
+    # A stop tighter than 0.5 × ATR will almost certainly be clipped by
+    # normal intraday noise.  Widen the stop if necessary, but re-check
+    # that the fixed_stop_pct cap isn't violated.
+    if stock.atr > 0:
+        min_stop_dist = stock.atr * 0.5
+        if risk < min_stop_dist:
+            widened_stop = round(entry - min_stop_dist, 2)
+            # Only widen if it doesn't breach the max-risk cap
+            if widened_stop >= max_stop:
+                stop = widened_stop
+                risk = entry - stop
 
     # TP1 = key resistance, capped at max_tp_dist above entry
     raw_tp1 = stock.key_resistance

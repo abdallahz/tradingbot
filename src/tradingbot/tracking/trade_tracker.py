@@ -18,6 +18,11 @@ Outcome lifecycle:
   4. Price hits stop → status = "stopped" (or "trailed_out" if profitable)
   5. Market close (16:00 ET) → status = "expired" (if still open)
 
+Trailing stages:
+  Stage 1: price >= 1R   → move stop to entry (breakeven)
+  Stage 2: price >= 2R   → move stop to entry + 1R (lock profit)
+  Stage 3: after tp1_hit → move stop to TP1 level (lock TP1 gain)
+
 The tracker is called from the worker loop every scan cycle during
 market hours.  It only fetches quotes for symbols with open outcomes,
 keeping API usage minimal.
@@ -362,8 +367,8 @@ class TradeTracker:
             Used to detect stop hits that occurred between polling cycles.
 
         Trailing logic (three stages):
-        1. OPEN, price ≥ 0.75R → trail stop to entry (breakeven).
-        2. OPEN, price ≥ 1.5R  → trail stop to entry + 1R (lock in 1R).
+        1. OPEN, price ≥ 1R   → trail stop to entry (breakeven).
+        2. OPEN, price ≥ 2R   → trail stop to entry + 1R (lock in 1R).
         3. TP1_HIT             → trail stop to TP1 level so the runner
            locks in the TP1 gain and aims for TP2.
         """
@@ -391,21 +396,25 @@ class TradeTracker:
         stop_trailed_this_tick = False
         original_stop = stop
 
-        # ── Stage 1: Breakeven trail at 0.75R (OPEN) ───────────────
+        # ── Stage 1: Breakeven trail at 1R (OPEN) ────────────────
         if risk > 0 and current_status == "open":
-            # Use eff_high for trailing — if bars show we hit 0.75R,
+            # Use eff_high for trailing — if bars show we hit the trigger,
             # we should have trailed even if snapshot is lower now.
             unrealised = eff_high - entry
 
-            # Stage 2: lock-in 1R when price reaches 1.5R
-            if unrealised >= risk * 1.5:
+            # Stage 2: lock-in 1R when price reaches 2R
+            #   (was 1.5R→lock 1R, now 2R→lock 1R — gives more room
+            #    to breathe and prevents premature lock-outs)
+            if unrealised >= risk * 2.0:
                 lock_level = entry + risk
                 if stop < lock_level:
                     self._trail_stop_to_level(trade, lock_level)
                     stop = lock_level
                     stop_trailed_this_tick = True
-            # Stage 1: breakeven when price reaches 0.75R
-            elif unrealised >= risk * 0.75 and stop != entry:
+            # Stage 1: breakeven when price reaches 1R
+            #   (was 0.75R — too aggressive, caused many false breakevens
+            #    in volatile stocks that needed room to consolidate)
+            elif unrealised >= risk * 1.0 and stop != entry:
                 if stop < entry:
                     self._trail_stop_to_level(trade, entry)
                     stop = entry

@@ -179,7 +179,7 @@ class SessionRunner:
                 "min_ranker_score": self.ranker.min_score,
                 "min_confluence_score": MIN_CONFLUENCE_SCORE,
                 "max_vwap_distance_pct": MAX_VWAP_DISTANCE_PCT_DEFAULT,
-                "max_trades_per_day": self.risk_manager._max_trades_per_day,
+                "max_trades_per_day": self.risk_manager.max_trades_per_day,
             },
         )
         result = tuner.tune()
@@ -450,6 +450,99 @@ class SessionRunner:
             gappers_count=market_condition.gappers_count,
         )
     
+    # ── Pre-card filter helpers (shared by _build_cards loop) ──────────
+
+    def _passes_dedup(
+        self,
+        symbol: SymbolSnapshot,
+        already_alerted: dict[str, float],
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Return True if the symbol should (re-)alert; False to skip."""
+        prev_entry = already_alerted.get(symbol.symbol)
+        if prev_entry is None or prev_entry <= 0:
+            return True
+        support = symbol.key_support if symbol.key_support > 0 else symbol.price * 0.98
+        distance_before = prev_entry - support
+        distance_now = symbol.price - support
+        if distance_before > 0 and distance_now > 0:
+            pullback_pct = 1.0 - (distance_now / distance_before)
+            if pullback_pct < 0.50:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"dedup:pullback_only_{pullback_pct:.0%}"))
+                return False
+        return True
+
+    def _passes_etf_limits(
+        self,
+        symbol: SymbolSnapshot,
+        etf_count: int,
+        selected_families: set[str],
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Return True if ETF concentration / family limits allow this symbol."""
+        if not is_etf(symbol.symbol):
+            return True
+        if etf_count >= MAX_ETF_ALERTS:
+            if dropped is not None:
+                dropped.append((symbol.symbol, "etf_concentration_cap"))
+            logging.info(f"[DROP] {symbol.symbol}: ETF concentration cap reached ({etf_count}/{MAX_ETF_ALERTS})")
+            return False
+        family = get_etf_family(symbol.symbol)
+        if family and family in selected_families:
+            if dropped is not None:
+                dropped.append((symbol.symbol, f"etf_family_dup:{family}"))
+            logging.info(f"[DROP] {symbol.symbol}: ETF family '{family}' already selected")
+            return False
+        return True
+
+    def _passes_vwap_distance(
+        self,
+        symbol: SymbolSnapshot,
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Return True if price is not extended too far from VWAP."""
+        mc = self._market_condition
+        max_vwap = mc.max_vwap_distance_pct if mc else MAX_VWAP_DISTANCE_PCT_DEFAULT
+        max_vwap = self._tuning_overrides.get("max_vwap_distance_pct", max_vwap)
+        if symbol.vwap > 0 and symbol.price > 0:
+            vwap_dist_pct = abs(symbol.price - symbol.vwap) / symbol.vwap * 100
+            if vwap_dist_pct > max_vwap:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"vwap_extended:{vwap_dist_pct:.1f}%"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: price too far from VWAP "
+                    f"({vwap_dist_pct:.1f}% > {max_vwap}%)")
+                return False
+        return True
+
+    def _passes_catalyst_gate(
+        self,
+        symbol: SymbolSnapshot,
+        can_long: bool,
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Return True if catalyst or volume conviction is sufficient."""
+        mc = self._market_condition
+        min_catalyst = mc.min_catalyst_score if mc else 40
+        min_catalyst = self._tuning_overrides.get("min_catalyst_score", min_catalyst)
+        min_rvol = mc.min_relative_volume if mc else 3.0
+        min_rvol = self._tuning_overrides.get("min_relative_volume", min_rvol)
+        if symbol.catalyst_score < min_catalyst:
+            has_strong_volume = (
+                symbol.relative_volume >= min_rvol
+                and symbol.premarket_volume >= 100_000
+            )
+            if not (has_strong_volume and can_long):
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"low_catalyst_weak_vol:{symbol.catalyst_score:.0f}/rv={symbol.relative_volume:.1f}"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: catalyst={symbol.catalyst_score:.0f} < {min_catalyst} "
+                    f"and volume not convincing (relvol={symbol.relative_volume:.1f}, pm_vol={symbol.premarket_volume})"
+                )
+                return False
+        return True
+
     def _build_cards(
         self,
         ranked: list,
@@ -517,74 +610,24 @@ class SessionRunner:
             symbol = item.snapshot
 
             # ── Dedup check: skip if already alerted unless pullback ──
-            prev_entry = already_alerted.get(symbol.symbol)
-            if prev_entry is not None and prev_entry > 0:
-                support = symbol.key_support if symbol.key_support > 0 else symbol.price * 0.98
-                distance_before = prev_entry - support
-                distance_now = symbol.price - support
-                if distance_before > 0 and distance_now > 0:
-                    # Only re-alert if price moved ≥50% closer to support
-                    pullback_pct = 1.0 - (distance_now / distance_before)
-                    if pullback_pct < 0.50:
-                        if dropped is not None:
-                            dropped.append((symbol.symbol, f"dedup:pullback_only_{pullback_pct:.0%}"))
-                        continue
+            if not self._passes_dedup(symbol, already_alerted, dropped):
+                continue
 
             # ── ETF conflict / family dedup / concentration cap ─────
             sym_is_etf = is_etf(symbol.symbol)
             sym_family = get_etf_family(symbol.symbol)
-
-            if sym_is_etf:
-                # 1) ETF concentration cap — max N ETFs per scan pass
-                if etf_count >= MAX_ETF_ALERTS:
-                    if dropped is not None:
-                        dropped.append((symbol.symbol, "etf_concentration_cap"))
-                    logging.info(f"[DROP] {symbol.symbol}: ETF concentration cap reached ({etf_count}/{MAX_ETF_ALERTS})")
-                    continue
-
-                # 2) Index family dedup — only 1 representative per family
-                if sym_family and sym_family in selected_etf_families:
-                    if dropped is not None:
-                        dropped.append((symbol.symbol, f"etf_family_dup:{sym_family}"))
-                    logging.info(f"[DROP] {symbol.symbol}: ETF family '{sym_family}' already selected")
-                    continue
+            if not self._passes_etf_limits(symbol, etf_count, selected_etf_families, dropped):
+                continue
 
             # ── VWAP distance filter (regime-adaptive + auto-tune) ──────
-            mc = self._market_condition
-            max_vwap = mc.max_vwap_distance_pct if mc else MAX_VWAP_DISTANCE_PCT_DEFAULT
-            max_vwap = self._tuning_overrides.get("max_vwap_distance_pct", max_vwap)
-            if symbol.vwap > 0 and symbol.price > 0:
-                vwap_dist_pct = abs(symbol.price - symbol.vwap) / symbol.vwap * 100
-                if vwap_dist_pct > max_vwap:
-                    if dropped is not None:
-                        dropped.append((symbol.symbol, f"vwap_extended:{vwap_dist_pct:.1f}%"))
-                    logging.info(
-                        f"[DROP] {symbol.symbol}: price too far from VWAP "
-                        f"({vwap_dist_pct:.1f}% > {max_vwap}%)")
-                    continue
+            if not self._passes_vwap_distance(symbol, dropped):
+                continue
 
             can_long = has_valid_setup(symbol, volume_spike)
 
             # ── Catalyst / conviction gate (regime-adaptive + auto-tune) ──
-            # Stocks with stock-specific news (catalyst >= threshold) pass.
-            # Stocks WITHOUT direct news need strong volume conviction.
-            min_catalyst = mc.min_catalyst_score if mc else 40
-            min_catalyst = self._tuning_overrides.get("min_catalyst_score", min_catalyst)
-            min_rvol = mc.min_relative_volume if mc else 3.0
-            min_rvol = self._tuning_overrides.get("min_relative_volume", min_rvol)
-            if symbol.catalyst_score < min_catalyst:
-                has_strong_volume = (
-                    symbol.relative_volume >= min_rvol
-                    and symbol.premarket_volume >= 100_000
-                )
-                if not (has_strong_volume and can_long):
-                    if dropped is not None:
-                        dropped.append((symbol.symbol, f"low_catalyst_weak_vol:{symbol.catalyst_score:.0f}/rv={symbol.relative_volume:.1f}"))
-                    logging.info(
-                        f"[DROP] {symbol.symbol}: catalyst={symbol.catalyst_score:.0f} < {min_catalyst} "
-                        f"and volume not convincing (relvol={symbol.relative_volume:.1f}, pm_vol={symbol.premarket_volume})"
-                    )
-                    continue
+            if not self._passes_catalyst_gate(symbol, can_long, dropped):
+                continue
 
             # In relaxed mode, allow high-catalyst stocks through even
             # without full indicator confirmation (pre-market data is sparse).
@@ -627,6 +670,7 @@ class SessionRunner:
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=session_tag,
                 risk_per_trade_pct=effective_risk_pct,
+                stop_buffer_multiplier=mh.stop_buffer_multiplier if mh else 1.0,
             )
             if card is None:
                 if dropped is not None:
@@ -648,12 +692,12 @@ class SessionRunner:
 
             if in_opening_window and not relaxed:
                 confluence_floor = 15  # tighter filter during fakeout window
-                if card.stop_loss and card.entry:
+                if card.stop_price and card.entry_price:
                     # widen stop by 20% to survive opening wicks
-                    stop_dist = abs(card.entry - card.stop_loss)
+                    stop_dist = abs(card.entry_price - card.stop_price)
                     widened = stop_dist * 1.20
-                    card.stop_loss = round(card.entry - widened, 2)
-                    logging.info(f"[FAKEOUT_GUARD] {symbol.symbol}: widened stop to {card.stop_loss:.2f} (opening window)")
+                    card.stop_price = round(card.entry_price - widened, 2)
+                    logging.info(f"[FAKEOUT_GUARD] {symbol.symbol}: widened stop to {card.stop_price:.2f} (opening window)")
             else:
                 # Normal confluence floor
                 # Relaxed mode: only block if strong opposing signal (< 0)
