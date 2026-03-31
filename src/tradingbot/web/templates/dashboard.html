@@ -617,6 +617,18 @@
             color: #155724;
         }
 
+        .outcome-badge.tp1_locked {
+            background: rgba(34, 197, 94, .15);
+            border: 1px solid rgba(34, 197, 94, .30);
+            color: var(--green);
+        }
+
+        .outcome-badge.breakeven {
+            background: rgba(100, 116, 139, .10);
+            border: 1px solid rgba(100, 116, 139, .20);
+            color: var(--sub);
+        }
+
         .outcome-badge.stopped {
             background: rgba(239, 68, 68, .12);
             border: 1px solid rgba(239, 68, 68, .25);
@@ -2283,9 +2295,10 @@
                             <span class="legend-term">Trade Tracker</span>
                             <span class="legend-def">Monitors each alert's price vs Entry/Stop/TP1/TP2 levels during
                                 market hours.
-                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, � Trailed Out =
-                                profitable stop trail, �🛑 Stopped = stop loss
-                                hit,
+                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🔒 TP1 Locked =
+                                runner stopped at TP1, 📈 Trailed Out =
+                                profitable stop trail, ⚖️ Breakeven = stop trailed to entry,
+                                🛑 Stopped = stop loss hit,
                                 ⏰ Expired = market closed with no hit. P&amp;L % shown for resolved trades.</span>
                         </div>
                     </div>
@@ -2376,7 +2389,9 @@
                     <span class="outcome-icon">
                         {% if a.outcome.status == 'tp1_hit' %}🎯
                         {% elif a.outcome.status == 'tp2_hit' %}🏆
+                        {% elif a.outcome.status == 'tp1_locked' %}🔒
                         {% elif a.outcome.status == 'trailed_out' %}📈
+                        {% elif a.outcome.status == 'breakeven' %}⚖️
                         {% elif a.outcome.status == 'stopped' %}🛑
                         {% elif a.outcome.status == 'expired' %}⏰
                         {% else %}⏳{% endif %}
@@ -2384,12 +2399,14 @@
                     <span>
                         {% if a.outcome.status == 'tp1_hit' %}TP1 Hit
                         {% elif a.outcome.status == 'tp2_hit' %}TP2 Hit
+                        {% elif a.outcome.status == 'tp1_locked' %}TP1 Locked
                         {% elif a.outcome.status == 'trailed_out' %}Trailed Out
+                        {% elif a.outcome.status == 'breakeven' %}Breakeven
                         {% elif a.outcome.status == 'stopped' %}Stopped Out
                         {% elif a.outcome.status == 'expired' %}Expired
                         {% else %}Tracking{% endif %}
                     </span>
-                    {% if a.outcome.status != 'open' %}
+                    {% if a.outcome.status not in ['open'] %}
                     <span class="outcome-pnl {% if a.outcome.pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
                         {{ "%+.2f"|format(a.outcome.pnl_pct) }}%
                     </span>
