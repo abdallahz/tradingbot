@@ -1945,6 +1945,18 @@
                 <div class="pnl-stat-value amber">{{ trade_stats.open }}</div>
                 <div class="pnl-stat-label">Open</div>
             </div>
+            {% if trade_stats.breakeven %}
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--text-muted, #888)">{{ trade_stats.breakeven }}</div>
+                <div class="pnl-stat-label">B/E</div>
+            </div>
+            {% endif %}
+            {% if trade_stats.expired %}
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--text-muted, #888)">{{ trade_stats.expired }}</div>
+                <div class="pnl-stat-label">Expired</div>
+            </div>
+            {% endif %}
             <div class="pnl-divider"></div>
             <div class="pnl-stat">
                 <div class="pnl-stat-value {% if trade_stats.win_rate >= 50 %}green{% else %}{% endif %}"
