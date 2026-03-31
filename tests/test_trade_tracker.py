@@ -317,8 +317,11 @@ class TestExpireWithBarCheck:
         assert len(recorded) == 1
         assert recorded[0]["status"] == "tp2_hit"
         assert recorded[0]["exit_price"] == 25.73  # TP2, not $31.07 snapshot
-        expected_pnl = round(((25.73 - 24.38) / 24.38) * 100, 2)
-        assert recorded[0]["pnl_pct"] == expected_pnl  # ~5.54%, not 27.44%
+        # Blended PnL: half@TP1(25.36) + half@TP2(25.73)
+        tp1_pnl = ((25.36 - 24.38) / 24.38) * 100
+        tp2_pnl = ((25.73 - 24.38) / 24.38) * 100
+        expected_pnl = round((tp1_pnl + tp2_pnl) / 2, 2)
+        assert recorded[0]["pnl_pct"] == expected_pnl  # ~4.78%, blended
 
 
 class TestResolveExitPrice:
@@ -355,3 +358,62 @@ class TestResolveExitPrice:
         """Unknown status or missing prices → use snapshot."""
         trade = _make_trade(entry=10.0, stop=0, tp1=0, tp2=0)
         assert TradeTracker._resolve_exit_price(trade, "stopped", 9.80) == 9.80
+
+
+class TestBlendedPnL:
+    """_calc_pnl should blend half@TP1 + half@exit when TP1 was taken."""
+
+    def test_tp2_hit_blends_tp1_and_tp2(self):
+        """Entry=10, TP1=10.50 (+5%), TP2=11.00 (+10%) → blended = 7.5%."""
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
+        # exit_price = TP2 = 11.0
+        pnl = TradeTracker._calc_pnl(trade, 11.0, "tp2_hit")
+        assert pnl == 7.5  # (5% + 10%) / 2
+
+    def test_tp1_hit_no_blend(self):
+        """TP1 hit: only first half sold, runner still open → no blend."""
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
+        pnl = TradeTracker._calc_pnl(trade, 10.50, "tp1_hit")
+        assert pnl == 5.0  # just (10.50 - 10) / 10
+
+    def test_tp1_locked_blends(self):
+        """TP1 locked: half@TP1 + half@TP1 → same as TP1 PnL."""
+        trade = _make_trade(entry=10.0, stop=10.50, tp1=10.50, tp2=11.0, status="tp1_hit")
+        pnl = TradeTracker._calc_pnl(trade, 10.50, "tp1_locked")
+        assert pnl == 5.0  # (5% + 5%) / 2 = 5%
+
+    def test_stopped_after_tp1_blends(self):
+        """Stopped from tp1_hit: half@TP1(+5%), half@stop(-5%) → 0%."""
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0, status="tp1_hit")
+        pnl = TradeTracker._calc_pnl(trade, 9.50, "stopped")
+        assert pnl == 0.0  # (5% + -5%) / 2
+
+    def test_stopped_from_open_no_blend(self):
+        """Stopped from open (TP1 never hit): full position at stop."""
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0, status="open")
+        pnl = TradeTracker._calc_pnl(trade, 9.50, "stopped")
+        assert pnl == -5.0  # no blend
+
+    def test_expired_after_tp1_blends(self):
+        """Expired from tp1_hit: half@TP1, half@market."""
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0, status="tp1_hit")
+        # Market at $10.20 at close
+        pnl = TradeTracker._calc_pnl(trade, 10.20, "expired")
+        # TP1 half: +5%, market half: +2% → blended = 3.5%
+        assert pnl == 3.5
+
+    def test_breakeven_after_tp1_blends(self):
+        """Breakeven from tp1_hit: half@TP1(+5%), half@entry(0%) → 2.5%."""
+        trade = _make_trade(entry=10.0, stop=10.0, tp1=10.50, tp2=11.0, status="tp1_hit")
+        pnl = TradeTracker._calc_pnl(trade, 10.0, "breakeven")
+        assert pnl == 2.5  # (5% + 0%) / 2
+
+    def test_aplz_scenario_blended(self):
+        """APLZ: entry=24.38, TP1=25.36, TP2=25.73.
+        TP1 half: (25.36-24.38)/24.38 = 4.02%
+        TP2 half: (25.73-24.38)/24.38 = 5.54%
+        Blended: (4.02+5.54)/2 = 4.78%."""
+        trade = _make_trade(entry=24.38, stop=23.00, tp1=25.36, tp2=25.73)
+        pnl = TradeTracker._calc_pnl(trade, 25.73, "tp2_hit")
+        expected = round(((((25.36-24.38)/24.38) + ((25.73-24.38)/24.38)) / 2) * 100, 2)
+        assert pnl == expected

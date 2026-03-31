@@ -320,7 +320,7 @@ class TradeTracker:
             new_status = self._evaluate(trade, price, sess_high, sess_low)
             if new_status and new_status != trade["status"]:
                 exit_price = self._resolve_exit_price(trade, new_status, price)
-                pnl = self._calc_pnl(trade, exit_price)
+                pnl = self._calc_pnl(trade, exit_price, new_status)
                 update_outcome(
                     outcome_id=trade["id"],
                     status=new_status,
@@ -475,16 +475,59 @@ class TradeTracker:
         return snapshot
 
     # ── Calculate P&L % ────────────────────────────────────────────────────
-    def _calc_pnl(self, trade: dict, exit_price: float) -> float:
-        """Return percentage P&L from entry to exit."""
+    @staticmethod
+    def _calc_pnl(trade: dict, exit_price: float, status: str = "") -> float:
+        """Return blended percentage P&L from entry to exit.
+
+        Day-trading rule: when TP1 is hit, sell **half** at TP1.  The
+        remaining half rides to the final exit (TP2, stop, expire, …).
+        So any terminal status that follows a TP1 hit must blend the two
+        halves:  blended = (pnl_tp1 + pnl_final) / 2.
+
+        Statuses that imply TP1 was already taken:
+          tp2_hit      – runner hit TP2  (half @ TP1, half @ TP2)
+          tp1_locked   – runner stopped at TP1 level (both halves @ TP1)
+          trailed_out  – runner trailed out above entry (half @ TP1, half @ stop)
+          stopped      – only if previous status was tp1_hit
+          breakeven    – only if previous status was tp1_hit
+
+        For tp1_hit itself we do NOT blend: only the first half has been
+        sold; the runner is still live.
+        """
         entry = float(trade.get("entry_price") or 0)
         if entry <= 0:
             return 0.0
+
+        tp1 = float(trade.get("tp1_price") or 0)
         side = trade.get("side", "long")
+        prev_status = trade.get("status", "open")
+
         if side == "long":
-            return round(((exit_price - entry) / entry) * 100, 2)
+            pnl_final = ((exit_price - entry) / entry) * 100
         else:
-            return round(((entry - exit_price) / entry) * 100, 2)
+            pnl_final = ((entry - exit_price) / entry) * 100
+
+        # Determine whether TP1 was already taken (half sold)
+        needs_blend = False
+        if status == "tp2_hit":
+            # TP2 always implies TP1 was taken first
+            needs_blend = True
+        elif status == "tp1_locked":
+            # Runner stopped at TP1 level → both halves at TP1
+            needs_blend = True
+        elif status in ("trailed_out", "stopped", "breakeven", "expired") and prev_status == "tp1_hit":
+            # Runner exited after TP1 was already banked
+            needs_blend = True
+
+        if needs_blend and tp1 > 0:
+            if side == "long":
+                pnl_tp1 = ((tp1 - entry) / entry) * 100
+            else:
+                pnl_tp1 = ((entry - tp1) / entry) * 100
+            blended = (pnl_tp1 + pnl_final) / 2
+            return round(blended, 2)
+
+        return round(pnl_final, 2)
 
     # ── Expire remaining open trades at market close ───────────────────────
     def expire_open_trades(self) -> int:
@@ -537,7 +580,7 @@ class TradeTracker:
             if bar_status and bar_status not in ("open",):
                 # A level was hit during the session — record it, don't expire.
                 exit_price = self._resolve_exit_price(trade, bar_status, price)
-                pnl = self._calc_pnl(trade, exit_price)
+                pnl = self._calc_pnl(trade, exit_price, bar_status)
                 update_outcome(
                     outcome_id=trade["id"],
                     status=bar_status,
@@ -553,7 +596,7 @@ class TradeTracker:
                 continue
 
             # No TP hit — expire normally
-            pnl = self._calc_pnl(trade, price) if price > 0 else 0.0
+            pnl = self._calc_pnl(trade, price, "expired") if price > 0 else 0.0
             update_outcome(
                 outcome_id=trade["id"],
                 status="expired",
