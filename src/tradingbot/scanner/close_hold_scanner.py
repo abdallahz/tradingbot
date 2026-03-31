@@ -100,6 +100,9 @@ class CloseHoldScanner:
             + 0.10 * liq_score
         )
 
+        # Defensive cap — all components should be 0-100 but guard
+        total = min(100.0, total)
+
         # ── Build thesis ────────────────────────────────────────────
         thesis = self._build_thesis(s, change_pct, total)
 
@@ -151,10 +154,10 @@ class CloseHoldScanner:
                 position = (s.price - s.key_support) / sr_range  # 0=at support, 1=at resistance
                 if change_pct >= 0:
                     # Gainers: closing near resistance (breakout) = good
-                    sr_sc = position * 100
+                    sr_sc = min(1.0, max(0.0, position)) * 100
                 else:
                     # Losers: closing near support (bounce) = good
-                    sr_sc = (1 - position) * 100
+                    sr_sc = min(1.0, max(0.0, 1 - position)) * 100
 
         return 0.40 * rsi_sc + 0.30 * macd_sc + 0.30 * sr_sc
 
@@ -170,7 +173,7 @@ class CloseHoldScanner:
 
     def _score_liquidity(self, s: SymbolSnapshot) -> float:
         """Tight spread + decent dollar volume = good liquidity."""
-        spread_sc = max(0.0, 1.0 - (s.spread_pct / 0.5)) * 100
+        spread_sc = min(100.0, max(0.0, 1.0 - (s.spread_pct / 0.5)) * 100)
         dv_sc = min(s.dollar_volume / 100_000_000, 1.0) * 100
         return 0.6 * spread_sc + 0.4 * dv_sc
 
