@@ -319,3 +319,39 @@ class TestExpireWithBarCheck:
         assert recorded[0]["exit_price"] == 25.73  # TP2, not $31.07 snapshot
         expected_pnl = round(((25.73 - 24.38) / 24.38) * 100, 2)
         assert recorded[0]["pnl_pct"] == expected_pnl  # ~5.54%, not 27.44%
+
+
+class TestResolveExitPrice:
+    """_resolve_exit_price should return the limit/stop level, not snapshot."""
+
+    def test_tp2_uses_tp2_price(self):
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
+        assert TradeTracker._resolve_exit_price(trade, "tp2_hit", 12.50) == 11.0
+
+    def test_tp1_uses_tp1_price(self):
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
+        assert TradeTracker._resolve_exit_price(trade, "tp1_hit", 10.80) == 10.50
+
+    def test_stopped_uses_stop_price(self):
+        trade = _make_trade(entry=10.0, stop=9.50, tp1=10.50, tp2=11.0)
+        assert TradeTracker._resolve_exit_price(trade, "stopped", 9.30) == 9.50
+
+    def test_breakeven_uses_stop_at_entry(self):
+        """NOW scenario: breakeven means stop was trailed to entry.
+        Exit should be stop_price (=entry), not inflated snapshot."""
+        trade = _make_trade(entry=101.80, stop=101.80, tp1=103.0, tp2=104.0)
+        # Snapshot is $105.06 but we exited at the breakeven stop
+        assert TradeTracker._resolve_exit_price(trade, "breakeven", 105.06) == 101.80
+
+    def test_trailed_out_uses_stop_price(self):
+        trade = _make_trade(entry=10.0, stop=10.30, tp1=10.50, tp2=11.0)
+        assert TradeTracker._resolve_exit_price(trade, "trailed_out", 10.15) == 10.30
+
+    def test_tp1_locked_uses_stop_at_tp1(self):
+        trade = _make_trade(entry=10.0, stop=10.50, tp1=10.50, tp2=11.0, status="tp1_hit")
+        assert TradeTracker._resolve_exit_price(trade, "tp1_locked", 10.40) == 10.50
+
+    def test_fallback_to_snapshot(self):
+        """Unknown status or missing prices → use snapshot."""
+        trade = _make_trade(entry=10.0, stop=0, tp1=0, tp2=0)
+        assert TradeTracker._resolve_exit_price(trade, "stopped", 9.80) == 9.80

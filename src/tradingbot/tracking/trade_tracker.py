@@ -319,20 +319,7 @@ class TradeTracker:
 
             new_status = self._evaluate(trade, price, sess_high, sess_low)
             if new_status and new_status != trade["status"]:
-                # For TP hits, use the TP price as the exit — that's
-                # where the limit order would have filled.  The live
-                # snapshot may be above (stock kept running) or below
-                # (retraced), but we exited at the target.
-                exit_price = price
-                if new_status == "tp1_hit":
-                    tp1_val = float(trade.get("tp1_price") or 0)
-                    if tp1_val > 0:
-                        exit_price = tp1_val
-                elif new_status == "tp2_hit":
-                    tp2_val = float(trade.get("tp2_price") or 0)
-                    if tp2_val > 0:
-                        exit_price = tp2_val
-
+                exit_price = self._resolve_exit_price(trade, new_status, price)
                 pnl = self._calc_pnl(trade, exit_price)
                 update_outcome(
                     outcome_id=trade["id"],
@@ -463,6 +450,30 @@ class TradeTracker:
         except Exception as exc:
             log.warning(f"[tracker] trail stop failed: {exc}")
 
+    # ── Resolve correct exit price for a given outcome ──────────────────────
+    @staticmethod
+    def _resolve_exit_price(trade: dict, status: str, snapshot: float) -> float:
+        """Return the price we would have actually filled at.
+
+        - TP hits  → limit fill at the TP level.
+        - Stop-based outcomes (stopped / breakeven / trailed_out /
+          tp1_locked) → stop-order fill at the stop level.
+        - Fallback → snapshot (shouldn't normally happen).
+        """
+        entry = float(trade.get("entry_price") or 0)
+        stop  = float(trade.get("stop_price") or 0)
+        tp1   = float(trade.get("tp1_price") or 0)
+        tp2   = float(trade.get("tp2_price") or 0)
+
+        if status == "tp2_hit" and tp2 > 0:
+            return tp2
+        if status == "tp1_hit" and tp1 > 0:
+            return tp1
+        if status in ("stopped", "breakeven", "trailed_out", "tp1_locked"):
+            if stop > 0:
+                return stop
+        return snapshot
+
     # ── Calculate P&L % ────────────────────────────────────────────────────
     def _calc_pnl(self, trade: dict, exit_price: float) -> float:
         """Return percentage P&L from entry to exit."""
@@ -523,17 +534,9 @@ class TradeTracker:
             sess_low = extremes.get("low", 0.0)
             bar_status = self._evaluate(trade, price, sess_high, sess_low)
 
-            if bar_status and bar_status in ("tp1_hit", "tp2_hit"):
-                # A TP was hit during the session — record the win, not an expire.
-                # Use the TP price as exit (limit fill), not the snapshot.
-                tp1 = float(trade.get("tp1_price") or 0)
-                tp2 = float(trade.get("tp2_price") or 0)
-                if bar_status == "tp2_hit" and tp2 > 0:
-                    exit_price = tp2
-                elif bar_status == "tp1_hit" and tp1 > 0:
-                    exit_price = tp1
-                else:
-                    exit_price = price
+            if bar_status and bar_status not in ("open",):
+                # A level was hit during the session — record it, don't expire.
+                exit_price = self._resolve_exit_price(trade, bar_status, price)
                 pnl = self._calc_pnl(trade, exit_price)
                 update_outcome(
                     outcome_id=trade["id"],
@@ -544,7 +547,7 @@ class TradeTracker:
                 )
                 count += 1
                 print(
-                    f"[tracker-expire] {sym} TP detected via bars → "
+                    f"[tracker-expire] {sym} detected via bars → "
                     f"{bar_status} @ ${exit_price:.2f} (PnL: {pnl:+.2f}%)"
                 )
                 continue
