@@ -439,10 +439,16 @@ class TradeTracker:
             return "tp1_hit"
 
         # ── Stop check (use eff_low for between-poll dips) ──────────
-        # If the stop was just trailed this tick, only use the live
-        # snapshot price for the stop check — bar low may contain the
-        # entry candle's natural low which would falsely trigger.
-        stop_check_low = price if stop_trailed_this_tick else eff_low
+        # Use snapshot-only for the stop check when:
+        #  1. The stop was just trailed THIS tick (same-tick guard), OR
+        #  2. The stop was already trailed to entry or above from a
+        #     PREVIOUS tick.  In that case risk == 0 (breakeven) or the
+        #     stop sits above its original level.  Cumulative session-low
+        #     from bar data includes bars that predate the trail, whose
+        #     lows may sit at/below the new trailed level and would
+        #     falsely fire the stop.
+        stop_was_trailed = stop >= entry and entry > 0
+        stop_check_low = price if (stop_trailed_this_tick or stop_was_trailed) else eff_low
 
         if stop > 0 and stop_check_low <= stop:
             if stop >= tp1 and tp1 > 0:

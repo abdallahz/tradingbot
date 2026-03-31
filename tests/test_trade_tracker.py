@@ -114,9 +114,12 @@ class TestEvaluateWithBarHighLow:
         assert result == "stopped"
 
     def test_trailed_out_via_bar_low(self):
-        """Stop trailed above entry, bar low hit it → trailed_out."""
+        """Stop trailed above entry → bar-low is ignored (snapshot only).
+        When the live snapshot itself drops below the trailed stop,
+        trailed_out fires."""
         trade = _make_trade(entry=10.0, stop=10.30, tp1=10.50, tp2=11.0)
-        result = self.tracker._evaluate(trade, 10.35, session_low=10.25)
+        # Snapshot below trailed stop → trailed_out
+        result = self.tracker._evaluate(trade, 10.25, session_low=10.25)
         assert result == "trailed_out"
 
     def test_stop_not_hit_when_bar_above(self):
@@ -513,3 +516,67 @@ class TestTrailingThresholds:
         # Should breakeven (at 1R=11.00 achieved) but NOT lock at 1R
         assert 10.0 in self.trailed_to
         assert 11.0 not in self.trailed_to
+
+
+class TestTrailedStopBarGuard:
+    """Verify that once the stop is trailed to entry (or above),
+    cumulative session-bar lows from before the trail do NOT
+    trigger a false breakeven / trailed_out.
+
+    Regression test for NIO false-breakeven (March 2026):
+    Stop trailed to entry on tick N, then on tick N+1 the cumulative
+    bar-low (which predated the trail) fired a false breakeven because
+    risk==0 made the trailing block unreachable, leaving
+    stop_trailed_this_tick=False.
+    """
+
+    def setup_method(self):
+        self.tracker = TradeTracker()
+        self.tracker._trail_stop_to_level = lambda t, lvl: None
+
+    def test_no_false_breakeven_from_historical_bar_low(self):
+        """Stop already at entry from previous trail → session_low < entry
+        from a pre-trail bar must NOT fire breakeven."""
+        # Simulate: stop was already trailed to entry on a previous tick.
+        trade = _make_trade(entry=10.0, stop=10.0, tp1=11.00, tp2=12.0)
+        # Current price is above entry (stock is fine)
+        price = 10.20
+        # But cumulative session bar-low from an early bar was 9.90
+        session_low = 9.90
+        session_high = 10.50
+        result = self.tracker._evaluate(trade, price, session_high, session_low)
+        assert result is None, (
+            f"Expected None (still open), got '{result}' — "
+            f"historical bar low should not trigger breakeven"
+        )
+
+    def test_real_breakeven_when_snapshot_at_entry(self):
+        """Stop at entry + snapshot price actually at/below entry → breakeven
+        should fire (this is a REAL stop hit, not historical)."""
+        trade = _make_trade(entry=10.0, stop=10.0, tp1=11.00, tp2=12.0)
+        # Snapshot shows stock dropped to entry
+        price = 9.95
+        result = self.tracker._evaluate(trade, price, 10.50, 9.95)
+        assert result == "breakeven"
+
+    def test_no_false_trailed_out_from_historical_bar_low(self):
+        """Stop trailed above entry (lock-1R) → old bar low must NOT
+        trigger trailed_out."""
+        # Stop was trailed to entry+1R = 11.0 (lock-1R from previous tick)
+        trade = _make_trade(entry=10.0, stop=11.0, tp1=13.00, tp2=14.0)
+        price = 11.50  # stock is above the trailed stop
+        # Cumulative session bar-low from before the trail
+        session_low = 10.80
+        session_high = 11.80  # below TP1 (13.0) so no TP trigger
+        result = self.tracker._evaluate(trade, price, session_high, session_low)
+        assert result is None, (
+            f"Expected None (still open), got '{result}' — "
+            f"historical bar low should not trigger trailed_out"
+        )
+
+    def test_real_trailed_out_when_snapshot_below_lock(self):
+        """Stop at lock-1R + snapshot below lock → trailed_out fires."""
+        trade = _make_trade(entry=10.0, stop=11.0, tp1=13.00, tp2=14.0)
+        price = 10.90  # dropped below the lock-1R stop
+        result = self.tracker._evaluate(trade, price, 11.80, 10.90)
+        assert result == "trailed_out"
