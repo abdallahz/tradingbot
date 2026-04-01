@@ -5,6 +5,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Trading Bot — Performance Stats</title>
+    <script>
+        // Apply saved theme before first paint to prevent flash
+        (function () {
+            var t = localStorage.getItem('theme');
+            if (t) document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <style>
         *,
         *::before,
@@ -27,6 +34,42 @@
             --blue: #3b82f6;
             --purple: #a855f7;
             --radius: 10px;
+        }
+
+        /* ── Light theme overrides ─────────────────────── */
+        [data-theme="light"] {
+            --bg: #f5f7fa;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --muted: #94a3b8;
+            --text: #1e293b;
+            --sub: #64748b;
+            --green: #16a34a;
+            --red: #dc2626;
+            --amber: #d97706;
+            --blue: #2563eb;
+            --purple: #7c3aed;
+        }
+
+        [data-theme="light"] .section,
+        [data-theme="light"] .chart-container {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .kpi {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .trade-badge.win {
+            background: rgba(22, 163, 74, .12);
+        }
+
+        [data-theme="light"] .trade-badge.loss {
+            background: rgba(220, 38, 38, .12);
+        }
+
+        [data-theme="light"] .logo-icon {
+            box-shadow: 0 2px 8px rgba(59, 130, 246, .25);
         }
 
         body {
@@ -265,6 +308,70 @@
             text-align: center;
             color: var(--sub);
         }
+
+        /* Theme toggle button */
+        .theme-toggle {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background .2s, border-color .2s;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--blue);
+        }
+
+        /* Grade icon cells */
+        .grade-icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .grade-icon.grade-A {
+            color: var(--green);
+        }
+
+        .grade-icon.grade-B {
+            color: var(--blue);
+        }
+
+        .grade-icon.grade-C {
+            color: var(--amber);
+        }
+
+        .grade-icon.grade-F {
+            color: var(--red);
+        }
+
+        .vol-icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .vol-icon.accumulation {
+            color: var(--green);
+        }
+
+        .vol-icon.distribution {
+            color: var(--red);
+        }
+
+        .vol-icon.climactic {
+            color: var(--purple);
+        }
+
+        .vol-icon.thin_fade {
+            color: var(--amber);
+        }
     </style>
 </head>
 
@@ -278,9 +385,12 @@
                     <div class="logo-sub">AI Trading Bot Analytics</div>
                 </div>
             </div>
-            <div class="nav-links">
+            <div style="display:flex; align-items:center; gap:14px;">
                 <a href="/">Dashboard</a>
                 <a href="/stats" style="color: var(--text); font-weight: 600;">Stats</a>
+                <button id="theme-btn" class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">
+                    <script>document.write(document.documentElement.getAttribute('data-theme') === 'light' ? '🌙' : '☀️')</script>
+                </button>
             </div>
         </header>
 
@@ -347,7 +457,7 @@
                     <th>%</th>
                 </tr>
                 <tr>
-                    <td>&#x2705; Wins (TP1/TP2/Locked)</td>
+                    <td>&#x2705; Wins (TP1/TP2/Locked/Trailed)</td>
                     <td>{{ analytics.wins }}</td>
                     <td>{{ '%.1f'|format(analytics.wins / analytics.total * 100 if analytics.total else 0) }}%</td>
                 </tr>
@@ -422,6 +532,83 @@
                 </table>
             </div>
         </div>
+
+        <!-- By Confluence Grade -->
+        {% if analytics.by_grade %}
+        <div class="two-col">
+            <div class="section">
+                <h2>By Confluence Grade</h2>
+                <table>
+                    <tr>
+                        <th>Grade</th>
+                        <th>Trades</th>
+                        <th>Wins</th>
+                        <th>Losses</th>
+                        <th>Win Rate</th>
+                        <th>P&amp;L</th>
+                    </tr>
+                    {% for grade, g in analytics.by_grade.items() %}
+                    <tr>
+                        <td>
+                            <span class="grade-icon grade-{{ grade }}">
+                                {% if grade == 'A' %}&#x1F170;&#xFE0F;
+                                {% elif grade == 'B' %}&#x1F171;&#xFE0F;
+                                {% elif grade == 'C' %}&#x00A9;&#xFE0F;
+                                {% elif grade == 'F' %}&#x274C;
+                                {% else %}&#x2796;
+                                {% endif %} {{ grade }}
+                            </span>
+                        </td>
+                        <td>{{ g.total }}</td>
+                        <td>{{ g.wins }}</td>
+                        <td>{{ g.losses }}</td>
+                        <td
+                            class="{% if g.win_rate >= 50 %}green{% elif g.win_rate >= 35 %}amber{% else %}red{% endif %}">
+                            {{ g.win_rate }}%</td>
+                        <td class="{% if g.pnl > 0 %}green{% elif g.pnl < 0 %}red{% endif %}">
+                            {{ '%+.2f'|format(g.pnl) }}%</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+
+            <!-- By Volume Classification -->
+            <div class="section">
+                <h2>By Volume Classification</h2>
+                <table>
+                    <tr>
+                        <th>Classification</th>
+                        <th>Trades</th>
+                        <th>Wins</th>
+                        <th>Losses</th>
+                        <th>Win Rate</th>
+                        <th>P&amp;L</th>
+                    </tr>
+                    {% for vol_cls, v in analytics.by_volume_class.items() %}
+                    <tr>
+                        <td>
+                            <span class="vol-icon {{ vol_cls }}">
+                                {% if vol_cls == 'accumulation' %}&#x1F7E2;
+                                {% elif vol_cls == 'distribution' %}&#x1F534;
+                                {% elif vol_cls == 'climactic' %}&#x26A0;&#xFE0F;
+                                {% else %}&#x26AA;
+                                {% endif %} {{ vol_cls|replace('_', ' ')|capitalize }}
+                            </span>
+                        </td>
+                        <td>{{ v.total }}</td>
+                        <td>{{ v.wins }}</td>
+                        <td>{{ v.losses }}</td>
+                        <td
+                            class="{% if v.win_rate >= 50 %}green{% elif v.win_rate >= 35 %}amber{% else %}red{% endif %}">
+                            {{ v.win_rate }}%</td>
+                        <td class="{% if v.pnl > 0 %}green{% elif v.pnl < 0 %}red{% endif %}">
+                            {{ '%+.2f'|format(v.pnl) }}%</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- By Pattern/Setup -->
         <div class="section">
@@ -512,6 +699,16 @@
 
         {% endif %}
     </div>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            const btn = document.getElementById('theme-btn');
+            if (btn) btn.textContent = next === 'light' ? '🌙' : '☀️';
+        }
+    </script>
 </body>
 
 </html>

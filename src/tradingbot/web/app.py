@@ -96,6 +96,7 @@ def dashboard():
     symbol_filter = request.args.get("symbol", "")
     session_filter = request.args.get("session", "")
     scan_time_filter = request.args.get("scan_time", "")
+    status_filter = request.args.get("status", "")
     all_alerts = load_alerts(500)
 
     # Helper: convert UTC timestamp to ET and round to 30-min block
@@ -235,6 +236,11 @@ def dashboard():
         else:
             a["outcome"] = None
 
+    # Status filter (must run after outcomes are attached)
+    if status_filter:
+        alerts = [a for a in alerts
+                  if (a["outcome"]["status"] if a.get("outcome") else "open") == status_filter]
+
     return render_template(
         "dashboard.html",
         alerts=alerts,
@@ -246,6 +252,7 @@ def dashboard():
         symbol_filter=symbol_filter,
         session_filter=session_filter,
         scan_time_filter=scan_time_filter,
+        status_filter=status_filter,
         all_symbols=all_symbols,
         all_sessions=all_sessions,
         all_dates=all_dates,

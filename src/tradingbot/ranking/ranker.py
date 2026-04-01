@@ -6,6 +6,9 @@ from dataclasses import dataclass
 
 from tradingbot.models import SymbolSnapshot
 from tradingbot.analysis.technical_indicators import interpret_signals
+from tradingbot.analysis.volume_quality import classify_volume_profile
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -244,12 +247,23 @@ class Ranker:
 
         return round(min(100.0, max(0.0, base)), 1)
 
-    def _safe(self, value: float, label: str, symbol: str) -> float:
-        """Return *value* if finite, else 50.0 (neutral) and log a warning."""
-        if math.isfinite(value):
-            return value
-        logging.warning("[RANKER] %s: %s returned NaN/Inf, defaulting to 50", symbol, label)
-        return 50.0
+    def _score_volume_quality(self, stock: SymbolSnapshot) -> float:
+        """Score volume profile quality (0-100).
+
+        Classifies recent volume bars into accumulation / distribution /
+        climax / thin_fade and returns the profile score.  Accumulation
+        near VWAP = 75-90, thin fades and distribution = 15-25.
+        """
+        raw_bars = getattr(stock, "raw_bars", None) or []
+        if len(raw_bars) < 5:
+            return 50.0  # neutral when no bar data
+        try:
+            profile = classify_volume_profile(
+                raw_bars, stock.relative_volume, stock.price, stock.vwap,
+            )
+            return profile.score
+        except Exception:
+            return 50.0
 
     def score(self, stock: SymbolSnapshot) -> float:
         _s = stock.symbol
@@ -263,10 +277,11 @@ class Ranker:
         sa = self._safe(self._score_signal_alignment(stock), "signal_align", _s)
         ob = self._safe(self._score_obv_divergence(stock), "obv", _s)
         gq = self._safe(self._score_gap_quality(stock), "gap_quality", _s)
-        # Weights sum to 1.0 — gap quality (6%) added, trimmed gap/relvol slightly.
-        return (0.17 * g + 0.16 * rv + 0.11 * lq + 0.15 * c
-                + 0.05 * m + 0.10 * rs + 0.05 * mc
-                + 0.07 * sa + 0.06 * ob + 0.08 * gq)
+        vq = self._score_volume_quality(stock)
+        # Weights sum to 1.0 — volume quality (7%) added, trimmed relvol/gap slightly.
+        return (0.15 * g + 0.13 * rv + 0.10 * lq + 0.15 * c
+                + 0.05 * m + 0.09 * rs + 0.05 * mc
+                + 0.07 * sa + 0.06 * ob + 0.08 * gq + 0.07 * vq)
 
     def run(self, snapshots: list[SymbolSnapshot]) -> list[RankedCandidate]:
         ranked = [RankedCandidate(snapshot=item, score=self.score(item)) for item in snapshots]
@@ -295,8 +310,9 @@ class CatalystWeightedRanker(Ranker):
         sa = self._safe(self._score_signal_alignment(stock), "signal_align", _s)
         ob = self._safe(self._score_obv_divergence(stock), "obv", _s)
         gq = self._safe(self._score_gap_quality(stock), "gap_quality", _s)
-        # Weights: catalyst 33%, gap quality 8%, gap 12%, relVol 10%, liquidity 9%,
-        #          RSI 7%, momentum 5%, MACD 5%, signal_align+OBV → 11% combined
-        return (0.12 * g + 0.10 * rv + 0.09 * lq + 0.33 * c
+        vq = self._score_volume_quality(stock)
+        # Weights: catalyst 30%, gap quality 8%, volume quality 5%,
+        #          gap 11%, relVol 9%, liquidity 8%, RSI 7%, etc.
+        return (0.11 * g + 0.09 * rv + 0.08 * lq + 0.30 * c
                 + 0.05 * m + 0.07 * rs + 0.05 * mc
-                + 0.05 * sa + 0.06 * ob + 0.08 * gq)
+                + 0.05 * sa + 0.06 * ob + 0.08 * gq + 0.06 * vq)

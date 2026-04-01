@@ -72,6 +72,108 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
         }
 
+        /* Light theme: watchlist, legend, close-picks, chevrons */
+        [data-theme="light"] .watchlist-section,
+        [data-theme="light"] .legend-section {
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .watchlist-chevron {
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .watchlist-chip {
+            background: rgba(0, 0, 0, .03);
+            border-color: var(--border);
+        }
+
+        [data-theme="light"] .watchlist-chip .wl-symbol {
+            color: var(--text);
+        }
+
+        [data-theme="light"] .wl-score.low {
+            background: rgba(0, 0, 0, .05);
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .legend-cat-title {
+            color: var(--sub);
+            border-bottom-color: var(--border);
+        }
+
+        [data-theme="light"] .legend-term {
+            color: var(--text);
+        }
+
+        [data-theme="light"] .legend-def {
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .close-pick-card {
+            background: var(--surface);
+            border-color: var(--border);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="light"] .cp-score-badge.low {
+            background: rgba(0, 0, 0, .05);
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .cp-thesis {
+            border-top-color: var(--border);
+        }
+
+        [data-theme="light"] .select-chevron {
+            color: var(--sub);
+        }
+
+        [data-theme="light"] .perf-header svg {
+            color: var(--sub);
+        }
+
+        /* Light theme: grade badges, volume pills, false-positive tags */
+        [data-theme="light"] .grade-badge.grade-A {
+            background: rgba(22, 163, 74, .10);
+            border-color: rgba(22, 163, 74, .30);
+        }
+
+        [data-theme="light"] .grade-badge.grade-B {
+            background: rgba(37, 99, 235, .10);
+            border-color: rgba(37, 99, 235, .30);
+        }
+
+        [data-theme="light"] .grade-badge.grade-C {
+            background: rgba(217, 119, 6, .10);
+            border-color: rgba(217, 119, 6, .25);
+        }
+
+        [data-theme="light"] .grade-badge.grade-F {
+            background: rgba(220, 38, 38, .10);
+            border-color: rgba(220, 38, 38, .30);
+        }
+
+        [data-theme="light"] .vol-pill.accumulation {
+            background: rgba(22, 163, 74, .10);
+        }
+
+        [data-theme="light"] .vol-pill.distribution {
+            background: rgba(220, 38, 38, .10);
+        }
+
+        [data-theme="light"] .vol-pill.climax {
+            background: rgba(124, 58, 237, .10);
+        }
+
+        [data-theme="light"] .vol-pill.thin_fade {
+            background: rgba(217, 119, 6, .10);
+        }
+
+        [data-theme="light"] .fp-tag {
+            background: rgba(220, 38, 38, .08);
+        }
+
         /* Theme toggle button */
         .theme-toggle {
             background: var(--surface);
@@ -510,6 +612,23 @@
             color: #15803d;
         }
 
+        .outcome-badge.trailed_out {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .outcome-badge.tp1_locked {
+            background: rgba(34, 197, 94, .15);
+            border: 1px solid rgba(34, 197, 94, .30);
+            color: var(--green);
+        }
+
+        .outcome-badge.breakeven {
+            background: rgba(100, 116, 139, .10);
+            border: 1px solid rgba(100, 116, 139, .20);
+            color: var(--sub);
+        }
+
         .outcome-badge.stopped {
             background: rgba(239, 68, 68, .12);
             border: 1px solid rgba(239, 68, 68, .25);
@@ -535,6 +654,95 @@
         .outcome-pnl {
             margin-left: auto;
             font-weight: 700;
+        }
+
+        /* ── Confluence grade badge ────────────────────── */
+        .grade-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .3px;
+            margin-bottom: 6px;
+            margin-right: 6px;
+        }
+
+        .grade-badge.grade-A {
+            background: rgba(34, 197, 94, .12);
+            border: 1px solid rgba(34, 197, 94, .25);
+            color: var(--green);
+        }
+
+        .grade-badge.grade-B {
+            background: rgba(59, 130, 246, .12);
+            border: 1px solid rgba(59, 130, 246, .25);
+            color: var(--blue);
+        }
+
+        .grade-badge.grade-C {
+            background: rgba(245, 158, 11, .12);
+            border: 1px solid rgba(245, 158, 11, .20);
+            color: var(--amber);
+        }
+
+        .grade-badge.grade-F {
+            background: rgba(239, 68, 68, .12);
+            border: 1px solid rgba(239, 68, 68, .25);
+            color: var(--red);
+        }
+
+        /* ── Volume classification pill ───────────────── */
+        .vol-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: .3px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .vol-pill.accumulation {
+            background: rgba(34, 197, 94, .10);
+            color: var(--green);
+        }
+
+        .vol-pill.distribution {
+            background: rgba(239, 68, 68, .10);
+            color: var(--red);
+        }
+
+        .vol-pill.climax {
+            background: rgba(168, 85, 247, .10);
+            color: var(--purple);
+        }
+
+        .vol-pill.thin_fade {
+            background: rgba(245, 158, 11, .10);
+            color: var(--amber);
+        }
+
+        /* ── False-positive warnings ──────────────────── */
+        .fp-warnings {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .fp-tag {
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: rgba(239, 68, 68, .08);
+            color: var(--red);
+            font-weight: 600;
         }
 
         .outcome-pnl.positive {
@@ -996,7 +1204,8 @@
                     </svg>
                     Filters
                 </div>
-                {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter %}
+                {% if date_filter or symbol_filter or session_filter or side_filter or scan_time_filter or status_filter
+                %}
                 <a href="/" class="filter-clear-all">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1070,6 +1279,24 @@
                         </svg>
                     </div>
                 </div>
+                <div class="filter-group">
+                    <label for="status">Status</label>
+                    <div class="select-wrap">
+                        <select id="status" name="status">
+                            <option value="">All Statuses</option>
+                            {% set status_options = [('open', 'Open'), ('tp1_hit', '🎯 TP1 Hit'), ('tp2_hit', '🏆 TP2
+                            Hit'), ('tp1_locked', '🔒 TP1 Locked'), ('trailed_out', '📈 Trailed Out'), ('breakeven', '⚖️
+                            Breakeven'), ('stopped', '🛑 Stopped'), ('expired', '⏰ Expired')] %}
+                            {% for val, lbl in status_options %}
+                            <option value="{{ val }}" {% if val==status_filter %}selected{% endif %}>{{ lbl }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </div>
                 <div class="filter-actions">
                     <button type="submit" class="filter-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1081,13 +1308,17 @@
                     </button>
                 </div>
             </form>
-            {% if date_filter or symbol_filter or session_filter or scan_time_filter %}
+            {% if date_filter or symbol_filter or session_filter or scan_time_filter or status_filter %}
             <div class="active-filters">
                 {% if date_filter %}<span class="chip">📅 {{ date_filter }}</span>{% endif %}
                 {% if symbol_filter %}<span class="chip">📊 {{ symbol_filter }}</span>{% endif %}
                 {% if session_filter %}<span class="chip">🕐 {{ session_labels.get(session_filter, session_filter)
                     }}</span>{% endif %}
                 {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }}</span>{% endif %}
+                {% if status_filter %}{% set status_label_map = {'open':'Open','tp1_hit':'TP1 Hit','tp2_hit':'TP2
+                Hit','tp1_locked':'TP1 Locked','trailed_out':'Trailed
+                Out','breakeven':'Breakeven','stopped':'Stopped','expired':'Expired'} %}<span class="chip">🏷 {{
+                    status_label_map.get(status_filter, status_filter) }}</span>{% endif %}
             </div>
             {% endif %}
         </div>
@@ -1330,7 +1561,7 @@
 
             /* News Research Watchlist */
             .watchlist-section {
-                background: var(--card);
+                background: var(--surface);
                 border: 1px solid var(--border);
                 border-radius: 10px;
                 padding: 16px 20px;
@@ -1548,7 +1779,7 @@
 
             /* Legend / Glossary */
             .legend-section {
-                background: var(--card);
+                background: var(--surface);
                 border: 1px solid var(--border);
                 border-radius: 10px;
                 padding: 16px 20px;
@@ -1737,6 +1968,18 @@
                 <div class="pnl-stat-value amber">{{ trade_stats.open }}</div>
                 <div class="pnl-stat-label">Open</div>
             </div>
+            {% if trade_stats.breakeven %}
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--text-muted, #888)">{{ trade_stats.breakeven }}</div>
+                <div class="pnl-stat-label">B/E</div>
+            </div>
+            {% endif %}
+            {% if trade_stats.expired %}
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--text-muted, #888)">{{ trade_stats.expired }}</div>
+                <div class="pnl-stat-label">Expired</div>
+            </div>
+            {% endif %}
             <div class="pnl-divider"></div>
             <div class="pnl-stat">
                 <div class="pnl-stat-value {% if trade_stats.win_rate >= 50 %}green{% else %}{% endif %}"
@@ -2087,8 +2330,10 @@
                             <span class="legend-term">Trade Tracker</span>
                             <span class="legend-def">Monitors each alert's price vs Entry/Stop/TP1/TP2 levels during
                                 market hours.
-                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🛑 Stopped = stop loss
-                                hit,
+                                🎯 TP1 Hit = first target reached, 🏆 TP2 Hit = extended target, 🔒 TP1 Locked =
+                                runner stopped at TP1, 📈 Trailed Out =
+                                profitable stop trail, ⚖️ Breakeven = stop trailed to entry,
+                                🛑 Stopped = stop loss hit,
                                 ⏰ Expired = market closed with no hit. P&amp;L % shown for resolved trades.</span>
                         </div>
                     </div>
@@ -2119,6 +2364,38 @@
                     <span class="score-num">{{ a.score }}</span>
                 </div>
 
+                <!-- Confluence grade + Volume classification row -->
+                {% set cg = a.confluence_grade|default('') %}
+                {% set vc = a.volume_classification|default('') %}
+                {% if cg or vc %}
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:4px">
+                    {% if cg %}
+                    <div class="grade-badge grade-{{ cg }}">
+                        <span>{% if cg == 'A' %}🅰️{% elif cg == 'B' %}🅱️{% elif cg == 'C' %}©️{% else %}❌{% endif
+                            %}</span>
+                        <span>Grade {{ cg }}{% if a.confluence_score %} · {{ "%.0f"|format(a.confluence_score) }}{%
+                            endif %}</span>
+                    </div>
+                    {% endif %}
+                    {% if vc %}
+                    <div class="vol-pill {{ vc }}">
+                        <span>{% if vc == 'accumulation' %}🟢{% elif vc == 'distribution' %}🔴{% elif vc == 'climax'
+                            %}⚡{% else %}⚠️{% endif %}</span>
+                        <span>{{ vc | replace('_',' ') }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- False-positive warnings -->
+                {% if a.false_positive_flags %}
+                <div class="fp-warnings">
+                    {% for w in a.false_positive_flags %}
+                    <span class="fp-tag">⚠ {{ w | replace('_',' ') }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
                 <!-- Risk level badge -->
                 {% set rl = a.risk_level|default('low') %}
                 <div class="risk-badge {{ rl }}">
@@ -2147,6 +2424,9 @@
                     <span class="outcome-icon">
                         {% if a.outcome.status == 'tp1_hit' %}🎯
                         {% elif a.outcome.status == 'tp2_hit' %}🏆
+                        {% elif a.outcome.status == 'tp1_locked' %}🔒
+                        {% elif a.outcome.status == 'trailed_out' %}📈
+                        {% elif a.outcome.status == 'breakeven' %}⚖️
                         {% elif a.outcome.status == 'stopped' %}🛑
                         {% elif a.outcome.status == 'expired' %}⏰
                         {% else %}⏳{% endif %}
@@ -2154,11 +2434,14 @@
                     <span>
                         {% if a.outcome.status == 'tp1_hit' %}TP1 Hit
                         {% elif a.outcome.status == 'tp2_hit' %}TP2 Hit
+                        {% elif a.outcome.status == 'tp1_locked' %}TP1 Locked
+                        {% elif a.outcome.status == 'trailed_out' %}Trailed Out
+                        {% elif a.outcome.status == 'breakeven' %}Breakeven
                         {% elif a.outcome.status == 'stopped' %}Stopped Out
                         {% elif a.outcome.status == 'expired' %}Expired
                         {% else %}Tracking{% endif %}
                     </span>
-                    {% if a.outcome.status != 'open' %}
+                    {% if a.outcome.status not in ['open'] %}
                     <span class="outcome-pnl {% if a.outcome.pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
                         {{ "%+.2f"|format(a.outcome.pnl_pct) }}%
                     </span>

@@ -29,9 +29,11 @@ _BOUNDS: dict[str, tuple[float, float]] = {
     "min_catalyst_score": (25, 70),
     "min_relative_volume": (1.5, 5.0),
     "min_ranker_score": (30, 80),
-    "min_confluence_score": (5, 20),
+    "min_confluence_score": (5, 80),
     "max_vwap_distance_pct": (1.5, 6.0),
     "max_trades_per_day": (4, 15),
+    "block_distribution_volume": (0, 1),
+    "require_accumulation_volume": (0, 1),
 }
 
 
@@ -152,6 +154,9 @@ class AutoTuner:
 
         # ── Session performance tuning ──
         self._tune_sessions(report, result)
+
+        # ── Confluence grade / score tuning ──
+        self._tune_confluence(report, result)
 
         # ── What-if derived recommendations ──
         self._tune_from_what_if(report, result)
@@ -283,6 +288,75 @@ class AutoTuner:
                 confidence=min(1.0, (worst.wins + worst.losses) / 20),
             ))
 
+    def _tune_confluence(self, report, result: TuningResult) -> None:
+        """Recommend confluence score/grade threshold changes."""
+        filters = report.filter_reports
+        current_val = self.current.get("min_confluence_score", 10)
+
+        # ── Grade-level analysis ──
+        # Compare Grade A+B win-rate vs Grade C+F win-rate
+        ab_wins = ab_losses = 0
+        cf_wins = cf_losses = 0
+        ab_pnls: list[float] = []
+        cf_pnls: list[float] = []
+        for grade_key in ("grade_A", "grade_B"):
+            fr = filters.get(grade_key)
+            if fr:
+                ab_wins += fr.wins
+                ab_losses += fr.losses
+                if fr.avg_pnl and fr.total_passed:
+                    ab_pnls.extend([fr.avg_pnl] * fr.total_passed)
+        for grade_key in ("grade_C", "grade_F"):
+            fr = filters.get(grade_key)
+            if fr:
+                cf_wins += fr.wins
+                cf_losses += fr.losses
+                if fr.avg_pnl and fr.total_passed:
+                    cf_pnls.extend([fr.avg_pnl] * fr.total_passed)
+
+        ab_decided = ab_wins + ab_losses
+        cf_decided = cf_wins + cf_losses
+        if ab_decided >= 5 and cf_decided >= 5:
+            ab_wr = ab_wins / ab_decided * 100
+            cf_wr = cf_wins / cf_decided * 100
+            # If A+B substantially outperforms C+F, recommend raising floor
+            if ab_wr > cf_wr + 10:
+                result.recommendations.append(Recommendation(
+                    parameter="min_confluence_score",
+                    current=current_val,
+                    recommended=55.0,
+                    reason=f"Grade A+B WR {ab_wr:.0f}% vs C+F WR {cf_wr:.0f}% — "
+                           f"raise confluence floor to B-grade minimum (55)",
+                    confidence=min(1.0, ab_decided / 25),
+                ))
+            # If C+F trades are performing well, loosen the floor
+            elif cf_wr > ab_wr - 5 and cf_wr > 55:
+                result.recommendations.append(Recommendation(
+                    parameter="min_confluence_score",
+                    current=current_val,
+                    recommended=40.0,
+                    reason=f"Grade C+F WR is {cf_wr:.0f}% (close to A+B {ab_wr:.0f}%) — "
+                           f"loosen confluence floor to capture more setups",
+                    confidence=min(1.0, cf_decided / 25) * 0.6,
+                ))
+
+        # ── Volume classification insight ──
+        acc_fr = filters.get("vol_accumulation")
+        dist_fr = filters.get("vol_distribution")
+        if acc_fr and dist_fr:
+            acc_d = acc_fr.wins + acc_fr.losses
+            dist_d = dist_fr.wins + dist_fr.losses
+            if acc_d >= 3 and dist_d >= 3:
+                if dist_fr.win_rate < 40 and dist_fr.avg_pnl < 0:
+                    result.recommendations.append(Recommendation(
+                        parameter="block_distribution_volume",
+                        current=0.0,
+                        recommended=1.0,
+                        reason=f"Distribution-volume trades WR {dist_fr.win_rate:.0f}% "
+                               f"avg P&L {dist_fr.avg_pnl:+.1f}% — consider blocking",
+                        confidence=min(1.0, dist_d / 15),
+                    ))
+
     def _tune_from_what_if(self, report, result: TuningResult) -> None:
         """Extract recommendations from what-if scenarios."""
         for wi in report.what_if:
@@ -306,6 +380,15 @@ class AutoTuner:
                 elif name == "score_70":
                     param = "min_ranker_score"
                     new_val = 70.0
+                elif name == "grade_AB":
+                    param = "min_confluence_score"
+                    new_val = 55.0
+                elif name == "grade_A_only":
+                    param = "min_confluence_score"
+                    new_val = 75.0
+                elif name == "vol_accumulation_only":
+                    param = "require_accumulation_volume"
+                    new_val = 1.0
                 else:
                     continue
 

@@ -31,7 +31,7 @@ def write_csv(path: Path, cards: list[TradeCard]) -> None:
             writer.writerow(
                 {
                     "symbol": card.symbol,
-                    "side": card.side,
+                    "side": "long",
                     "score": card.score,
                     "entry_price": card.entry_price,
                     "stop_price": card.stop_price,
@@ -60,7 +60,7 @@ def _section_rows(cards: list[TradeCard]) -> list[str]:
     rows = []
     for card in cards:
         rows.append(
-            f"- {card.symbol} ({card.side}) | score={card.score} | entry={card.entry_price} | "
+            f"- {card.symbol} (LONG) | score={card.score} | entry={card.entry_price} | "
             f"tp1={card.tp1_price} | tp2={card.tp2_price} | stop={card.stop_price} | "
             f"why={','.join(card.reason)}"
         )
@@ -177,7 +177,7 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
     if watchlist.relaxed_filter_cards:
         for card in watchlist.relaxed_filter_cards:
             lines.append(
-                f"- **{card.symbol}** ({card.side.upper()}) | score={card.score:.0f} | "
+                f"- **{card.symbol}** (LONG) | score={card.score:.0f} | "
                 f"entry=${card.entry_price:.2f} | tp1=${card.tp1_price:.2f} | tp2=${card.tp2_price:.2f} | "
                 f"stop=${card.stop_price:.2f}"
             )
@@ -202,7 +202,7 @@ def _format_three_option_section(title: str, watchlist: ThreeOptionWatchlist) ->
     if watchlist.strict_filter_cards:
         for card in watchlist.strict_filter_cards:
             lines.append(
-                f"- **{card.symbol}** ({card.side.upper()}) | score={card.score:.0f} | "
+                f"- **{card.symbol}** (LONG) | score={card.score:.0f} | "
                 f"entry=${card.entry_price:.2f} | tp1=${card.tp1_price:.2f} | tp2=${card.tp2_price:.2f} | "
                 f"stop=${card.stop_price:.2f}"
             )

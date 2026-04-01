@@ -81,6 +81,35 @@ class TelegramNotifier:
 
         return ok
 
+    def send_institutional_alert(
+        self,
+        card: "TradeCard",
+        institutional_context: object,
+    ) -> bool:
+        """Send an institutional-grade alert with enriched context.
+
+        Falls back to the standard alert format if formatting fails.
+        ``institutional_context`` is an ``InstitutionalContext`` instance
+        from ``tradingbot.analysis.institutional_alert``.
+        """
+        if not self._enabled:
+            return False
+
+        try:
+            from tradingbot.analysis.institutional_alert import format_institutional_alert
+            text = format_institutional_alert(card, institutional_context)
+        except Exception as exc:
+            logger.warning(f"Institutional alert format failed ({exc}); using standard format")
+            text = self._format_alert(card)
+
+        ok = self._send_alert_message(text)
+
+        chart = getattr(card, "chart_path", "")
+        if ok and chart and Path(chart).is_file():
+            self._send_photo(Path(chart), caption=f"{card.symbol} chart")
+
+        return ok
+
     def send_text(self, text: str) -> bool:
         """Send a plain Markdown text message."""
         if not self._enabled:
@@ -159,7 +188,7 @@ class TelegramNotifier:
         ]
 
         for i, p in enumerate(picks, 1):
-            side_emoji = "🟢" if p.side == "long" else "🔴"
+            side_emoji = "🟢"
             change_str = f"{p.change_pct:+.1f}%"
             lines.append(
                 f"*{i}. {side_emoji} `{p.symbol}`* — Score {p.score:.0f}/100"
@@ -243,6 +272,7 @@ class TelegramNotifier:
                 status_map = {
                     "tp1_hit": "🎯 TP1",
                     "tp2_hit": "🎯🎯 TP2",
+                    "trailed_out": "📈 Trailed",
                     "stopped": "🛑 Stop",
                     "breakeven": "⚖️ BE",
                     "expired": "⏰ Expired",
@@ -260,13 +290,119 @@ class TelegramNotifier:
         text = "\n".join(lines)
         return self._send_message(text)
 
+    def send_daily_digest(
+        self,
+        analytics: dict,
+        tuner_summary: str = "",
+    ) -> bool:
+        """Send an institutional-grade nightly digest with confluence & volume stats.
+
+        Args:
+            analytics: dict from get_detailed_analytics() with by_grade/by_volume_class.
+            tuner_summary: optional auto-tuner recommendation text.
+        """
+        if not self._enabled:
+            return False
+        if not analytics:
+            return False
+
+        lines = [
+            "📋 *Nightly Performance Digest*",
+            "",
+        ]
+
+        # ── Confluence Grade Breakdown ──
+        by_grade = analytics.get("by_grade", {})
+        if by_grade:
+            lines.append("*By Confluence Grade:*")
+            grade_icons = {"A": "🅰️", "B": "🅱️", "C": "©️", "F": "❌", "N/A": "—"}
+            for grade, g in by_grade.items():
+                icon = grade_icons.get(grade, "•")
+                wr = g.get("win_rate", 0)
+                total = g.get("total", 0)
+                pnl = g.get("pnl", 0)
+                wr_tag = "🔥" if wr >= 60 else ("✅" if wr >= 40 else "⚠️")
+                lines.append(
+                    f"  {icon} Grade {grade}: {total} trades | "
+                    f"WR {wr_tag} {wr:.0f}% | P&L {pnl:+.2f}%"
+                )
+            lines.append("")
+
+        # ── Volume Classification Breakdown ──
+        by_vol = analytics.get("by_volume_class", {})
+        if by_vol:
+            lines.append("*By Volume Profile:*")
+            vol_icons = {
+                "accumulation": "🟢",
+                "distribution": "🔴",
+                "climactic": "⚠️",
+                "thin_fade": "💨",
+            }
+            for cls, v in by_vol.items():
+                icon = vol_icons.get(cls, "⚪")
+                wr = v.get("win_rate", 0)
+                total = v.get("total", 0)
+                pnl = v.get("pnl", 0)
+                lines.append(
+                    f"  {icon} {cls.replace('_', ' ').title()}: {total} trades | "
+                    f"WR {wr:.0f}% | P&L {pnl:+.2f}%"
+                )
+            lines.append("")
+
+        # ── Key Insight ──
+        grade_a = by_grade.get("A", {})
+        grade_f = by_grade.get("F", {})
+        if grade_a.get("total", 0) >= 3 and grade_f.get("total", 0) >= 3:
+            a_wr = grade_a.get("win_rate", 0)
+            f_wr = grade_f.get("win_rate", 0)
+            edge = a_wr - f_wr
+            if edge > 0:
+                lines.append(f"💡 *Insight:* Grade A win-rate edge vs F: *+{edge:.0f}pp*")
+                lines.append("")
+
+        # ── Accumulation vs Distribution ──
+        acc = by_vol.get("accumulation", {})
+        dist = by_vol.get("distribution", {})
+        if acc.get("total", 0) >= 3 and dist.get("total", 0) >= 3:
+            acc_wr = acc.get("win_rate", 0)
+            dist_wr = dist.get("win_rate", 0)
+            if acc_wr > dist_wr:
+                lines.append(
+                    f"📊 *Volume edge:* Accumulation WR {acc_wr:.0f}% "
+                    f"vs Distribution {dist_wr:.0f}%"
+                )
+                lines.append("")
+
+        # ── Auto-Tuner Recommendations ──
+        if tuner_summary:
+            lines.append("🔧 *Auto-Tuner (tomorrow):*")
+            # Show at most 5 lines from the summary
+            for i, line in enumerate(tuner_summary.strip().split("\n")):
+                if i >= 5:
+                    break
+                lines.append(f"  {line.strip()}")
+            lines.append("")
+
+        # ── Overall Headline ──
+        wr = analytics.get("win_rate", 0)
+        pnl = analytics.get("total_pnl", 0)
+        total = analytics.get("total", 0)
+        pf = analytics.get("profit_factor", 0)
+        lines.append(
+            f"*90-Day Summary:* {total} trades | WR {wr:.0f}% | "
+            f"P&L {pnl:+.2f}% | PF {pf}"
+        )
+
+        text = "\n".join(lines)
+        return self._send_message(text)
+
     # ── Message formatters ─────────────────────────────────────────────────
 
     @staticmethod
     def _format_alert(card: "TradeCard") -> str:
         from tradingbot.analysis.pattern_detector import format_patterns
 
-        side_emoji = "🟢 LONG" if card.side == "long" else "🔴 SHORT"
+        side_emoji = "🟢 LONG"
         patterns   = format_patterns(getattr(card, "patterns", []))
         confluence = getattr(card, "score", 0.0)
         signals    = ", ".join(card.reason) if card.reason else "—"
@@ -291,8 +427,33 @@ class TelegramNotifier:
         pos_size = getattr(card, "position_size", 0)
         size_line = f"📐 <b>Size</b>    : <code>{pos_size} shares</code>" if pos_size > 0 else ""
 
+        # Confluence grade badge (from confluence engine)
+        c_grade = getattr(card, "confluence_grade", "")
+        grade_badges = {
+            "A": "🅰️ GRADE A",
+            "B": "🅱️ GRADE B",
+            "C": "©️ GRADE C",
+            "F": "❌ GRADE F",
+        }
+        grade_line = grade_badges.get(c_grade, "")
+
+        # Volume classification
+        vol_class = getattr(card, "volume_classification", "")
+        vol_emojis = {
+            "accumulation": "🟢 Accumulation",
+            "distribution": "🔴 Distribution",
+            "climax": "⚡ Climax",
+            "thin_fade": "⚠️ Thin Fade",
+            "mixed": "🟡 Mixed",
+        }
+        vol_line = f"📈 <b>Volume</b>  : {vol_emojis.get(vol_class, vol_class)}" if vol_class else ""
+
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
+        ]
+        if grade_line:
+            lines.append(f"<b>{grade_line}</b>")
+        lines.extend([
             "",
             f"Direction : {side_emoji}",
             f"Session   : {card.session_tag.upper()}",
@@ -308,12 +469,32 @@ class TelegramNotifier:
             f"TP 1   : <code>${card.tp1_price:.2f}</code>  (resistance)",
             f"TP 2   : <code>${card.tp2_price:.2f}</code>  (extended)",
             f"R:R    : <code>{card.risk_reward:.1f}:1</code>",
+        ])
+
+        # Trail guide: tell the trader exactly when to move their stop
+        risk_per_share = abs(card.entry_price - card.stop_price)
+        if risk_per_share > 0:
+            be_trigger = round(card.entry_price + risk_per_share * 0.75, 2)
+            lock_trigger = round(card.entry_price + risk_per_share * 1.5, 2)
+            lock_stop = round(card.entry_price + risk_per_share, 2)
+            lines.extend([
+                "",
+                "📐 <b>Trail Guide</b> (move your stop at each level)",
+                f"  ① Price hits <code>${be_trigger:.2f}</code> (0.75R) → stop → <code>${card.entry_price:.2f}</code> (breakeven)",
+                f"  ② Price hits <code>${lock_trigger:.2f}</code> (1.5R)  → stop → <code>${lock_stop:.2f}</code> (lock +1R)",
+                f"  ③ TP1 fills  <code>${card.tp1_price:.2f}</code>       → sell ½, stop → <code>${card.tp1_price:.2f}</code>",
+                f"  ④ TP2 fills  <code>${card.tp2_price:.2f}</code>       → close remaining",
+            ])
+
+        lines.extend([
             "",
             f"📊 <b>Patterns</b> : {patterns}",
             f"📝 <b>Signals</b>  : {signals}",
             "",
             risk_line,
-        ]
+        ])
+        if vol_line:
+            lines.append(vol_line)
         if size_line:
             lines.append(size_line)
         if ai_line:
@@ -323,6 +504,14 @@ class TelegramNotifier:
             ai_reasoning = getattr(card, "ai_reasoning", "")
             if ai_reasoning:
                 lines.append(f"    💬 {ai_reasoning[:200]}")
+
+        # False-positive warnings
+        fp_flags = getattr(card, "false_positive_flags", [])
+        if fp_flags:
+            lines.append("")
+            lines.append("⚠️ <b>Warnings</b>")
+            for flag in fp_flags[:3]:
+                lines.append(f"  ⚠️ {flag}")
 
         return "\n".join(lines)
 
