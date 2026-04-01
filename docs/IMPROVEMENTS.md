@@ -16,7 +16,7 @@ All issues reviewed and triaged. Verdicts:
 | 1 | EMA hold too loose | **REAL** but nuanced — pullback_low is invalidation level, often below EMA9 by design | Deferred — reverted, needs more analysis |
 | 2 | abs() in gap scanner | **REAL** (low impact) — negative gaps waste slots | **FIXED** — removed abs(), long-only |
 | 3 | Relvol overflow | **PARTIAL** — scoring already caps at 100, gate check is fine | Won't fix |
-| 4 | NaN kills scores | **REAL** — NaN from ta library silently drops candidates | **FIXED** — NaN guard defaults to 50.0 + logs warning |
+| 4 | NaN kills scores | **REAL** — NaN from ta library silently drops candidates | **FIXED** — inline `math.isfinite()` guards in normalize methods |
 | 5 | RSI peak at 60 | **DEBATABLE** — RSI 60 is defensible for gap-and-go; weight is only 10% | Won't fix |
 | 6 | Gap quality cliff at 6% | **NEGLIGIBLE** — 8% weight × 20pt diff = 1.6pt impact | Won't fix |
 | 7 | OBV binary scoring | **NEGLIGIBLE** — 6% weight × 55pt diff = 3.3pt; most gappers score 80 anyway | Won't fix |
@@ -69,7 +69,7 @@ All issues reviewed and triaged. Verdicts:
 **File**: `src/tradingbot/ranking/ranker.py` (both `Ranker.score()` and `CatalystWeightedRanker.score()`)
 **Problem**: If any indicator (RSI, MACD, OBV) returns NaN, the entire weighted sum becomes NaN. `NaN >= self.min_score` returns False, so the stock silently vanishes.
 **Validation verdict**: REAL. Confirmed: `ta` library returns NaN for early bars, `float(NaN)` propagates, NaN is truthy (bypasses `not rsi` guard), all comparisons return False.
-**Fix applied**: Added `_safe()` method that defaults NaN/Inf to 50.0 (neutral) and logs a warning. Applied to all 10 scoring components in both ranker classes.
+**Fix applied**: Added `math.isfinite()` guards at the data boundary — in `_normalize_rsi()`, `_normalize_macd()`, and the `catalyst_score` read in `score()`. NaN/Inf values default to 50.0 (neutral). No wrapping of every scoring call needed since NaN only enters through `tech_indicators` dict and `catalyst_score`.
 **Impact**: Stops losing valid candidates to one missing data point.
 
 ---
@@ -170,7 +170,7 @@ Or pass session context into `build_trade_card` and let it decide.
 **DONE — Fixed (runtime crashes + real bugs):**
 1. ~~#0 TradeCard.side crash~~ — added `side: str = "long"` default
 2. ~~NEW Fakeout guard field names~~ — corrected to `stop_price`/`entry_price`
-3. ~~#4 NaN guard~~ — `_safe()` method defaults NaN to 50.0 + logs
+3. ~~#4 NaN guard~~ — inline `math.isfinite()` checks in normalize methods + catalyst read
 4. ~~#2 abs() gap scanner~~ — removed abs(), long-only
 
 **Deferred (needs more analysis):**

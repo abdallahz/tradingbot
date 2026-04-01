@@ -83,8 +83,8 @@ class Ranker:
         Direction-agnostic: we score distance from the 'healthy momentum' band.
         """
         rsi = stock.tech_indicators.get("rsi", 0.0)
-        if not rsi:
-            return 50.0  # no data → neutral, don't penalise
+        if not rsi or not math.isfinite(rsi):
+            return 50.0  # no data or NaN → neutral, don't penalise
         # Peak at RSI=60 (mid-momentum), fall off toward 0 and 100
         # Triangle: 0→0, 30→50, 60→100, 80→60, 100→0
         if rsi <= 0 or rsi >= 100:
@@ -105,8 +105,8 @@ class Ranker:
         Normalised relative to price so a $5 stock and a $500 stock compare fairly.
         """
         macd_hist = stock.tech_indicators.get("macd_hist", None)
-        if macd_hist is None:
-            return 50.0  # no data → neutral
+        if macd_hist is None or not math.isfinite(macd_hist):
+            return 50.0  # no data or NaN → neutral
         if stock.price <= 0:
             return 50.0
         # Normalise histogram value as % of price, cap at ±1%
@@ -266,17 +266,16 @@ class Ranker:
             return 50.0
 
     def score(self, stock: SymbolSnapshot) -> float:
-        _s = stock.symbol
-        g  = self._safe(self._normalize_gap(stock), "gap", _s)
-        rv = self._safe(self._normalize_rel_vol(stock), "rel_vol", _s)
-        lq = self._safe(self._normalize_liquidity(stock), "liquidity", _s)
-        c  = self._safe(stock.catalyst_score, "catalyst", _s)
-        m  = self._safe(self._normalize_momentum(stock), "momentum", _s)
-        rs = self._safe(self._normalize_rsi(stock), "rsi", _s)
-        mc = self._safe(self._normalize_macd(stock), "macd", _s)
-        sa = self._safe(self._score_signal_alignment(stock), "signal_align", _s)
-        ob = self._safe(self._score_obv_divergence(stock), "obv", _s)
-        gq = self._safe(self._score_gap_quality(stock), "gap_quality", _s)
+        g  = self._normalize_gap(stock)
+        rv = self._normalize_rel_vol(stock)
+        lq = self._normalize_liquidity(stock)
+        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 50.0
+        m  = self._normalize_momentum(stock)
+        rs = self._normalize_rsi(stock)
+        mc = self._normalize_macd(stock)
+        sa = self._score_signal_alignment(stock)
+        ob = self._score_obv_divergence(stock)
+        gq = self._score_gap_quality(stock)
         vq = self._score_volume_quality(stock)
         # Weights sum to 1.0 — volume quality (7%) added, trimmed relvol/gap slightly.
         return (0.15 * g + 0.13 * rv + 0.10 * lq + 0.15 * c
@@ -299,17 +298,16 @@ class CatalystWeightedRanker(Ranker):
     """
 
     def score(self, stock: SymbolSnapshot) -> float:
-        _s = stock.symbol
-        g  = self._safe(self._normalize_gap(stock), "gap", _s)
-        rv = self._safe(self._normalize_rel_vol(stock), "rel_vol", _s)
-        lq = self._safe(self._normalize_liquidity(stock), "liquidity", _s)
-        c  = self._safe(stock.catalyst_score, "catalyst", _s)
-        m  = self._safe(self._normalize_momentum(stock), "momentum", _s)
-        rs = self._safe(self._normalize_rsi(stock), "rsi", _s)
-        mc = self._safe(self._normalize_macd(stock), "macd", _s)
-        sa = self._safe(self._score_signal_alignment(stock), "signal_align", _s)
-        ob = self._safe(self._score_obv_divergence(stock), "obv", _s)
-        gq = self._safe(self._score_gap_quality(stock), "gap_quality", _s)
+        g  = self._normalize_gap(stock)
+        rv = self._normalize_rel_vol(stock)
+        lq = self._normalize_liquidity(stock)
+        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 50.0
+        m  = self._normalize_momentum(stock)
+        rs = self._normalize_rsi(stock)
+        mc = self._normalize_macd(stock)
+        sa = self._score_signal_alignment(stock)
+        ob = self._score_obv_divergence(stock)
+        gq = self._score_gap_quality(stock)
         vq = self._score_volume_quality(stock)
         # Weights: catalyst 30%, gap quality 8%, volume quality 5%,
         #          gap 11%, relVol 9%, liquidity 8%, RSI 7%, etc.

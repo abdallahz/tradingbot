@@ -78,7 +78,7 @@ Required env vars: `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `ALPACA_PAPER`, `TELEG
 
 ## Design Decisions
 
-- **Long-only**: No short setups. The `side` field was removed from models.
+- **Long-only**: No short setups. `TradeCard` and `CloseHoldPick` have `side: str = "long"` as a constant default.
 - **Alert-only**: No order execution — generates trade card recommendations.
 - **Free indicators only**: Uses `ta` library (not torch/transformers) to stay within Heroku slug size limits.
 - **Telegram-primary**: Telegram is the main notification channel; web dashboard is a secondary alert viewer.
@@ -110,7 +110,7 @@ python -m tradingbot.cli run-day
 ### Fixed (2026-03-31)
 1. **`TradeCard.side` crash** — `side` field was removed from models but 9 references remained. Fixed: added `side: str = "long"` default to `TradeCard` and `CloseHoldPick`.
 2. **Fakeout guard broken field names** — `session_runner.py` referenced `card.stop_loss`/`card.entry` which don't exist on `TradeCard`. Fixed: corrected to `card.stop_price`/`card.entry_price`. The fakeout guard (9:30-9:45 ET stop widening) had never worked.
-3. **NaN kills ranker scores** — `ta` library returns NaN for early bars, propagating through the weighted sum and silently dropping candidates. Fixed: `_safe()` method in `Ranker` defaults NaN/Inf to 50.0 (neutral) and logs a warning.
+3. **NaN kills ranker scores** — `ta` library returns NaN for early bars, propagating through the weighted sum and silently dropping candidates. Fixed: inline `math.isfinite()` guards in `_normalize_rsi()`, `_normalize_macd()`, and `catalyst_score` read — NaN defaults to 50.0 (neutral).
 4. **`abs()` in gap scanner** — Long-only system was accepting negative gaps via `abs()`. Fixed: removed `abs()`, negative gaps now fail the threshold naturally.
 
 ### Deferred
