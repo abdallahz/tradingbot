@@ -35,8 +35,8 @@ class GapScanner:
             if not self.price_min <= stock.price <= self.price_max:
                 dropped.append((stock.symbol, "price_out_of_range"))
                 continue
-            # Use absolute gap so both up-gaps (long) and down-gaps (short) qualify
-            if abs(stock.gap_pct) < self.min_gap_pct:
+            # Long-only: require positive gap above threshold
+            if stock.gap_pct < self.min_gap_pct:
                 dropped.append((stock.symbol, "gap_too_small"))
                 continue
             if stock.premarket_volume < self.min_premarket_volume:

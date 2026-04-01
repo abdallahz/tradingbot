@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 
 from tradingbot.models import SymbolSnapshot
@@ -82,8 +83,8 @@ class Ranker:
         Direction-agnostic: we score distance from the 'healthy momentum' band.
         """
         rsi = stock.tech_indicators.get("rsi", 0.0)
-        if not rsi:
-            return 50.0  # no data → neutral, don't penalise
+        if not rsi or not math.isfinite(rsi):
+            return 50.0  # no data or NaN → neutral, don't penalise
         # Peak at RSI=60 (mid-momentum), fall off toward 0 and 100
         # Triangle: 0→0, 30→50, 60→100, 80→60, 100→0
         if rsi <= 0 or rsi >= 100:
@@ -104,8 +105,8 @@ class Ranker:
         Normalised relative to price so a $5 stock and a $500 stock compare fairly.
         """
         macd_hist = stock.tech_indicators.get("macd_hist", None)
-        if macd_hist is None:
-            return 50.0  # no data → neutral
+        if macd_hist is None or not math.isfinite(macd_hist):
+            return 50.0  # no data or NaN → neutral
         if stock.price <= 0:
             return 50.0
         # Normalise histogram value as % of price, cap at ±1%
@@ -268,7 +269,7 @@ class Ranker:
         g  = self._normalize_gap(stock)
         rv = self._normalize_rel_vol(stock)
         lq = self._normalize_liquidity(stock)
-        c  = stock.catalyst_score
+        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 50.0
         m  = self._normalize_momentum(stock)
         rs = self._normalize_rsi(stock)
         mc = self._normalize_macd(stock)
@@ -300,7 +301,7 @@ class CatalystWeightedRanker(Ranker):
         g  = self._normalize_gap(stock)
         rv = self._normalize_rel_vol(stock)
         lq = self._normalize_liquidity(stock)
-        c  = stock.catalyst_score
+        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 50.0
         m  = self._normalize_momentum(stock)
         rs = self._normalize_rsi(stock)
         mc = self._normalize_macd(stock)

@@ -60,6 +60,7 @@ class TradeCard:
     confluence_score: float = 0.0     # 0-100 composite from multi-factor analysis
     volume_classification: str = ""   # accumulation / distribution / climax / thin_fade
     false_positive_flags: list[str] = field(default_factory=list)  # risk warnings
+    side: str = "long"            # Always "long" — system is long-only
 
 
 @dataclass

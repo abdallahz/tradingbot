@@ -36,6 +36,7 @@ class CloseHoldPick:
     key_resistance: float
     rsi: float
     atr: float
+    side: str = "long"  # Always "long" — system is long-only
 
 
 class CloseHoldScanner:
