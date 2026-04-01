@@ -610,6 +610,7 @@ def update_outcome(
     exit_price: float | None = None,
     pnl_pct: float | None = None,
     hit_at: str | None = None,
+    session: str | None = None,
 ) -> None:
     """Update a trade outcome row with new status and P&L."""
     sb = _get_supabase()
@@ -623,6 +624,8 @@ def update_outcome(
             updates["pnl_pct"] = round(pnl_pct, 2)
         if hit_at:
             updates["hit_at"] = hit_at
+        if session:
+            updates["session"] = session
         sb.table("trade_outcomes").update(updates).eq("id", outcome_id).execute()
     except Exception as exc:
         log.warning(f"[alert_store] update_outcome failed: {exc}")

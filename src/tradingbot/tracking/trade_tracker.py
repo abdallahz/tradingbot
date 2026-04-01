@@ -646,7 +646,7 @@ class TradeTracker:
                 )
                 continue
 
-            # No TP hit — expire normally
+            # No TP hit — expire normally (session → close)
             pnl = self._calc_pnl(trade, price, "expired") if price > 0 else 0.0
             update_outcome(
                 outcome_id=trade["id"],
@@ -654,6 +654,7 @@ class TradeTracker:
                 exit_price=price if price > 0 else None,
                 pnl_pct=pnl,
                 hit_at=now_str,
+                session="close",
             )
             count += 1
             print(f"[tracker-expire] {sym} expired @ ${price:.2f} (PnL: {pnl:+.2f}%)")

@@ -323,6 +323,7 @@ class TestExpireWithBarCheck:
         assert recorded[0]["status"] == "expired"
         assert recorded[0]["exit_price"] == 9.80
         assert recorded[0]["pnl_pct"] < 0  # loss
+        assert recorded[0]["session"] == "close"
 
     def test_expire_tp_exit_uses_tp_price_not_snapshot(self):
         """APLZ scenario: stock ran 30% (snapshot=$31), but TP2=$25.73.
@@ -414,6 +415,7 @@ class TestExpireWithBarCheck:
         assert recorded[0]["exit_price"] == 9.70  # last bar close, NOT entry
         # PnL should reflect the loss: (9.70 - 10.0) / 10.0 = -3.0%
         assert recorded[0]["pnl_pct"] == -3.0
+        assert recorded[0]["session"] == "close"
 
     def test_expire_falls_back_to_entry_when_no_quote_or_bars(self):
         """When both quotes and bars return nothing, fall back to entry (PnL=0)."""
@@ -453,6 +455,7 @@ class TestExpireWithBarCheck:
         assert recorded[0]["status"] == "expired"
         assert recorded[0]["exit_price"] == 10.0  # entry fallback
         assert recorded[0]["pnl_pct"] == 0.0
+        assert recorded[0]["session"] == "close"
 
     def test_expire_prefers_live_quote_over_last_bar(self):
         """When live quote IS available, use it — don't override with bar close."""
@@ -496,6 +499,7 @@ class TestExpireWithBarCheck:
         assert recorded[0]["status"] == "expired"
         assert recorded[0]["exit_price"] == 10.30  # live quote, not bar close
         assert recorded[0]["pnl_pct"] == 3.0  # (10.30-10)/10 * 100
+        assert recorded[0]["session"] == "close"
 
 
 class TestResolveExitPrice:
