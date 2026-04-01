@@ -642,12 +642,12 @@ class SessionRunner:
 
             if in_opening_window and not relaxed:
                 confluence_floor = 15  # tighter filter during fakeout window
-                if card.stop_loss and card.entry:
+                if card.stop_price and card.entry_price:
                     # widen stop by 20% to survive opening wicks
-                    stop_dist = abs(card.entry - card.stop_loss)
+                    stop_dist = abs(card.entry_price - card.stop_price)
                     widened = stop_dist * 1.20
-                    card.stop_loss = round(card.entry - widened, 2)
-                    logging.info(f"[FAKEOUT_GUARD] {symbol.symbol}: widened stop to {card.stop_loss:.2f} (opening window)")
+                    card.stop_price = round(card.entry_price - widened, 2)
+                    logging.info(f"[FAKEOUT_GUARD] {symbol.symbol}: widened stop to {card.stop_price:.2f} (opening window)")
             else:
                 # Normal confluence floor
                 # Relaxed mode: only block if strong opposing signal (< 0)

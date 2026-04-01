@@ -55,6 +55,7 @@ class TradeCard:
     ai_concerns: list[str] = field(default_factory=list)  # LLM-flagged concerns
     risk_level: str = "low"      # "low", "medium", "high" — overall trade risk
     position_size: int = 0       # Suggested shares for the configured risk budget
+    side: str = "long"            # Always "long" — system is long-only
 
 
 @dataclass

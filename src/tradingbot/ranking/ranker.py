@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass
 
 from tradingbot.models import SymbolSnapshot
@@ -242,17 +244,25 @@ class Ranker:
 
         return round(min(100.0, max(0.0, base)), 1)
 
+    def _safe(self, value: float, label: str, symbol: str) -> float:
+        """Return *value* if finite, else 50.0 (neutral) and log a warning."""
+        if math.isfinite(value):
+            return value
+        logging.warning("[RANKER] %s: %s returned NaN/Inf, defaulting to 50", symbol, label)
+        return 50.0
+
     def score(self, stock: SymbolSnapshot) -> float:
-        g  = self._normalize_gap(stock)
-        rv = self._normalize_rel_vol(stock)
-        lq = self._normalize_liquidity(stock)
-        c  = stock.catalyst_score
-        m  = self._normalize_momentum(stock)
-        rs = self._normalize_rsi(stock)
-        mc = self._normalize_macd(stock)
-        sa = self._score_signal_alignment(stock)
-        ob = self._score_obv_divergence(stock)
-        gq = self._score_gap_quality(stock)
+        _s = stock.symbol
+        g  = self._safe(self._normalize_gap(stock), "gap", _s)
+        rv = self._safe(self._normalize_rel_vol(stock), "rel_vol", _s)
+        lq = self._safe(self._normalize_liquidity(stock), "liquidity", _s)
+        c  = self._safe(stock.catalyst_score, "catalyst", _s)
+        m  = self._safe(self._normalize_momentum(stock), "momentum", _s)
+        rs = self._safe(self._normalize_rsi(stock), "rsi", _s)
+        mc = self._safe(self._normalize_macd(stock), "macd", _s)
+        sa = self._safe(self._score_signal_alignment(stock), "signal_align", _s)
+        ob = self._safe(self._score_obv_divergence(stock), "obv", _s)
+        gq = self._safe(self._score_gap_quality(stock), "gap_quality", _s)
         # Weights sum to 1.0 — gap quality (6%) added, trimmed gap/relvol slightly.
         return (0.17 * g + 0.16 * rv + 0.11 * lq + 0.15 * c
                 + 0.05 * m + 0.10 * rs + 0.05 * mc
@@ -274,16 +284,17 @@ class CatalystWeightedRanker(Ranker):
     """
 
     def score(self, stock: SymbolSnapshot) -> float:
-        g  = self._normalize_gap(stock)
-        rv = self._normalize_rel_vol(stock)
-        lq = self._normalize_liquidity(stock)
-        c  = stock.catalyst_score
-        m  = self._normalize_momentum(stock)
-        rs = self._normalize_rsi(stock)
-        mc = self._normalize_macd(stock)
-        sa = self._score_signal_alignment(stock)
-        ob = self._score_obv_divergence(stock)
-        gq = self._score_gap_quality(stock)
+        _s = stock.symbol
+        g  = self._safe(self._normalize_gap(stock), "gap", _s)
+        rv = self._safe(self._normalize_rel_vol(stock), "rel_vol", _s)
+        lq = self._safe(self._normalize_liquidity(stock), "liquidity", _s)
+        c  = self._safe(stock.catalyst_score, "catalyst", _s)
+        m  = self._safe(self._normalize_momentum(stock), "momentum", _s)
+        rs = self._safe(self._normalize_rsi(stock), "rsi", _s)
+        mc = self._safe(self._normalize_macd(stock), "macd", _s)
+        sa = self._safe(self._score_signal_alignment(stock), "signal_align", _s)
+        ob = self._safe(self._score_obv_divergence(stock), "obv", _s)
+        gq = self._safe(self._score_gap_quality(stock), "gap_quality", _s)
         # Weights: catalyst 33%, gap quality 8%, gap 12%, relVol 10%, liquidity 9%,
         #          RSI 7%, momentum 5%, MACD 5%, signal_align+OBV → 11% combined
         return (0.12 * g + 0.10 * rv + 0.09 * lq + 0.33 * c
