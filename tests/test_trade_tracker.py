@@ -254,7 +254,7 @@ class TestExpireWithBarCheck:
         # _fetch_quotes → snapshot below entry
         tracker._fetch_quotes = lambda syms: {"ATPC": 2.60}
         # _fetch_session_bars → high shows TP2 was hit
-        tracker._fetch_session_bars = lambda t: {"ATPC": {"high": 2.88, "low": 2.54}}
+        tracker._fetch_session_bars = lambda t: {"ATPC": {"high": 2.88, "low": 2.54, "last_close": 2.60}}
 
         recorded: list[dict] = []
 
@@ -294,7 +294,7 @@ class TestExpireWithBarCheck:
             tp1=10.50, tp2=11.0, alerted_at="2026-03-27T14:00:00+00:00",
         )]
         tracker._fetch_quotes = lambda syms: {"FAIL": 9.80}
-        tracker._fetch_session_bars = lambda t: {"FAIL": {"high": 10.20, "low": 9.55}}
+        tracker._fetch_session_bars = lambda t: {"FAIL": {"high": 10.20, "low": 9.55, "last_close": 9.80}}
 
         recorded: list[dict] = []
 
@@ -336,7 +336,7 @@ class TestExpireWithBarCheck:
         )]
         # Snapshot is way above TP2 — stock kept running
         tracker._fetch_quotes = lambda syms: {"APLZ": 31.07}
-        tracker._fetch_session_bars = lambda t: {"APLZ": {"high": 32.0, "low": 24.00}}
+        tracker._fetch_session_bars = lambda t: {"APLZ": {"high": 32.0, "low": 24.00, "last_close": 31.00}}
 
         recorded: list[dict] = []
 
@@ -369,6 +369,133 @@ class TestExpireWithBarCheck:
         tp2_pnl = ((25.73 - 24.38) / 24.38) * 100
         expected_pnl = round((tp1_pnl + tp2_pnl) / 2, 2)
         assert recorded[0]["pnl_pct"] == expected_pnl  # ~4.78%, blended
+
+    def test_expire_uses_last_bar_close_when_no_quote(self):
+        """When _fetch_quotes returns nothing but bars have data,
+        use last_close as exit price so PnL is real, not zero."""
+        tracker = TradeTracker()
+        tracker._trail_stop_to_level = lambda t, lvl: None
+
+        trades = [_make_trade(
+            symbol="NOQUOTE", entry=10.0, stop=9.50,
+            tp1=10.50, tp2=11.0, alerted_at="2026-03-31T14:00:00+00:00",
+        )]
+        # No quote returned
+        tracker._fetch_quotes = lambda syms: {}
+        # But bars have data — last bar closed at 9.70
+        tracker._fetch_session_bars = lambda t: {
+            "NOQUOTE": {"high": 10.20, "low": 9.60, "last_close": 9.70}
+        }
+
+        recorded: list[dict] = []
+
+        def fake_load():
+            return trades
+
+        def fake_update(**kwargs):
+            recorded.append(kwargs)
+
+        def patched_expire():
+            from tradingbot.web import alert_store as _as
+            _orig_load = _as.load_open_outcomes
+            _orig_update = _as.update_outcome
+            _as.load_open_outcomes = fake_load
+            _as.update_outcome = fake_update
+            try:
+                return tracker.expire_open_trades()
+            finally:
+                _as.load_open_outcomes = _orig_load
+                _as.update_outcome = _orig_update
+
+        count = patched_expire()
+
+        assert count == 1
+        assert recorded[0]["status"] == "expired"
+        assert recorded[0]["exit_price"] == 9.70  # last bar close, NOT entry
+        # PnL should reflect the loss: (9.70 - 10.0) / 10.0 = -3.0%
+        assert recorded[0]["pnl_pct"] == -3.0
+
+    def test_expire_falls_back_to_entry_when_no_quote_or_bars(self):
+        """When both quotes and bars return nothing, fall back to entry (PnL=0)."""
+        tracker = TradeTracker()
+        tracker._trail_stop_to_level = lambda t, lvl: None
+
+        trades = [_make_trade(
+            symbol="NODATA", entry=10.0, stop=9.50,
+            tp1=10.50, tp2=11.0, alerted_at="2026-03-31T14:00:00+00:00",
+        )]
+        tracker._fetch_quotes = lambda syms: {}
+        tracker._fetch_session_bars = lambda t: {}
+
+        recorded: list[dict] = []
+
+        def fake_load():
+            return trades
+
+        def fake_update(**kwargs):
+            recorded.append(kwargs)
+
+        def patched_expire():
+            from tradingbot.web import alert_store as _as
+            _orig_load = _as.load_open_outcomes
+            _orig_update = _as.update_outcome
+            _as.load_open_outcomes = fake_load
+            _as.update_outcome = fake_update
+            try:
+                return tracker.expire_open_trades()
+            finally:
+                _as.load_open_outcomes = _orig_load
+                _as.update_outcome = _orig_update
+
+        count = patched_expire()
+
+        assert count == 1
+        assert recorded[0]["status"] == "expired"
+        assert recorded[0]["exit_price"] == 10.0  # entry fallback
+        assert recorded[0]["pnl_pct"] == 0.0
+
+    def test_expire_prefers_live_quote_over_last_bar(self):
+        """When live quote IS available, use it — don't override with bar close."""
+        tracker = TradeTracker()
+        tracker._trail_stop_to_level = lambda t, lvl: None
+
+        trades = [_make_trade(
+            symbol="HASQUOTE", entry=10.0, stop=9.50,
+            tp1=10.50, tp2=11.0, alerted_at="2026-03-31T14:00:00+00:00",
+        )]
+        # Live quote available at 10.30
+        tracker._fetch_quotes = lambda syms: {"HASQUOTE": 10.30}
+        # Bar last_close is slightly different (10.25)
+        tracker._fetch_session_bars = lambda t: {
+            "HASQUOTE": {"high": 10.40, "low": 9.60, "last_close": 10.25}
+        }
+
+        recorded: list[dict] = []
+
+        def fake_load():
+            return trades
+
+        def fake_update(**kwargs):
+            recorded.append(kwargs)
+
+        def patched_expire():
+            from tradingbot.web import alert_store as _as
+            _orig_load = _as.load_open_outcomes
+            _orig_update = _as.update_outcome
+            _as.load_open_outcomes = fake_load
+            _as.update_outcome = fake_update
+            try:
+                return tracker.expire_open_trades()
+            finally:
+                _as.load_open_outcomes = _orig_load
+                _as.update_outcome = _orig_update
+
+        count = patched_expire()
+
+        assert count == 1
+        assert recorded[0]["status"] == "expired"
+        assert recorded[0]["exit_price"] == 10.30  # live quote, not bar close
+        assert recorded[0]["pnl_pct"] == 3.0  # (10.30-10)/10 * 100
 
 
 class TestResolveExitPrice:

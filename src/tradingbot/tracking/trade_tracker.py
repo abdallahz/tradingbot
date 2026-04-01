@@ -146,13 +146,18 @@ class TradeTracker:
         self,
         trades: list[dict],
     ) -> dict[str, dict[str, float]]:
-        """Return {symbol: {"high": session_high, "low": session_low}}.
+        """Return {symbol: {"high": …, "low": …, "last_close": …}}.
 
         For each open trade, fetch 15-min bars for today and filter to
         only bars whose timestamp is >= the alert's ``alerted_at`` time.
         This prevents a pre-alert spike from counting as a TP hit.
 
-        Returns the maximum bar high and minimum bar low *since* the alert.
+        Returns the maximum bar high, minimum bar low, and the **close
+        price of the most recent bar** *since* the alert.  ``last_close``
+        is critical for the expire path: when the live-quote API returns
+        nothing (common on IEX after hours), the last bar close is the
+        best available proxy for the closing market price.
+
         If a symbol has no bars after the alert time, it is omitted from
         the result dict.
         """
@@ -244,6 +249,8 @@ class TradeTracker:
 
                 highs: list[float] = []
                 lows: list[float] = []
+                last_close: float = 0.0
+                last_ts: datetime | None = None
                 for bar in sym_bars:
                     bar_ts = getattr(bar, "timestamp", None)
                     if bar_ts is None:
@@ -255,15 +262,21 @@ class TradeTracker:
                     if bar_ts >= alert_utc:
                         h = getattr(bar, "high", 0.0) or 0.0
                         lo = getattr(bar, "low", 0.0) or 0.0
+                        c = getattr(bar, "close", 0.0) or 0.0
                         if h > 0:
                             highs.append(float(h))
                         if lo > 0:
                             lows.append(float(lo))
+                        # Track the most recent bar's close
+                        if c > 0 and (last_ts is None or bar_ts > last_ts):
+                            last_close = float(c)
+                            last_ts = bar_ts
 
                 if highs or lows:
                     result[sym] = {
                         "high": max(highs) if highs else 0.0,
                         "low": min(lows) if lows else 0.0,
+                        "last_close": last_close,
                     }
                     log.info(
                         f"[tracker] {sym} bars since alert: "
@@ -598,14 +611,19 @@ class TradeTracker:
             entry = float(trade.get("entry_price") or 0)
             price = prices.get(sym, 0.0)
 
-            # If no live quote, fall back to entry_price (PnL=0 is better
-            # than exit=$0.00 which looks broken in the recap)
-            if price <= 0 and entry > 0:
+            # If no live quote, use the last bar close as best proxy
+            # for the closing price.  Only fall back to entry (PnL=0) as
+            # an absolute last resort.
+            extremes = bar_extremes.get(sym, {})
+            last_bar_close = extremes.get("last_close", 0.0)
+            if price <= 0 and last_bar_close > 0:
+                price = last_bar_close
+                print(f"[tracker-expire] {sym}: no quote, using last bar close ${price:.2f}")
+            elif price <= 0 and entry > 0:
                 price = entry
-                print(f"[tracker-expire] {sym}: NO quote, using entry ${entry:.2f} as exit → PnL=0")
+                print(f"[tracker-expire] {sym}: NO quote or bars, using entry ${entry:.2f} as exit → PnL=0")
 
             # ── Final bar-based check: did a TP actually hit today? ───
-            extremes = bar_extremes.get(sym, {})
             sess_high = extremes.get("high", 0.0)
             sess_low = extremes.get("low", 0.0)
             bar_status = self._evaluate(trade, price, sess_high, sess_low)
