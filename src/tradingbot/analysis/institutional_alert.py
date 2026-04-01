@@ -424,7 +424,7 @@ def format_institutional_alert(
     lines = [
         f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
         f"<b>{grade_line}</b>",
-        f"Score: <code>{ctx.confluence_score:.0f}/100</code>  |  Session: {card.session_tag.upper()}",
+        f"Score: <code>{card.score:.0f}/100</code>  |  Session: {card.session_tag.upper()}",
         "",
         "━━━━━ 📊 <b>MARKET CONTEXT</b> ━━━━━",
         f"Volume   : <code>{ctx.relative_volume:.1f}x</code> rel — {vol_label}",
