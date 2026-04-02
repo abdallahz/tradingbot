@@ -450,6 +450,81 @@ def api_diag_tracker():
     return jsonify(result)
 
 
+@app.route("/api/diag/repair-expired")
+def api_diag_repair_expired():
+    """One-time fix: re-resolve expired/breakeven trades that have exit=entry (PnL=0).
+
+    Fetches daily bar close from Alpaca and recalculates PnL.
+    """
+    try:
+        from tradingbot.tracking.trade_tracker import TradeTracker
+        from tradingbot.web.alert_store import _get_supabase, update_outcome
+
+        target_date = request.args.get("date", "2026-04-01")
+        sb = _get_supabase()
+        if sb is None:
+            return jsonify({"error": "no supabase"})
+
+        # Find outcomes where exit_price == entry_price (the broken ones)
+        resp = sb.table("trade_outcomes").select("*").eq("trade_date", target_date).execute()
+        outcomes = resp.data or []
+        broken = [o for o in outcomes
+                  if o.get("exit_price") and o.get("entry_price")
+                  and abs(float(o["exit_price"]) - float(o["entry_price"])) < 0.001
+                  and o.get("status") in ("expired", "breakeven")]
+
+        if not broken:
+            return jsonify({"message": "No broken outcomes found", "checked": len(outcomes)})
+
+        symbols = list({o["symbol"] for o in broken})
+        tracker = TradeTracker()
+        daily_closes = tracker._fetch_daily_close(symbols)
+
+        fixes = []
+        for o in broken:
+            sym = o["symbol"]
+            entry = float(o["entry_price"])
+            close_price = daily_closes.get(sym, 0.0)
+            if close_price <= 0:
+                fixes.append({"symbol": sym, "id": o["id"], "fixed": False, "reason": "no daily bar"})
+                continue
+
+            # Recalculate PnL
+            pnl = round(((close_price - entry) / entry) * 100, 2)
+            # Check if TP1 was previously hit (blend)
+            prev_status = o.get("status", "expired")
+            tp1 = float(o.get("tp1_price") or 0)
+            if prev_status == "tp1_hit" and tp1 > 0:
+                pnl_tp1 = round(((tp1 - entry) / entry) * 100, 2)
+                pnl = round((pnl_tp1 + pnl) / 2, 2)
+
+            # Determine correct status based on close price vs stop/tp
+            stop = float(o.get("stop_price") or 0)
+            new_status = "expired"
+            if stop > 0 and close_price <= stop:
+                new_status = "stopped"
+                pnl = round(((stop - entry) / entry) * 100, 2)
+                close_price = stop
+
+            update_outcome(
+                outcome_id=o["id"],
+                status=new_status,
+                exit_price=close_price,
+                pnl_pct=pnl,
+                session="close",
+            )
+            fixes.append({
+                "symbol": sym, "id": o["id"], "fixed": True,
+                "entry": entry, "exit": close_price,
+                "old_status": prev_status, "new_status": new_status,
+                "pnl": pnl,
+            })
+
+        return jsonify({"repaired": len([f for f in fixes if f.get("fixed")]), "details": fixes})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 # ── Entry point (local dev only) ───────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

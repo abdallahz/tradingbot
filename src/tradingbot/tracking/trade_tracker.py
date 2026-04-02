@@ -585,6 +585,46 @@ class TradeTracker:
         return round(pnl_final, 2)
 
     # ── Expire remaining open trades at market close ───────────────────────
+    def _fetch_daily_close(self, symbols: list[str]) -> dict[str, float]:
+        """Fetch today's daily bar close for each symbol (works after market close).
+
+        Daily bars are available even when intraday IEX quotes stop.
+        Returns {symbol: close_price}.
+        """
+        client = self._get_alpaca()
+        if not client or not symbols:
+            return {}
+        try:
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+
+            today = datetime.now(ET).date()
+            start_dt = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+
+            req = StockBarsRequest(
+                symbol_or_symbols=symbols,
+                timeframe=TimeFrame(1, TimeFrameUnit.Day),  # type: ignore[call-arg]
+                start=start_dt,
+                feed="iex",
+            )
+            bars_resp = client.get_stock_bars(req)
+            result: dict[str, float] = {}
+            for sym in symbols:
+                try:
+                    sym_bars = bars_resp[sym] if bars_resp else []
+                except (KeyError, TypeError):
+                    sym_bars = []
+                if sym_bars:
+                    last_bar = sym_bars[-1]
+                    c = getattr(last_bar, "close", 0.0) or 0.0
+                    if c > 0:
+                        result[sym] = float(c)
+            print(f"[tracker-expire] daily bar fallback: got closes for {len(result)}/{len(symbols)} symbols")
+            return result
+        except Exception as exc:
+            log.warning(f"[tracker-expire] daily bar fetch failed: {exc}")
+            return {}
+
     def expire_open_trades(self) -> int:
         """Mark any remaining open trades as 'expired'.  Called at EOD.
 
@@ -608,9 +648,16 @@ class TradeTracker:
         # Also fetch bar data for a final TP/stop check before expiring.
         bar_extremes = self._fetch_session_bars(open_trades)
 
-        if not prices:
+        # Fallback: fetch daily bar closes (works after market close when
+        # intraday quotes/bars are unavailable on IEX free tier).
+        missing_syms = [s for s in symbols if s not in prices or prices[s] <= 0]
+        daily_closes: dict[str, float] = {}
+        if missing_syms:
+            daily_closes = self._fetch_daily_close(missing_syms)
+
+        if not prices and not daily_closes:
             print(
-                f"[tracker-expire] WARNING: No quotes returned for {len(symbols)} symbols — "
+                f"[tracker-expire] WARNING: No quotes or daily bars for {len(symbols)} symbols — "
                 "will use entry_price as exit (PnL=0)"
             )
         now_str = datetime.now(timezone.utc).isoformat()
@@ -620,17 +667,22 @@ class TradeTracker:
             entry = float(trade.get("entry_price") or 0)
             price = prices.get(sym, 0.0)
 
-            # If no live quote, use the last bar close as best proxy
-            # for the closing price.  Only fall back to entry (PnL=0) as
-            # an absolute last resort.
+            # If no live quote, use fallback chain:
+            # 1. Last intraday bar close (from _fetch_session_bars)
+            # 2. Daily bar close (from _fetch_daily_close — works after hours)
+            # 3. Entry price as absolute last resort (PnL=0)
             extremes = bar_extremes.get(sym, {})
             last_bar_close = extremes.get("last_close", 0.0)
+            daily_close = daily_closes.get(sym, 0.0)
             if price <= 0 and last_bar_close > 0:
                 price = last_bar_close
-                print(f"[tracker-expire] {sym}: no quote, using last bar close ${price:.2f}")
+                print(f"[tracker-expire] {sym}: no quote, using last intraday bar close ${price:.2f}")
+            elif price <= 0 and daily_close > 0:
+                price = daily_close
+                print(f"[tracker-expire] {sym}: no quote/intraday bars, using daily bar close ${price:.2f}")
             elif price <= 0 and entry > 0:
                 price = entry
-                print(f"[tracker-expire] {sym}: NO quote or bars, using entry ${entry:.2f} as exit → PnL=0")
+                print(f"[tracker-expire] {sym}: NO quote or bars at all, using entry ${entry:.2f} as exit → PnL=0")
 
             # ── Final bar-based check: did a TP actually hit today? ───
             sess_high = extremes.get("high", 0.0)
