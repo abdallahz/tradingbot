@@ -54,6 +54,15 @@ class TradeTracker:
             from alpaca.data.historical import StockHistoricalDataClient
             key = os.getenv("ALPACA_API_KEY", "").strip()
             secret = os.getenv("ALPACA_API_SECRET", "").strip()
+            # Fallback: read from broker.yaml via Config system
+            if not key or not secret:
+                try:
+                    from tradingbot.config import Config
+                    cfg = Config().broker().get("alpaca", {})
+                    key = key or cfg.get("api_key", "")
+                    secret = secret or cfg.get("api_secret", "")
+                except Exception:
+                    pass
             if not key or not secret:
                 log.warning("[tracker] Alpaca credentials not set")
                 return None

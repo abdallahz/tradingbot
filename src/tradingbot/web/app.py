@@ -398,9 +398,20 @@ def api_diag_tracker():
     import os
     result = {}
 
-    # 1. Check Alpaca credentials
+    # 1. Check Alpaca credentials (env vars + broker.yaml fallback)
     key = os.getenv("ALPACA_API_KEY", "").strip()
     secret = os.getenv("ALPACA_API_SECRET", "").strip()
+    result["alpaca_key_source"] = "env" if key else "none"
+    if not key or not secret:
+        try:
+            from tradingbot.config import Config
+            cfg = Config().broker().get("alpaca", {})
+            key = key or cfg.get("api_key", "")
+            secret = secret or cfg.get("api_secret", "")
+            if key:
+                result["alpaca_key_source"] = "broker.yaml"
+        except Exception:
+            pass
     result["alpaca_key_set"] = bool(key)
     result["alpaca_secret_set"] = bool(secret)
 
