@@ -16,7 +16,7 @@ import os
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 # Load .env for local dev
 try:
