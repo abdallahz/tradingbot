@@ -236,6 +236,15 @@ _HANDLERS = {
 
 
 def main() -> None:
+    # ── Guard: disable worker when Render cron jobs handle scheduling ──
+    # Set WORKER_ENABLED=false on Heroku to prevent duplicate scans.
+    # When disabled, the worker process exits immediately (Heroku keeps
+    # the web dyno alive for the dashboard).
+    import os
+    if os.getenv("WORKER_ENABLED", "true").strip().lower() in ("false", "0", "no"):
+        log.info("WORKER_ENABLED=false — worker disabled (Render crons handle scheduling). Exiting.")
+        return
+
     log.info(f"Worker started. Project root: {ROOT}")
     # Track which jobs have already run today (reset at midnight ET)
     ran_today: dict[str, date] = {}
