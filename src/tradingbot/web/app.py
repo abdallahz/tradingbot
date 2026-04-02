@@ -452,33 +452,46 @@ def api_diag_tracker():
 
 @app.route("/api/diag/repair-expired")
 def api_diag_repair_expired():
-    """One-time fix: re-resolve expired/breakeven trades that have exit=entry (PnL=0).
+    """Re-resolve expired/breakeven trades using the correct day's closing price.
 
-    Fetches daily bar close from Alpaca and recalculates PnL.
+    Fetches daily bar close from Alpaca for the TRADE DATE (not today).
+    Use ?date=2026-04-01 to target a specific day.
+    Use ?force=1 to re-repair previously-repaired trades (status=expired with wrong exit).
     """
     try:
         from tradingbot.tracking.trade_tracker import TradeTracker
         from tradingbot.web.alert_store import _get_supabase, update_outcome
 
         target_date = request.args.get("date", "2026-04-01")
+        force = request.args.get("force", "0") == "1"
         sb = _get_supabase()
         if sb is None:
             return jsonify({"error": "no supabase"})
 
-        # Find outcomes where exit_price == entry_price (the broken ones)
         resp = sb.table("trade_outcomes").select("*").eq("trade_date", target_date).execute()
         outcomes = resp.data or []
-        broken = [o for o in outcomes
-                  if o.get("exit_price") and o.get("entry_price")
-                  and abs(float(o["exit_price"]) - float(o["entry_price"])) < 0.001
-                  and o.get("status") in ("expired", "breakeven")]
+
+        if force:
+            # Re-repair ALL expired/breakeven trades for the date
+            broken = [o for o in outcomes
+                      if o.get("status") in ("expired", "breakeven")]
+        else:
+            # Only fix trades where exit_price == entry_price (original bug)
+            broken = [o for o in outcomes
+                      if o.get("exit_price") and o.get("entry_price")
+                      and abs(float(o["exit_price"]) - float(o["entry_price"])) < 0.001
+                      and o.get("status") in ("expired", "breakeven")]
 
         if not broken:
-            return jsonify({"message": "No broken outcomes found", "checked": len(outcomes)})
+            return jsonify({"message": "No trades to repair", "checked": len(outcomes)})
 
         symbols = list({o["symbol"] for o in broken})
         tracker = TradeTracker()
-        daily_closes = tracker._fetch_daily_close(symbols)
+        # Parse the target date and fetch daily bars for THAT date, not today
+        from datetime import date as date_type
+        parts = target_date.split("-")
+        trade_date_obj = date_type(int(parts[0]), int(parts[1]), int(parts[2]))
+        daily_closes = tracker._fetch_daily_close(symbols, target_date=trade_date_obj)
 
         fixes = []
         for o in broken:

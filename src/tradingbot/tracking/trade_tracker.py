@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import pytz
@@ -585,8 +585,12 @@ class TradeTracker:
         return round(pnl_final, 2)
 
     # ── Expire remaining open trades at market close ───────────────────────
-    def _fetch_daily_close(self, symbols: list[str]) -> dict[str, float]:
-        """Fetch today's daily bar close for each symbol (works after market close).
+    def _fetch_daily_close(self, symbols: list[str], target_date: date | None = None) -> dict[str, float]:
+        """Fetch daily bar close for each symbol on a specific date.
+
+        Args:
+            symbols: List of ticker symbols.
+            target_date: The date to fetch closes for. Defaults to today (ET).
 
         Daily bars are available even when intraday IEX quotes stop.
         Returns {symbol: close_price}.
@@ -598,13 +602,16 @@ class TradeTracker:
             from alpaca.data.requests import StockBarsRequest
             from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
-            today = datetime.now(ET).date()
-            start_dt = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+            d = target_date or datetime.now(ET).date()
+            start_dt = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+            # End is next day to ensure we get the target date's bar
+            end_dt = datetime(d.year, d.month, d.day, tzinfo=timezone.utc) + timedelta(days=1)
 
             req = StockBarsRequest(
                 symbol_or_symbols=symbols,
                 timeframe=TimeFrame(1, TimeFrameUnit.Day),  # type: ignore[call-arg]
                 start=start_dt,
+                end=end_dt,
                 feed="iex",
             )
             bars_resp = client.get_stock_bars(req)
