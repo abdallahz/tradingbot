@@ -338,7 +338,7 @@ def api_performance():
 
 @app.route("/api/health")
 def api_health():
-    return jsonify({"status": "ok", "build": "91fddcf-v2"})
+    return jsonify({"status": "ok", "build": "21514df"})
 
 
 @app.route("/healthz")
