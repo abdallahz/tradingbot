@@ -430,6 +430,12 @@ def api_diag_tracker():
     except Exception as e:
         result["tick_error"] = str(e)
 
+    # 5. List ALL env vars containing "ALPACA" (redacted values)
+    alpaca_vars = {k: f"{v[:4]}…{v[-4:]}" if len(v) > 8 else "***"
+                   for k, v in os.environ.items()
+                   if "ALPACA" in k.upper() or "APCA" in k.upper()}
+    result["alpaca_env_vars"] = alpaca_vars if alpaca_vars else "NONE — no ALPACA/APCA env vars found"
+
     return jsonify(result)
 
 
