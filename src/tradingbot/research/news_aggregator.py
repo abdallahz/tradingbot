@@ -388,7 +388,7 @@ class CatalystScorerV2:
         # Fall back to keyword-based scoring
         for symbol, news_items in news_by_symbol.items():
             if not news_items:
-                scores[symbol] = 50.0  # Neutral baseline
+                scores[symbol] = 30.0  # Below-average: no catalyst = penalty
                 continue
             
             # Aggregate relevance scores
@@ -447,7 +447,7 @@ class CatalystScorerV2:
             scores: dict[str, float] = {}
             for symbol, news_items in news_by_symbol.items():
                 if symbol not in ai_results:
-                    scores[symbol] = 50.0
+                    scores[symbol] = 30.0  # No AI data = below-average
                     continue
                 
                 sentiment = ai_results[symbol]

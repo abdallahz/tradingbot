@@ -1,6 +1,6 @@
 risk:
-  max_trades_per_day: 5
-  o2_max_trades_per_day: 3
+  max_trades_per_day: 8
+  o2_max_trades_per_day: 2
   daily_loss_lockout_pct: 1.5
   max_consecutive_losses: 3
   risk_per_trade_pct: 0.5

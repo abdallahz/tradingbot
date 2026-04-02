@@ -16,9 +16,9 @@ def test_catalyst_scorer_baseline():
     scorer = CatalystScorerV2(agg)
     scores = scorer.score_symbols(["UNKN", "FAKE"])
     
-    # Symbols without news should get neutral baseline
+    # Symbols without news should get penalized baseline (30 = no catalyst)
     assert all(0 <= score <= 100 for score in scores.values())
-    assert scores["UNKN"] == 50.0
+    assert scores["UNKN"] == 30.0
 
 
 def test_catalyst_scorer_with_mocked_news():

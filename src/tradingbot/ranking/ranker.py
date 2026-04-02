@@ -269,7 +269,7 @@ class Ranker:
         g  = self._normalize_gap(stock)
         rv = self._normalize_rel_vol(stock)
         lq = self._normalize_liquidity(stock)
-        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 50.0
+        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 30.0
         m  = self._normalize_momentum(stock)
         rs = self._normalize_rsi(stock)
         mc = self._normalize_macd(stock)
@@ -301,7 +301,7 @@ class CatalystWeightedRanker(Ranker):
         g  = self._normalize_gap(stock)
         rv = self._normalize_rel_vol(stock)
         lq = self._normalize_liquidity(stock)
-        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 50.0
+        c  = stock.catalyst_score if math.isfinite(stock.catalyst_score) else 30.0
         m  = self._normalize_momentum(stock)
         rs = self._normalize_rsi(stock)
         mc = self._normalize_macd(stock)

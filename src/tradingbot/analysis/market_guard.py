@@ -42,7 +42,7 @@ class MarketGuard:
     - RED:     SPY < -1.5%  → halt new entries entirely
     """
 
-    YELLOW_THRESHOLD = -0.5   # SPY % change to enter yellow
+    YELLOW_THRESHOLD = -0.3   # SPY % change to enter yellow (tighter: catch weakness early)
     RED_THRESHOLD = -1.5      # SPY % change to enter red
 
     def check(self) -> MarketHealth:

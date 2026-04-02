@@ -217,7 +217,7 @@ class SessionRunner:
             premarket_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
             # Apply catalyst scores
             for snap in premarket_snapshots:
-                snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
             
             premarket = self._run_session(
                 snapshots=premarket_snapshots,
@@ -237,7 +237,7 @@ class SessionRunner:
             # For midday, re-fetch current snapshots
             midday_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
             for snap in midday_snapshots:
-                snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
             midday = self._run_session(
                 snapshots=midday_snapshots,
                 session_tag="midday",
@@ -267,7 +267,7 @@ class SessionRunner:
             premarket_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
             # Apply catalyst scores
             for snap in premarket_snapshots:
-                snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
             
             morning_results = self._run_three_option_session(
                 snapshots=premarket_snapshots,
@@ -291,7 +291,7 @@ class SessionRunner:
         if self.use_real_data and self.alpaca_client:
             midday_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
             for snap in midday_snapshots:
-                snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
             midday_results = self._run_three_option_session(
                 snapshots=midday_snapshots,
                 catalyst_scores=catalyst_scores,
@@ -543,6 +543,35 @@ class SessionRunner:
                 return False
         return True
 
+    def _passes_gap_fade_check(
+        self,
+        symbol: SymbolSnapshot,
+        dropped: list[tuple[str, str]] | None,
+        relaxed: bool = False,
+    ) -> bool:
+        """Return False if the gap is fading (price below VWAP after a positive gap).
+
+        A stock that gapped up but is now trading below VWAP indicates sellers
+        are absorbing the gap — high probability of continued fade. In relaxed
+        mode this check is skipped (catalyst-driven entries tolerate more drift).
+        """
+        if relaxed:
+            return True
+        # Only apply to stocks that gapped up
+        if symbol.gap_pct <= 0:
+            return True
+        # If price is below VWAP, the gap is fading
+        if symbol.vwap > 0 and symbol.price < symbol.vwap:
+            if dropped is not None:
+                dropped.append((symbol.symbol,
+                    f"gap_fade:price={symbol.price:.2f}<vwap={symbol.vwap:.2f}"))
+            logging.info(
+                f"[DROP] {symbol.symbol}: gap fading — price ${symbol.price:.2f} "
+                f"below VWAP ${symbol.vwap:.2f} (gap was +{symbol.gap_pct:.1f}%)"
+            )
+            return False
+        return True
+
     def _build_cards(
         self,
         ranked: list,
@@ -601,7 +630,21 @@ class SessionRunner:
             logging.warning(f"[MARKET_GUARD] Skipping all card generation: {mh.reason}")
             return cards
 
+        # Yellow regime: raise effective score floor by 5 points to filter
+        # marginal setups in weak-tape environments.
+        yellow_score_penalty = 5.0 if (mh and mh.regime == "yellow") else 0.0
+
         for item in ranked:
+            # ── Yellow regime score gate ──────────────────────────
+            if yellow_score_penalty > 0 and item.score < (self.ranker.min_score + yellow_score_penalty):
+                if dropped is not None:
+                    dropped.append((item.snapshot.symbol, f"yellow_regime_low_score:{item.score:.1f}"))
+                logging.info(
+                    f"[MARKET_GUARD] {item.snapshot.symbol}: score {item.score:.1f} "
+                    f"< {self.ranker.min_score + yellow_score_penalty:.0f} (yellow regime penalty)"
+                )
+                continue
+
             if not rm.allow_new_trade(risk_state):
                 if dropped is not None:
                     dropped.append((item.snapshot.symbol, "risk_lockout"))
@@ -621,6 +664,12 @@ class SessionRunner:
 
             # ── VWAP distance filter (regime-adaptive + auto-tune) ──────
             if not self._passes_vwap_distance(symbol, dropped):
+                continue
+
+            # ── Gap fade detection ──────────────────────────────────
+            # If the stock gapped up but current price is below VWAP,
+            # the gap is fading — skip to avoid catching falling knives.
+            if not self._passes_gap_fade_check(symbol, dropped, relaxed):
                 continue
 
             can_long = has_valid_setup(symbol, volume_spike)
@@ -711,8 +760,6 @@ class SessionRunner:
                     dropped.append((symbol.symbol, f"low_confluence:{confluence:.0f}"))
                 logging.info(f"[DROP] {symbol.symbol}: low_confluence={confluence:.0f} (floor={confluence_floor}, patterns={symbol.patterns})")
                 continue
-            # Blend confluence bonus into the ranker score (30% weight, cap 100)
-            card.score = round(min(100.0, card.score * 0.7 + confluence * 0.3), 2)
 
             # ── AI Trade Validation (LLM "second opinion") ──
             # Disabled by default (paid API). Enable via broker.yaml: ai_trade_validation_enabled: true
@@ -730,7 +777,9 @@ class SessionRunner:
                         dropped.append((symbol.symbol, f"ai_rejected:confidence={validation.confidence}"))
                     continue
 
-            # ── Confluence engine (multi-factor false-positive filter) ──
+            # ── Confluence engine (multi-factor scoring) ──
+            # Replaces simple pattern-only blending with 5-factor institutional check:
+            # volume profile, market trend, ATR exhaustion, tech stack, catalyst.
             spy_pct = mh.spy_change_pct if mh else 0.0
             qqq_pct = mh.qqq_change_pct if mh else 0.0
             open_price = symbol.tech_indicators.get("vwap", symbol.price)  # best proxy for open
@@ -764,6 +813,23 @@ class SessionRunner:
                     dropped.append((symbol.symbol, f"confluence_veto:{confluence_result.veto_reason}"))
                 logging.info(f"[DROP] {symbol.symbol}: {confluence_result.veto_reason}")
                 continue
+
+            # In strict mode, block Grade-F setups (composite < 40)
+            if not relaxed and confluence_result.grade == "F":
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"grade_F:{confluence_result.composite_score:.0f}"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: Grade F confluence "
+                    f"(score={confluence_result.composite_score:.0f})")
+                continue
+
+            # Blend confluence engine composite into the ranker score.
+            # Use the multi-factor composite (0-100) instead of the simple
+            # pattern-only score for a more accurate quality signal.
+            # 60% ranker (gap/vol/tech) + 40% confluence engine (multi-factor)
+            card.score = round(min(100.0,
+                card.score * 0.60 + confluence_result.composite_score * 0.40
+            ), 2)
 
             # Build volume profile for alert context
             vol_profile = classify_volume_profile(
@@ -867,7 +933,7 @@ class SessionRunner:
         else:
             snapshots = [s for s in get_midday_snapshots() if s.symbol in universe_set]
         for snap in snapshots:
-            snap.catalyst_score = catalyst_scores.get(snap.symbol, 50.0)
+            snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
         return snapshots
 
     def _get_night_research_picks(

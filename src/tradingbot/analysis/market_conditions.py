@@ -148,21 +148,21 @@ class MarketConditionAnalyzer:
         if volatility == "high":
             return {
                 "max_vwap_distance_pct": 2.0,   # tighter: avoid chasing extended gaps
-                "min_catalyst_score": 45,         # raise bar: more noise on wild days
-                "min_relative_volume": 3.5,       # demand stronger volume conviction
-                "max_trades_per_day": 6,          # fewer but higher-quality slots
+                "min_catalyst_score": 50,         # raise bar: more noise on wild days
+                "min_relative_volume": 4.0,       # demand stronger volume conviction
+                "max_trades_per_day": 5,          # fewer but higher-quality slots
             }
         if volatility == "low":
             return {
-                "max_vwap_distance_pct": 4.0,     # widen: moves are smaller
-                "min_catalyst_score": 35,          # lower bar to find setups
-                "min_relative_volume": 2.5,        # accept lower volume threshold
-                "max_trades_per_day": 10,          # more slots to compensate for quality
+                "max_vwap_distance_pct": 3.5,     # widen slightly: moves are smaller
+                "min_catalyst_score": 40,          # moderate bar
+                "min_relative_volume": 3.0,        # accept reasonable volume
+                "max_trades_per_day": 8,           # moderate number of slots
             }
         # Medium (default)
         return {
             "max_vwap_distance_pct": 3.0,
-            "min_catalyst_score": 40,
+            "min_catalyst_score": 45,
             "min_relative_volume": 3.0,
             "max_trades_per_day": 8,
         }

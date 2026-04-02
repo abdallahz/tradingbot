@@ -7,17 +7,17 @@ o2_relaxed:
   min_dollar_volume: 50000
   max_spread_pct: 5.0
 scanner:
-  price_min: 1.0
+  price_min: 5.0
   price_max: 2000.0
   min_gap_pct: 0.5
   min_premarket_volume: 50000
   min_dollar_volume: 500000
   max_spread_pct: 2.0
-  min_score: 40
-  max_candidates: 10
+  min_score: 50
+  max_candidates: 8
 
 midday:
   min_relative_volume: 1.0
   min_dollar_volume: 500000
   max_spread_pct: 2.0
-  min_score: 40
+  min_score: 50
