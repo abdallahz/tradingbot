@@ -365,7 +365,7 @@ def api_diag_outcomes():
         for i in range(7):
             d = (today - timedelta(days=i)).isoformat()
             alerts_resp = sb.table("alerts").select("id", count="exact").eq("trade_date", d).limit(1).execute()
-            outcomes_resp = sb.table("trade_outcomes").select("id, symbol, status, pnl_pct").eq("trade_date", d).execute()
+            outcomes_resp = sb.table("trade_outcomes").select("id, symbol, status, pnl_pct, exit_price, entry_price").eq("trade_date", d).execute()
             outcomes = outcomes_resp.data or []
             status_counts = {}
             for o in outcomes:
@@ -376,7 +376,7 @@ def api_diag_outcomes():
                 "alerts": alerts_resp.count or 0,
                 "outcomes": len(outcomes),
                 "statuses": status_counts,
-                "sample": outcomes[:5],
+                "trades": outcomes,
             })
 
         # All outcomes all-time
