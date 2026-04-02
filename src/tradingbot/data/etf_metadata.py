@@ -41,7 +41,7 @@ KNOWN_ETFS: set[str] = {
     "TLT", "TMF", "TMV",           # Treasuries
     "UNG",                          # Natural Gas
     # Volatility
-    "VXX", "UVXY", "SVXY",         # VIX
+    "VXX", "UVXY", "UVIX", "SVXY",  # VIX
     # International
     "EEM", "FXI", "KWEB", "EWZ",   # Emerging markets, China, Brazil
 }
@@ -70,7 +70,7 @@ LEVERAGED_ETFS: dict[str, int] = {
     # Treasuries
     "TMF": 3, "TMV": -3,
     # Volatility
-    "UVXY": 2, "SVXY": -1,  # SVXY is -0.5x technically, we just use -1
+    "UVXY": 2, "UVIX": 2, "SVXY": -1,  # SVXY is -0.5x technically, we just use -1
 }
 
 
@@ -89,7 +89,7 @@ ETF_FAMILIES: dict[str, set[str]] = {
     "treasuries":   {"TLT", "TMF", "TMV"},
     "gold":         {"GLD", "IAU"},
     "silver":       {"SLV"},
-    "vix":          {"VXX", "UVXY", "SVXY"},
+    "vix":          {"VXX", "UVXY", "UVIX", "SVXY"},
     "nat_gas":      {"UNG"},
 }
 

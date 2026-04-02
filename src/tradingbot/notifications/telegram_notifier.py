@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 _API_BASE = "https://api.telegram.org/bot{token}/{method}"
 _TIMEOUT  = 10  # seconds per HTTP call
+_SEND_DELAY = 1.5  # seconds between messages to same chat (Telegram rate limit)
+_MAX_RETRIES = 2   # retry count for failed sends
 
 
 class TelegramNotifier:
@@ -564,22 +567,37 @@ class TelegramNotifier:
         )
 
     def _post(self, url: str, data: bytes, content_type: str) -> bool:
-        try:
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={"Content-Type": content_type},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-                result = json.loads(resp.read())
-                if not result.get("ok"):
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=data,
+                    headers={"Content-Type": content_type},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                    result = json.loads(resp.read())
+                    if result.get("ok"):
+                        # Rate-limit pause: avoid hitting Telegram's per-chat throttle
+                        time.sleep(_SEND_DELAY)
+                        return True
                     msg = f"Telegram API error: {result}"
                     logger.warning(msg)
                     print(f"[TelegramNotifier] ERROR: {msg}", flush=True)
-                return bool(result.get("ok"))
-        except Exception as e:
-            msg = f"Telegram send failed: {e}"
-            logger.warning(msg)
-            print(f"[TelegramNotifier] ERROR: {msg}", flush=True)
-            return False
+                    # Retry on rate-limit (429)
+                    err_code = result.get("error_code", 0)
+                    if err_code == 429:
+                        retry_after = result.get("parameters", {}).get("retry_after", 5)
+                        logger.info(f"Rate limited, waiting {retry_after}s (attempt {attempt}/{_MAX_RETRIES})")
+                        time.sleep(retry_after)
+                        continue
+                    return False
+            except Exception as e:
+                msg = f"Telegram send failed: {e}"
+                logger.warning(msg)
+                print(f"[TelegramNotifier] ERROR: {msg}", flush=True)
+                if attempt < _MAX_RETRIES:
+                    time.sleep(2)
+                    continue
+                return False
+        return False

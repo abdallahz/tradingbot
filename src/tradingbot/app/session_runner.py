@@ -659,6 +659,23 @@ class SessionRunner:
             # ── ETF conflict / family dedup / concentration cap ─────
             sym_is_etf = is_etf(symbol.symbol)
             sym_family = get_etf_family(symbol.symbol)
+
+            # Block inverse & volatility ETFs in long-only mode.
+            # Going long on inverse ETFs (TZA, SQQQ, etc.) is effectively a
+            # short bet; VIX ETFs (UVIX, UVXY) profit from panic, not momentum.
+            if sym_is_etf:
+                lev = get_leverage_factor(symbol.symbol)
+                if lev < 0:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, f"inverse_etf:leverage={lev}"))
+                    logging.info(f"[DROP] {symbol.symbol}: inverse ETF (leverage={lev}) blocked in long-only mode")
+                    continue
+                if sym_family == "vix":
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, "vix_etf_blocked"))
+                    logging.info(f"[DROP] {symbol.symbol}: VIX ETF blocked — not a momentum setup")
+                    continue
+
             if not self._passes_etf_limits(symbol, etf_count, selected_etf_families, dropped):
                 continue
 
@@ -868,7 +885,9 @@ class SessionRunner:
                     selected_etf_families.add(sym_family)
 
             # Send institutional-grade Telegram notification
-            self.notifier.send_institutional_alert(card, inst_ctx)
+            tg_ok = self.notifier.send_institutional_alert(card, inst_ctx)
+            if not tg_ok:
+                logging.warning(f"[TELEGRAM] Failed to send alert for {card.symbol} — alert saved to dashboard only")
             save_alert(card_to_dict(card))
             self._alerts_sent_count += 1
 
