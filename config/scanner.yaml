@@ -1,6 +1,6 @@
 
 o2_relaxed:
-  price_min: 0.50
+  price_min: 5.0
   price_max: 2000.0
   min_gap_pct: 0.0
   min_premarket_volume: 0

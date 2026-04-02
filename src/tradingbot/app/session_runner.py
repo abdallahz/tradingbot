@@ -1037,10 +1037,12 @@ class SessionRunner:
             screener_syms = self.alpaca_client._get_screener_symbols()
             new_syms = [s for s in screener_syms if s not in catalyst_scores]
             if new_syms:
-                # Give new movers a baseline catalyst score of 50
-                # so they pass the >=40 gate and get a fair evaluation.
+                # Give new movers a penalised baseline catalyst score of 30
+                # (same as no-news default) so they don't get a free pass.
+                # They still enter the universe but must earn their score
+                # through strong technicals.
                 for s in new_syms:
-                    catalyst_scores[s] = 50.0
+                    catalyst_scores[s] = 30.0
                 universe_str = list(set(universe_str) | set(new_syms))
                 logging.info(f"[session] +{len(new_syms)} new screener movers added to universe")
 
