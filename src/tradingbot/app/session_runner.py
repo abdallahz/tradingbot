@@ -652,6 +652,17 @@ class SessionRunner:
 
             symbol = item.snapshot
 
+            # ── Secondary price guard (safety net) ──────────────────
+            # The GapScanner already enforces price_min, but this catch-all
+            # ensures no sub-$5 stock ever makes it to an alert regardless
+            # of which scanner path or configuration was used.
+            hard_price_min = self.scanner.price_min
+            if symbol.price < hard_price_min:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"price_guard:{symbol.price:.2f}<{hard_price_min}"))
+                logging.info(f"[DROP] {symbol.symbol}: price ${symbol.price:.2f} below ${hard_price_min} minimum")
+                continue
+
             # ── Dedup check: skip if already alerted unless pullback ──
             if not self._passes_dedup(symbol, already_alerted, dropped):
                 continue

@@ -20,17 +20,22 @@ KNOWN_ETFS: set[str] = {
     # Leveraged / Inverse – broad
     "TQQQ", "SQQQ",                # 3x Nasdaq
     "QLD", "QID",                   # 2x Nasdaq
+    "PSQ",                          # -1x Nasdaq
     "SPXL", "SPXS",                # 3x S&P 500
     "SSO", "SDS",                   # 2x S&P 500
     "UPRO", "SPXU",                # 3x S&P 500 (alt)
+    "SH", "SPDN",                   # -1x S&P 500
     "TNA", "TZA",                   # 3x Russell 2000
     "UWM", "TWM",                   # 2x Russell 2000
+    "RWM", "SRTY",                  # -1x / -3x Russell 2000
     "UDOW", "SDOW",                # 3x Dow Jones
+    "DOG",                          # -1x Dow Jones
     # Sector ETFs
     "XLK", "XLF", "XLE", "XLV", "XLI", "XLU", "XLP", "XLY", "XLC", "XLB", "XLRE",
     "SMH", "SOXX",                  # Semiconductors
     "SOXL", "SOXS",                # 3x Semiconductors
     "XBI", "IBB", "LABU", "LABD",  # Biotech
+    "HDGE",                         # Active bear fund
     "GDX", "GDXJ", "NUGT", "DUST", # Gold miners
     "XOP", "OIH",                   # Oil & gas
     "KRE", "DPST",                  # Regional banks
@@ -51,14 +56,14 @@ KNOWN_ETFS: set[str] = {
 # The absolute value is used for position sizing adjustment.
 LEVERAGED_ETFS: dict[str, int] = {
     # Nasdaq-100
-    "TQQQ": 3, "SQQQ": -3, "QLD": 2, "QID": -2,
+    "TQQQ": 3, "SQQQ": -3, "QLD": 2, "QID": -2, "PSQ": -1,
     # S&P 500
     "SPXL": 3, "SPXS": -3, "UPRO": 3, "SPXU": -3,
-    "SSO": 2, "SDS": -2,
+    "SSO": 2, "SDS": -2, "SH": -1, "SPDN": -1,
     # Dow Jones
-    "UDOW": 3, "SDOW": -3,
+    "UDOW": 3, "SDOW": -3, "DOG": -1,
     # Russell 2000
-    "TNA": 3, "TZA": -3, "UWM": 2, "TWM": -2,
+    "TNA": 3, "TZA": -3, "UWM": 2, "TWM": -2, "RWM": -1, "SRTY": -3,
     # Semiconductors
     "SOXL": 3, "SOXS": -3,
     # Biotech
@@ -71,6 +76,8 @@ LEVERAGED_ETFS: dict[str, int] = {
     "TMF": 3, "TMV": -3,
     # Volatility
     "UVXY": 2, "UVIX": 2, "SVXY": -1,  # SVXY is -0.5x technically, we just use -1
+    # Bear / hedge funds
+    "HDGE": -1,
 }
 
 
@@ -78,10 +85,10 @@ LEVERAGED_ETFS: dict[str, int] = {
 # Key = family name, Value = set of tickers that track the same thing.
 # Within a family, the bot should only alert ONE representative.
 ETF_FAMILIES: dict[str, set[str]] = {
-    "sp500":        {"SPY", "VOO", "IVV", "SPXL", "SPXS", "UPRO", "SPXU", "SSO", "SDS"},
-    "nasdaq100":    {"QQQ", "QQQM", "TQQQ", "SQQQ", "QLD", "QID"},
-    "dow":          {"DIA", "UDOW", "SDOW"},
-    "russell2000":  {"IWM", "IWO", "IWN", "TNA", "TZA", "UWM", "TWM"},
+    "sp500":        {"SPY", "VOO", "IVV", "SPXL", "SPXS", "UPRO", "SPXU", "SSO", "SDS", "SH", "SPDN"},
+    "nasdaq100":    {"QQQ", "QQQM", "TQQQ", "SQQQ", "QLD", "QID", "PSQ"},
+    "dow":          {"DIA", "UDOW", "SDOW", "DOG"},
+    "russell2000":  {"IWM", "IWO", "IWN", "TNA", "TZA", "UWM", "TWM", "RWM", "SRTY"},
     "semis":        {"SMH", "SOXX", "SOXL", "SOXS"},
     "biotech":      {"XBI", "IBB", "LABU", "LABD"},
     "gold_miners":  {"GDX", "GDXJ", "NUGT", "DUST"},
