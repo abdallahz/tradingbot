@@ -12,7 +12,7 @@ An automated day-trading alert system that scans for high-probability intraday s
 | 08:00 | Morning News | Refresh catalyst scores; send updated list to Telegram |
 | 08:45 | Pre-Market Scan | Find gappers ≥4%; send individual trade-card alerts |
 | 12:00 | Midday Scan | Re-scan with stricter volume/spread filters |
-| 15:50 | Close Scan | Final sweep for late-session setups |
+| 15:30 | Close Scan | Final sweep for late-session setups |
 
 **For every qualifying setup the bot produces a `TradeCard` containing:**
 - Symbol, side (LONG/SHORT), score (0–100), risk/reward ratio
@@ -38,7 +38,7 @@ gunicorn                              ├─ 20:00 night_research
                                       ├─ 08:00 morning_news
                                       ├─ 08:45 premarket_scan
                                       ├─ 12:00 midday_scan
-                                      └─ 15:50 close_scan
+                                      └─ 15:30 close_scan
                                               │
                               ┌───────────────┴───────────────┐
                          Scheduler                      TelegramNotifier
@@ -104,7 +104,7 @@ python -m tradingbot.cli run-day
 python -m tradingbot.cli run-news       # Night research / morning news
 python -m tradingbot.cli run-morning    # 08:45 AM pre-market scan
 python -m tradingbot.cli run-midday     # 12:00 PM midday scan
-python -m tradingbot.cli run-close      # 15:50 PM close scan
+python -m tradingbot.cli run-close      # 15:30 PM close scan
 
 # Show the configured schedule
 python -m tradingbot.cli schedule
@@ -266,7 +266,7 @@ schedule:
   morning_news:    "08:00"
   premarket_scan:  "08:45"
   midday_scan:     "12:00"
-  close_scan:      "15:50"
+  close_scan:      "15:30"
 ```
 
 ## Usage

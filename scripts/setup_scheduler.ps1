@@ -75,7 +75,7 @@ schtasks /Create `
     /TN "$TaskFolder TradingBot_Close" `
     /TR "powershell.exe -ExecutionPolicy Bypass -File `"$ScriptRoot\run_close.ps1`"" `
     /SC DAILY `
-    /ST 15:50 `
+    /ST 15:30 `
     /RU $UserName `
     /RL HIGHEST `
     /F

@@ -19,7 +19,7 @@ python -m tradingbot.cli run-day
 python -m tradingbot.cli --real-data run-news       # Night catalyst research
 python -m tradingbot.cli --real-data run-morning    # 08:45 ET pre-market scan
 python -m tradingbot.cli --real-data run-midday     # 12:00 ET midday scan
-python -m tradingbot.cli --real-data run-close      # 15:50 ET close scan
+python -m tradingbot.cli --real-data run-close      # 15:30 ET close scan
 
 # Show schedule
 python -m tradingbot.cli schedule

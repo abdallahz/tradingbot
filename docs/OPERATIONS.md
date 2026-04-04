@@ -13,7 +13,7 @@ news-premarket(08:00 ET)                gunicorn (web dyno)
 morning-scan  (08:45 ET)                └── /api/alerts
 intraday-scan (every 30m)                   /api/health
 tracker       (every 5m)                    /api/status
-close-scan    (15:50 ET)                    POST /scan
+close-scan    (15:30 ET)                    POST /scan
        │
        └──→ Supabase ←── Heroku web reads alerts
        └──→ Telegram (primary notification channel)
@@ -141,7 +141,7 @@ $user = $env:USERNAME
 schtasks /Create /TN "\TradingBot\TradingBot_News" /TR "powershell.exe -ExecutionPolicy Bypass -File 'C:\tradingbot\scripts\run_news.ps1'" /SC DAILY /ST 00:00 /RU $user /F
 schtasks /Create /TN "\TradingBot\TradingBot_Morning" /TR "powershell.exe -ExecutionPolicy Bypass -File 'C:\tradingbot\scripts\run_morning.ps1'" /SC DAILY /ST 08:45 /RU $user /F
 schtasks /Create /TN "\TradingBot\TradingBot_Midday" /TR "powershell.exe -ExecutionPolicy Bypass -File 'C:\tradingbot\scripts\run_midday.ps1'" /SC DAILY /ST 12:00 /RU $user /F
-schtasks /Create /TN "\TradingBot\TradingBot_Close" /TR "powershell.exe -ExecutionPolicy Bypass -File 'C:\tradingbot\scripts\run_close.ps1'" /SC DAILY /ST 15:50 /RU $user /F
+schtasks /Create /TN "\TradingBot\TradingBot_Close" /TR "powershell.exe -ExecutionPolicy Bypass -File 'C:\tradingbot\scripts\run_close.ps1'" /SC DAILY /ST 15:30 /RU $user /F
 
 # 4. Test
 schtasks /Run /TN "\TradingBot\TradingBot_News"
