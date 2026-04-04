@@ -1,8 +1,18 @@
 # Trading Algorithm — Full Pipeline
 
+> **Last updated:** April 3, 2026
+> Consolidated from: ALGORITHM.md, SCORING_METHODOLOGY.md, SMART_MONEY_TRACKING.md, AI_INTEGRATION.md
+
 ## Overview
 
 This is a **gap-and-go momentum alert system** (long-only). It scans for stocks that gapped up overnight on news/catalysts, confirms the move has real participation, then generates trade card alerts with entry/stop/targets. No trades are executed — alerts go to Telegram and the web dashboard.
+
+**Design principles:**
+- **Long-only**: No short setups. `TradeCard.side` is always `"long"`.
+- **Alert-only**: No order execution — generates trade card recommendations.
+- **Free indicators only**: Uses `ta` library (not torch/transformers) to stay within Heroku slug limits.
+- **Telegram-primary**: Main notification channel; web dashboard is secondary.
+- **Stateless workers**: Heroku/Render dynos can restart — Supabase is the persistent source of truth.
 
 ---
 
@@ -11,15 +21,15 @@ This is a **gap-and-go momentum alert system** (long-only). It scans for stocks 
 **Purpose**: Find *why* a stock might move tomorrow.
 
 - Pulls the full tradable universe from Alpaca (~8,000 stocks)
-- Scrapes news sources and scores each stock 0-100 as a **catalyst score**
+- Scrapes news sources and scores each stock 0–100 as a **catalyst score**
 - Saves the top picks to `catalyst_scores.json` for morning use
 
 ### News Sources & Relevance Scoring
 
 | Source | Base Score | Notes |
 |--------|-----------|-------|
-| SEC EDGAR 8-K filings | 70-85 | Higher if `is_significant` flag set |
-| RSS feeds | 50 ± 20 | Adjusted by sentiment confidence |
+| SEC EDGAR 8-K filings | 70–85 | Higher if `is_significant` flag set |
+| RSS feeds (Benzinga, Yahoo, MarketWatch) | 50 ± 20 | Adjusted by sentiment confidence |
 | Social proxy (Stocktwits/Reddit) | Direct momentum score | Uses `social_momentum_score` field |
 | Earnings calendar | 90 (today), 75 (5d), 65 (2wk) | Proximity-weighted |
 | Press releases | Variable | Keyword-matched |
@@ -37,17 +47,21 @@ count_bonus = min(100, 30 + item_count × 23.3)
 - **Negative keywords**: (investigation, scandal, lawsuit) → 0.5× multiplier
 - **Recency weighting**: `recency_weight = max(0.5, 1 - hours_old / max_age_hours)` — older articles count less
 - **AI sentiment** (optional): sends headlines to OpenAI/Anthropic for sentiment analysis
+- **Screener movers** (no prior catalyst data): assigned default catalyst = 30
 
-### Insider Tracking (optional enrichment)
+### Smart Money Tracking (optional enrichment)
 
-- Tracks SEC Form 4 filings (insider buys/sells)
-- **Significant titles**: CEO, CFO, COO, CTO, President, Chairman, Director, 10% Owner
-- **Significant transactions**: P (purchase), M (option exercise), A (grant)
-- Min transaction value: $50,000 (configurable)
-- SEC rate limit: 0.15s between requests (10 req/sec max)
-- Consecutive failure limit: 5 timeouts → stops fetching
+Three data sources tracked via `SmartMoneyTracker`:
 
-**Output**: A ranked list of ~50 stocks with the highest catalyst activity. These become tomorrow's scan universe.
+| Source | Data | Signal |
+|--------|------|--------|
+| SEC Form 4 (corporate insiders) | CEO/CFO/Director buy/sell trades | Insider buys = bullish, multiple sells = bearish |
+| SEC 13F (institutional investors) | Quarterly holdings of $100M+ AUM funds | Large position increases = institutional conviction |
+| STOCK Act (congressional trades) | Senate/House member disclosures | Committee members trading related stocks = advance knowledge |
+
+**Smart money score** (0–100): Weighted combination of insider trade signals, institutional position changes, and congressional activity. Integrated into catalyst scoring as enrichment.
+
+**Tracked institutions**: Berkshire Hathaway, ARK Investment, Scion (Burry), Citadel (Griffin), Bridgewater (Dalio), Pershing Square (Ackman), and others.
 
 **Key files**: `src/tradingbot/research/news_aggregator.py`, `src/tradingbot/research/catalyst_scorer.py`, `src/tradingbot/research/insider_tracking.py`
 
@@ -57,8 +71,6 @@ count_bonus = min(100, 30 + item_count × 23.3)
 
 **Purpose**: Build a `SymbolSnapshot` for each catalyst stock with all the data needed for scoring.
 
-Before any scanning or ranking, the system fetches raw market data from Alpaca and computes derived fields. This is where the core metrics originate.
-
 ### Gap Calculation
 
 ```
@@ -66,31 +78,29 @@ gap_pct = ((current_price - prev_close) / prev_close) × 100
 ```
 
 - `prev_close` comes from the daily bar before today
+- **Long-only**: Only positive gaps pass the scanner (no `abs()`)
 
 ### Volume Metrics
 
 | Metric | Formula | Notes |
 |--------|---------|-------|
-| Relative volume | `premarket_vol / prev_day_volume` | Compares premarket to full prior day. Can overflow on thin stocks (see IMPROVEMENTS.md #3) |
-| Dollar volume | `prev_volume × prev_close` (preferred) | Fallback: `premarket_vol × price × 5` (assumes premarket ≈ 20% of day) |
-| Recent volume | `snap.minute_bar.volume` if trusted | Sanity gate: only trusted if `minute_vol >= avg_volume_20 × 0.1` — prevents stale after-hours prints from inflating volume spike scores. Falls back to `premarket_vol` if untrusted |
+| Relative volume | `premarket_vol / prev_day_volume` | Compares premarket to full prior day |
+| Dollar volume | `prev_volume × prev_close` (preferred) | Fallback: `premarket_vol × price × 5` |
+| Recent volume | `snap.minute_bar.volume` if trusted | Only trusted if `minute_vol >= avg_volume_20 × 0.1` |
 
 ### Support & Resistance Levels
 
-This is the most complex part of snapshot construction. Two modes:
-
 **Breakout Mode** (price >= 99.5% of premarket high):
 - `key_support = premarket_high - 0.25 × ATR`
-- `key_resistance = daily_resistance` (if within 2×ATR above price), else `prev_day_high` (if within 2×ATR), else `price + 2×ATR`
+- `key_resistance` = nearest of: daily resistance, prev day high, or `price + 2×ATR`
 
 **Pullback Mode** (price < premarket high):
-- Collects ALL support candidates: `[VWAP, EMA20, PM_low, prev_close, daily_support, prev_day_low]`
-- Filters: only candidates between 0 and current price
-- Discards candidates > 2×ATR below price (too far to be relevant)
-- If >= 3 candidates: uses **2nd-lowest** (median defense — avoids the absolute bottom)
-- If 1-2 candidates: uses lowest
+- Collects all support candidates: `[VWAP, EMA20, PM_low, prev_close, daily_support, prev_day_low]`
+- Filters: only candidates between 0 and current price, within 2×ATR
+- If >= 3 candidates: uses **2nd-lowest** (median defense)
+- If 1–2 candidates: uses lowest
 - If none: uses `current_price - ATR`
-- `key_resistance = highest of [premarket_high, prev_day_high (within 2×ATR), daily_resistance (within 2×ATR)]`
+- `key_resistance` = highest of premarket high, prev day high, daily resistance (all within 2×ATR)
 
 ### Other Derived Fields
 
@@ -99,638 +109,387 @@ This is the most complex part of snapshot construction. Two modes:
 | Pullback low | `min(max(prev_close, ema20, pm_low), price - 0.5×ATR)` | EMA hold check, invalidation level |
 | Reclaim level | `premarket_high` (fallback: VWAP → price) | VWAP reclaim check |
 
-### Data Quality Filters
-
-- Gap > 50%: flagged as probable data error, dropped silently with reason `"data_quality"`
-- Spread > 10%: flagged as data quality issue, dropped
-
 **Key file**: `src/tradingbot/data/alpaca_client.py`
 
 ---
 
-## Step 3: Gap Scanner (runs at market open ~8:45 AM ET)
+## Step 3: Gap Scanner (filter pass)
 
-**Purpose**: Filter overnight universe down to stocks that actually moved.
+**Purpose**: Remove stocks that don't meet minimum quality thresholds.
 
-Takes the ~50 catalyst stocks and applies 5 hard filters:
+### Current Scanner Thresholds (`config/scanner.yaml`)
 
-| Filter | Threshold | Why |
-|--------|-----------|-----|
-| Price range | $1 - $2,000 | Avoid penny stocks and illiquid mega-caps |
-| Gap % | >= 0.5% (uses `abs()`) | Must have actually gapped — ⚠️ `abs()` lets negative gaps through in a long-only system (see IMPROVEMENTS.md #2) |
-| Premarket volume | >= 50,000 shares | Confirms real participation |
-| Dollar volume | >= $500K | Ensures enough liquidity to enter/exit |
-| Spread | <= 2.0% | Execution cost must be manageable |
+| Setting | Option 3 (Strict) | Option 2 (Relaxed) | Midday |
+|---------|-------------------|---------------------|--------|
+| `price_min` | **$5.00** | $5.00 | — |
+| `price_max` | $2,000 | $2,000 | — |
+| `min_gap_pct` | **0.5%** | 0.0% | — |
+| `min_premarket_volume` | **50,000** | 0 | — |
+| `min_dollar_volume` | **$500K** | $50K | $500K |
+| `max_spread_pct` | **2.0%** | 5.0% | 2.0% |
+| `min_score` | **50** | 50 | 50 |
+| `max_candidates` | **8** | 8 | — |
 
-Any stock that fails is dropped with a reason tag (`price_out_of_range`, `gap_too_small`, `premarket_volume_too_low`, `dollar_volume_too_low`, `spread_too_wide`). Survivors move to ranking.
+- Long-only: no `abs()` — negative gaps fail naturally since they're below 0.5% threshold
+- Scanner outputs a `ScanResult` with `candidates` and `dropped` lists
 
 **Key file**: `src/tradingbot/scanner/gap_scanner.py`
 
 ---
 
-## Step 4: Technical Indicator Computation
+## Step 4: Technical Indicators
 
-**Purpose**: Compute all technical indicators needed for ranking and pattern detection.
+**Purpose**: Compute indicators for scoring and setup confirmation.
 
-### Indicator Calculations
+### Indicators Computed (`config/indicators.yaml`)
 
-| Indicator | Method | Notes |
-|-----------|--------|-------|
-| EMA 9/20/50 | `ta` library (or pandas `ewm(adjust=False)` fallback) | EMA50 window capped at available bars |
-| RSI (14) | `ta.momentum.RSIIndicator` | 14-period default |
-| MACD | `ta.trend.MACD` (12, 26, 9) | Histogram = MACD - signal |
-| Bollinger Bands | `ta.volatility.BollingerBands` (20, 2) | Used for BB overbought/oversold |
-| OBV | `ta.volume.OnBalanceVolumeIndicator` | Latest value compared to prior |
+| Indicator | Config | What it tells you |
+|-----------|--------|-------------------|
+| **EMA 9** (fast) | `ema_fast: 9` | Short-term trend |
+| **EMA 20** (slow) | `ema_slow: 20` | Medium-term trend |
+| **RSI(14)** | Built-in | Overbought (>70) / Oversold (<35) |
+| **MACD** | Built-in | Trend direction + crossover signals |
+| **ATR** | Built-in | Volatility — better stop-loss levels |
+| **Bollinger Bands** | 20-period, 2 StdDev | Price extremes relative to 20-day average |
+| **VWAP** | Built-in | Fair value for the day |
+| **OBV** | Built-in | Volume confirms price moves |
+| **Support/Resistance** | Auto-detected | Key levels from recent bars |
 
-### VWAP (critical — resets daily)
+**Volume spike multipliers:**
+- Morning: **1.5×** average volume
+- Midday: **1.3×** average volume
 
-```
-typical_price = (High + Low + Close) / 3
-VWAP = sum(typical_price × volume) / sum(volume)
-```
+**Key files**: `src/tradingbot/analysis/indicators.py`, `ta` library
 
-- **Resets daily**: filters bars by `timestamp.date()` to isolate today's session only
-- If today has no bars: falls back to full-range VWAP
-- This daily reset is key — VWAP from yesterday is meaningless for intraday
+### AI Tools (Optional)
 
-### ATR (Average True Range)
-
-Two computation paths:
-- **Daily ATR** (preferred): from 5-day bars, window = `min(14, available_bars)`
-- **Intraday fallback**: 14-bar ATR on 15-min bars, then scaled by `√26` to approximate daily
-  - Why √26? There are ~26 fifteen-minute bars per trading day (6.5 hours × 4 bars/hour)
-
-### Support & Resistance from Bars
-
-| Level | With daily bars | Without (intraday fallback) |
-|-------|----------------|---------------------------|
-| Support | 5-day low | Lowest low over last 52 bars (~2 trading days of 15-min data) |
-| Resistance | 5-day high | Highest high over last 52 bars |
-| Prior day high/low | From second-to-last daily bar | N/A |
-
-### Signal Interpretation
-
-The `interpret_signals()` function converts raw indicators into named signals:
-
-| Signal | Condition |
-|--------|-----------|
-| `ema_bullish_alignment` | `price > ema9 > ema20` |
-| `ema_bearish_alignment` | `price < ema9 < ema20` |
-| `macd_bullish_cross` | `macd_hist > 0` |
-| `macd_bearish_cross` | `macd_hist < 0` |
-| `above_vwap` / `below_vwap` | Price vs VWAP |
-| `rsi_oversold` | RSI < 35 |
-| `rsi_overbought` | RSI > 70 |
-| `bb_oversold` / `bb_overbought` | Price at/below lower band or at/above upper band |
-
-**Key file**: `src/tradingbot/analysis/technical_indicators.py`
+| Tool | Cost | Status |
+|------|------|--------|
+| FinBERT (local sentiment) | Free | Available — downloads 500MB model |
+| `ta` library | Free | **Integrated** — all indicators above |
+| OpenAI GPT-4o-mini | ~$5/month | Optional — `ai_sentiment_enabled: true` |
+| Anthropic Claude Haiku | ~$4/month | Optional — alternative LLM |
 
 ---
 
-## Step 5: Ranking (multi-factor scoring, 0-100)
+## Step 5: Ranking
 
-**Purpose**: Score each surviving stock to find the best setups.
+**Purpose**: Score each candidate 0–100 and select the best setups.
 
-### Scoring Functions (each returns 0-100)
+### Base Ranker Weights (Option 3 — Strict)
 
-**Gap Magnitude (17%)**:
-```
-base = min(1.0, log(1 + gap/3) / log(4)) × 100
-if gap > 12%: base -= (gap - 12) × 5    # exhaustion penalty
-```
-- Sweet spot: 6-8%. Penalizes >12% (mean-reversion risk).
+| Component | Weight | Scoring Logic |
+|-----------|--------|---------------|
+| Gap magnitude | **15%** | Log curve peaks at ~6–8%, penalty above 12% |
+| Catalyst score | **15%** | Raw 0–100 (NaN defaults to 30) |
+| Relative volume | **13%** | 2× = 80pts, 5× = 95pts, 10+ = 100pts |
+| Liquidity | **10%** | 60% spread quality + 40% dollar volume |
+| RSI momentum | **9%** | Triangle: peaks at RSI=60, falls toward extremes |
+| Gap quality | **8%** | Volume-confirmed gaps score higher; penalizes >10% gaps |
+| Volume quality | **7%** | Classifies bars as accumulation/distribution/climax/thin |
+| Signal alignment | **7%** | Confirms signals match expected trade direction |
+| OBV divergence | **6%** | Volume confirms price moves (80 vs 25 binary) |
+| Momentum | **5%** | Distance from VWAP |
+| MACD | **5%** | Histogram strength normalized by price |
+| **Total** | **100%** | |
 
-**Relative Volume (16%)**:
-```
-base = min(rv/2, 1) × 80              # 0-2x → 0-80 points
-if rv > 2: base += min((rv-2)/8, 1) × 20  # 2-10x → bonus 0-20
-```
-- 2x = 80pts, 5x ≈ 95pts, 10x = 100pts. Diminishing returns above 2x.
+### Catalyst-Weighted Ranker (Option 2 — Relaxed)
 
-**Catalyst Score (15%)**: Raw 0-100 from night research, passed through directly.
+| Component | Weight | Notes |
+|-----------|--------|-------|
+| Catalyst score | **30%** | Doubled — pre-market tech data is sparse |
+| Gap magnitude | 11% | |
+| Relative volume | 9% | |
+| Liquidity | 8% | |
+| Gap quality | 8% | |
+| RSI momentum | 7% | |
+| Volume quality | 6% | |
+| OBV divergence | 6% | |
+| Signal alignment | 5% | |
+| Momentum | 5% | |
+| MACD | 5% | |
 
-**Liquidity (11%)**:
-```
-spread_component = max(0, 1 - spread_pct/2) × 60%
-dv_component = min(dollar_volume / $20M, 1) × 40%
-score = (spread_component + dv_component) × 100
-```
-- $20M threshold is retail-scale, not institutional.
+### NaN Protection
 
-**RSI (10%)** — triangular curve peaking at RSI 60:
-```
-RSI 0-30:   score = rsi/30 × 50           (0 → 50)
-RSI 30-60:  score = 50 + (rsi-30)/30 × 50 (50 → 100, PEAK)
-RSI 60-80:  score = 100 - (rsi-60)/20 × 40 (100 → 60)
-RSI 80-100: score = 60 - (rsi-80)/20 × 60  (60 → 0)
-```
-- ⚠️ Peaks at 60, but gap-and-go momentum stocks often have RSI 65-75 (see IMPROVEMENTS.md #5)
-
-**Gap Quality (8%)**:
-```
-vol_factor: 3x+ relvol = 1.0, 2x = 0.85, 1.5x = 0.65, <1.5x = 0.35
-gap_factor: ≤6% = 0.9-1.0, 6-10% = 0.8, >10% = max(0.3, 0.8 - (gap-10)×0.05)
-base = vol_factor × gap_factor × 100
-catalyst bonus: score ≥ 60 → +15, ≥ 40 → +5
-```
-- ⚠️ Step function at 6% boundary (see IMPROVEMENTS.md #6)
-
-**Signal Alignment (7%)** — direction-aware:
-- Determines expected direction from `gap_pct` (≥ 0 = expects long)
-- Counts confirming vs opposing signals (from `interpret_signals()`)
-- `alignment = confirming / total`, `score = alignment × 100`
-- Count bonus: `min(signal_count / 4, 1)` — more signals = more confidence
-- Prevents bearish-signal stocks from ranking high in a long-only system
-
-**OBV Divergence (6%)**:
-- With 10+ raw bars: computes OBV series from closes/volumes, checks slope direction
-  - Price slope agrees with OBV slope → **80 pts** (confirmation)
-  - Disagrees → **25 pts** (divergence)
-- Fallback (no bars): gap direction vs OBV sign → 75 or 30
-- No data → 50 (neutral)
-- ⚠️ Binary scoring with no significance threshold (see IMPROVEMENTS.md #7)
-
-**Momentum / VWAP Distance (5%)**:
-```
-distance = abs(price - vwap) / price
-score = max(0, 1 - distance × 20) × 100
-```
-- Price at VWAP = 100, 5% away = 0.
-
-**MACD (5%)**:
-```
-strength = abs(macd_hist) / price
-score = min(strength / 0.01, 1) × 100
-```
-- Normalized relative to price so $5 and $500 stocks compare fairly.
-
-### Final Score
-
-```
-score = 0.17×gap + 0.16×relvol + 0.15×catalyst + 0.11×liquidity + 0.10×rsi
-      + 0.08×gap_quality + 0.07×signal_align + 0.06×obv + 0.05×momentum + 0.05×macd
-```
-
-Stocks below `min_score` (40) are dropped. Top 10 by score survive.
-
-### CatalystWeightedRanker (Option 2)
-
-```
-score = 0.33×catalyst + 0.12×gap + 0.10×relvol + 0.09×liquidity + 0.08×gap_quality
-      + 0.07×rsi + 0.06×obv + 0.05×momentum + 0.05×macd + 0.05×signal_align
-```
-
-Catalyst weight 33% (vs 15% in base). Used when pre-market technical data is thin.
+- `math.isfinite()` guards on RSI, MACD, and catalyst_score reads
+- NaN/Inf defaults to 50.0 (neutral) for RSI/MACD, 30.0 for catalyst
+- Prevents silent candidate drops from `ta` library early-bar NaN values
 
 **Key file**: `src/tradingbot/ranking/ranker.py`
 
 ---
 
-## Step 6: Setup Confirmation (pullback signals)
+## Step 6: `_build_cards` Filter Chain
 
-**Purpose**: Verify each ranked stock has actual technical structure, not just a gap.
+**Purpose**: Apply safety filters and generate trade cards from ranked candidates.
 
-Two requirements must BOTH pass:
-
-### Volume confirmation (at least one):
-- **Volume spike**: `recent_volume >= max(1, avg_volume_20) × multiplier`
-  - Morning multiplier: 1.5x (from `config/indicators.yaml`)
-  - Midday multiplier: 1.3x — ⚠️ too low, noise at midday (see IMPROVEMENTS.md #8)
-  - Multiplier = 0.0 disables the volume gate
-- **Relative volume fallback**: `relative_volume >= multiplier AND premarket_volume >= 50,000`
-  - More reliable when minute-bar data is stale/missing
-
-### Directional signal (at least one):
-- **EMA hold**: `pullback_low >= ema20 AND price >= ema9`
-  - ⚠️ Too loose — allows stocks that broke EMA9 but held EMA20 to pass as "holds" (see IMPROVEMENTS.md #1)
-- **VWAP reclaim**: `price >= vwap AND reclaim_level >= vwap`
-  - `reclaim_level` = premarket high (structural level traders watch)
-  - Both price AND reclaim_level must be above VWAP — ensures institutional demand at both levels
-
-If a stock has volume but no directional signal, it's dropped.
-
-**Exception**: In relaxed mode (Option 2), stocks with `catalyst >= 55` skip this check entirely (but still require positive gap).
-
-**Key files**: `src/tradingbot/signals/pullback_setup.py`, `src/tradingbot/signals/indicators.py`
-
----
-
-## Step 7: Pattern Detection & Confluence Scoring
-
-**Purpose**: Detect chart patterns and score how many bullish signals are present.
-
-### Pattern Detection Rules
-
-| Pattern | Detection Logic |
-|---------|----------------|
-| **Bull flag** | 15-bar lookback. First half (pole): >= 3% upward move. Last 5 bars (flag): -3% to 0% pullback with strictly lower highs (monotonic decline) |
-| **Breakout** | Price crosses resistance by > 0.2% (`price > resistance × 1.002`) AND `recent_volume >= 1.5× avg_volume_20` |
-| **Support bounce** | Price within 1.5% of support (`abs(price - support) / support < 0.015`) AND upward momentum (`close[-1] > close[-2]`) AND mild volume uptick (`>= 1.2× average`) |
-| **Hammer** | Small body (close > open), lower wick >= 2× body size, upper wick <= 0.3× body size |
-| **Bullish engulfing** | Current candle fully engulfs prior candle's body, close > open |
-| **Bearish engulfing** | Current candle fully engulfs prior candle's body, close < open |
-| **Doji** | Body < 10% of total candle range (high - low) |
-| **Above VWAP** | `price > vwap` (simple check) |
-
-### Confluence Scoring
-
-Each detected pattern gets a weight:
-
-| Pattern | Points |
-|---------|--------|
-| Bull flag | +25 |
-| Breakout | +20 |
-| Bullish engulfing | +20 |
-| Support bounce | +15 |
-| Hammer | +15 |
-| Above VWAP | +10 |
-| Doji | -5 |
-| Bearish engulfing | -30 |
-
-**Confluence score** = sum of all detected pattern weights.
-
-- If no patterns detected: score defaults to **15.0** (neutral — not penalized)
-- Minimum confluence floor:
-  - **Strict mode**: 10 (must have at least one meaningful bullish pattern)
-  - **Relaxed mode**: 0 (only strong opposing signals like bearish engulfing kill it)
-  - **Fakeout window (9:30-9:45 ET)**: raised to 15
-
-**Key file**: `src/tradingbot/analysis/pattern_detector.py`
-
----
-
-## Step 8: Card-Building Filters (`_build_cards`)
-
-**Purpose**: Apply final gates before building the trade card. This is the most complex filter stage.
-
-The filters run in this order inside `_build_cards`:
-
-### 8a. Market Guard (first check — can halt everything)
-
-Fetches live SPY & QQQ intraday performance. Uses the **worse** of the two:
-
-| Regime | Threshold | Position Size | Stop Buffer | Effect |
-|--------|-----------|---------------|-------------|--------|
-| GREEN | SPY/QQQ > -0.5% | 1.0× (full) | 1.0× (normal) | Normal trading |
-| YELLOW | -0.5% to -1.5% | 0.5× (half) | 1.5× (wider) | Reduced exposure |
-| RED | < -1.5% | 0.0× (none) | 2.0× | **Halt ALL new entries** |
-
-- If red: all cards dropped immediately, no further processing
-- Data source: Alpaca SPY/QQQ snapshots (daily bar open vs latest trade)
-- Fail-open: if data unavailable, assumes green
-
-### 8b. Dedup Check
-
-- Queries `get_today_alerted_symbols()` for all symbols alerted today
-- If stock was already alerted, only re-alert if price pulled back significantly:
-  ```
-  distance_before = prev_entry - key_support
-  distance_now = current_price - key_support
-  pullback_pct = 1.0 - (distance_now / distance_before)
-  ```
-  - Must be >= 50% pullback toward support (materially better entry)
-
-### 8c. ETF Limits
-
-- Max **3 ETFs** per scan (`MAX_ETF_ALERTS = 3`, hardcoded)
-- Max **1 per family**: e.g., only SPXL or UPRO, not both
-- Family mapping via `get_etf_family(symbol)` from `etf_metadata.py`
-
-### 8d. VWAP Distance Filter
+This is the core filter pipeline. Each candidate passes through **every gate in order**:
 
 ```
-vwap_dist_pct = abs(price - vwap) / vwap × 100
+ 1. Market Guard (red regime → block ALL entries)
+ 2. Yellow Regime Score Gate (+5 point floor on min_score)
+ 3. Risk Manager (daily trade limit, loss lockout, streak)
+ 4. Secondary Price Guard (hard floor at scanner.price_min = $5)
+ 5. Dedup Check (skip if already alerted today, unless 50% pullback)
+ 6. Inverse/VIX ETF Blocker (negative leverage or VIX family)
+ 7. ETF Family / Concentration Limit
+ 8. VWAP Distance Filter (not too extended from fair value)
+ 9. Gap Fade Detection (price < VWAP after positive gap → fading)
+10. Pullback Setup / Indicator Confirmation
+11. Catalyst Gate (min catalyst or strong volume override)
+12. Relaxed Mode Bypass (catalyst >= 55 + positive gap)
+13. Trade Card Construction (entry/stop/TP1/TP2)
+14. R:R Floor Check (min 1.5:1)
+15. Fakeout Guard (9:30–9:45 ET: confluence floor=15, stop +20%)
+16. Pattern Confluence Check (MIN_CONFLUENCE_SCORE = 10)
+17. AI Trade Validation (optional, paid API)
+18. Confluence Engine (5-factor institutional scoring)
+19. Grade-F Veto (composite < 40 blocked in strict mode)
+20. Score Blending: 60% ranker + 40% confluence engine
+21. Chart Generation + Telegram Send
 ```
 
-- Regime-adaptive threshold:
-  - High vol: max 2.0%
-  - Medium: max 3.0%
-  - Low vol: max 4.0%
-- Can be overridden by auto-tuner
+### Key Filter Details
 
-### 8e. Catalyst Gate
+#### Market Guard (`src/tradingbot/analysis/market_guard.py`)
+Checks SPY/QQQ intraday performance:
+- **GREEN**: worst > **-0.3%** → full size, normal stops
+- **YELLOW**: worst -0.3% to -1.5% → 50% size, 1.5× stop buffer, +5 score penalty
+- **RED**: worst < -1.5% → halt ALL new entries
+- Fail-open: if data unavailable, defaults to green
 
-If `catalyst_score < min_catalyst` (40, regime-adaptive):
-- Requires **strong volume conviction** to pass:
-  - `relative_volume >= 3×` AND `premarket_volume >= 100,000 shares`
-- If both conditions met AND `has_valid_setup()` passes: allowed through
-- Otherwise: dropped
+#### Inverse/VIX ETF Blocker
+Blocks in long-only mode (going long on inverse = short bet):
+- **Inverse ETFs**: TZA, SQQQ, SPXS, SDOW, SPDN, SH, DOG, RWM, PSQ, SRTY, HDGE
+- **VIX ETFs**: UVIX, UVXY
+- Detection: `get_leverage_factor()` returns negative for inverse ETFs
 
-### 8f. Pullback Setup Confirmation
+#### Gap Fade Detection
+- If stock gapped up but current price < VWAP → gap is fading → blocked
+- Skipped in relaxed mode (catalyst-driven entries tolerate drift)
 
-- Calls `has_valid_setup(stock, volume_multiplier)` (see Step 6)
-- **Relaxed mode bypass**: if `catalyst >= 55`, skips this check (but still requires positive gap)
+#### Catalyst Gate
+- Default min catalyst: 40 (adaptive via market conditions)
+- **Volume override**: If catalyst < min BUT `relative_volume >= 3.0` AND `premarket_volume >= 100K` → pass
+- Combines conviction from news + volume for final gate
 
-### 8g. Confluence Check
+#### Fakeout Guard (9:30–9:45 ET)
+- Raises confluence floor to 15 (vs normal 10)
+- Widens stop by 20% to survive opening wicks
+- Only applies in strict mode
 
-- Runs pattern detection and confluence scoring (see Step 7)
-- Must meet minimum floor (10 strict, 0 relaxed, 15 during fakeout window)
-- **Score blending**: after passing, confluence is blended into the ranker score:
-  ```
-  card.score = min(100, card.score × 0.7 + confluence × 0.3)
-  ```
-  This 70/30 weighting rewards cards that have both strong ranking AND strong chart patterns.
+#### Confluence Engine (5-factor institutional scoring)
+- **Volume profile**: Accumulation/distribution/climax/thin
+- **Market trend**: SPY/QQQ direction
+- **ATR exhaustion**: Price extension beyond normal range
+- **Technical stack**: EMA/VWAP/RSI/MACD alignment
+- **Catalyst backing**: News-driven moves have higher continuation
 
-### 8h. Fakeout Guard (9:30-9:45 ET, strict mode only)
+Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
+- Strict mode: Grade F is vetoed
+- Score blending: `final_score = ranker × 0.60 + confluence × 0.40`
 
-During the first 15 minutes of market open:
-- Confluence floor raised to **15** (vs normal 10)
-- Stop distance widened by **20%**: `stop = entry - (stop_dist × 1.20)`
-- This overwrites the level-based stop calculation
-- Reason: opening cross creates wicks that routinely span 1-2× ATR
-
-### 8i. AI Validation (optional)
-
-- If enabled: sends card to OpenAI/Anthropic for a second opinion
-- AI rates confidence 1-10; if below threshold: card rejected
-- Cost ~$0.001 per card
-- Not required for core functionality
-
-**Key file**: `src/tradingbot/app/session_runner.py` (`_build_cards` method)
+**Key file**: `src/tradingbot/app/session_runner.py`
 
 ---
 
-## Step 9: Trade Card Construction
+## Step 7: Trade Card Construction
 
-**Purpose**: Build the actual alert with entry, stop, targets, and position size.
+**Purpose**: Calculate exact entry, stop, and target prices.
 
-### Level Calculations
+### Trade Card Fields
 
-| Field | Formula | Notes |
-|-------|---------|-------|
-| Entry | `round(price, 2)` | Current market price |
-| ATR buffer | `atr × 0.5` (fallback: `entry × 0.005`) | Cushion below support |
-| Stop | `max(key_support - atr_buffer, entry × (1 - fixed_stop_pct/100))` | Level-based, but capped so risk never exceeds `fixed_stop_pct` (2.5%). The `max()` means the tighter cap always wins |
-| TP1 | `min(key_resistance, entry + min(3×ATR, entry×0.06))` | Key resistance capped at tighter of 3×ATR or 6% of entry — prevents using daily levels that are unreachable intraday |
-| TP2 | `tp1 + (entry - stop)` | 1R extension above TP1 |
-| R:R | `(tp1 - entry) / (entry - stop)` | Based on TP1, not TP2. **Must be >= 1.5 or card is rejected** |
+| Field | Description |
+|-------|-------------|
+| `symbol` | Stock ticker |
+| `side` | Always `"long"` |
+| `score` | 0–100 (blended ranker + confluence) |
+| `entry_price` | Current market price |
+| `stop_price` | Below entry by ATR × buffer |
+| `tp1_price` | Entry + 1× risk distance |
+| `tp2_price` | Entry + 2× risk distance |
+| `invalidation_price` | Key support (full thesis broken) |
+| `risk_reward` | Calculated R:R ratio |
+| `session_tag` | morning / midday / close |
+| `patterns` | Detected chart patterns |
+| `catalyst_score` | News catalyst score (0–100) |
+| `confluence_grade` | A/B/C/D/F from confluence engine |
+| `confluence_score` | 0–100 composite |
+| `volume_classification` | accumulation / distribution / climax / thin |
+| `chart_path` | Path to generated candlestick chart |
+| `generated_at` | Timestamp |
 
-### Rejection Conditions
+### Stop Placement
+- `stop = entry - (ATR × buffer × stop_buffer_multiplier)`
+- Default buffer: 0.5× ATR
+- Yellow regime: 1.5× buffer multiplier
+- Fakeout window (9:30–9:45): additional 20% widening
+- Fixed stop fallback: 2.5% from entry (`config/risk.yaml`)
 
-A card returns `None` (rejected) if:
-- `key_resistance <= 0` (no resistance level set)
-- `key_resistance <= entry` (resistance below current price — no room for long)
-- `risk <= 0` (stop at or above entry)
-- `R:R < 1.5` (reward too small relative to risk)
+### Target Placement
+- `TP1 = entry + 1 × risk_distance` (1:1 R:R)
+- `TP2 = entry + 2 × risk_distance` (2:1 R:R)
+- `invalidation = key_support` (below stop — full thesis broken)
+
+### R:R Floor
+- Minimum R:R: **1.5:1** — cards below this are rejected (`build_trade_card()` returns `None`)
 
 ### Position Sizing
-
-```
-leverage = get_leverage_factor(symbol)    # 3x ETF = 3, normal stock = 1
-adjusted_risk_pct = risk_per_trade_pct / leverage  # e.g., 0.5% / 3 = 0.167%
-risk_dollars = account_value × (adjusted_risk_pct / 100)
-position_size = risk_dollars / (entry - stop)
-```
-
-Safety caps:
-- Max notional: `min($10,000, account × 50%)`
-- If `position_size × entry > max_notional`: scale down
-
-### Risk Assessment (`_assess_risk()`)
-
-Penalty-based scoring (0-10 scale):
-
-| Condition | Penalty |
-|-----------|---------|
-| Price < $3 (penny stock) | +2 |
-| Price < $5 (small cap) | +1 |
-| Spread > 1.5% (execution risk) | +2 |
-| Spread > 0.8% (wider than ideal) | +1 |
-| Dollar volume < $500K (thin) | +2 |
-| Dollar volume < $2M (below average) | +1 |
-| R:R < 2.0 (marginal reward) | +1 |
-| ATR/price > 5% (highly volatile) | +1 |
-
-Mapping: 0-2 → `"low"`, 3-4 → `"medium"`, 5+ → `"high"`
+- Base risk per trade: 0.5% of account
+- Yellow regime: 50% of base (0.25%)
+- Streak scaling: 1 loss → 75%, 2 → 50%, 3 → 35%
+- Combined: `effective_risk = base × regime_multiplier × streak_multiplier`
 
 **Key file**: `src/tradingbot/strategy/trade_card.py`
 
 ---
 
-## Step 10: Risk Management
+## Step 8: Risk Management
 
-Runs across the full session, not per-stock:
+### Current Risk Config (`config/risk.yaml`)
 
-| Rule | Value | Effect |
-|------|-------|--------|
-| Max trades/day | 5-8 (regime-adaptive) | Hard stop after N alerts |
-| Daily loss lockout | -1.5% | No more trades if down 1.5% for the day |
-| Max consecutive losses | 3 | Lockout after 3 losses in a row |
-| Streak sizing | See table below | Position size shrinks after each loss |
-| Market guard | SPY/QQQ check | Yellow = 50% size, Red = no trades |
+| Setting | Value |
+|---------|-------|
+| `max_trades_per_day` | **8** |
+| `o2_max_trades_per_day` | **2** (Option 2 separate cap) |
+| `daily_loss_lockout_pct` | **1.5%** |
+| `max_consecutive_losses` | **3** → locked out for day |
+| `risk_per_trade_pct` | **0.5%** |
+| `fixed_stop_pct` | **2.5%** |
 
-### Streak Sizing Multipliers
+### Streak Scaling
 
 | Consecutive Losses | Size Multiplier |
 |-------------------|-----------------|
-| 0 | 1.00 (full) |
-| 1 | 0.75 |
-| 2 | 0.50 |
-| 3+ | 0.35 (minimum before hard lockout) |
+| 0 | 100% |
+| 1 | 75% |
+| 2 | 50% |
+| 3+ | Locked out |
 
-After a win, consecutive losses reset to 0 → back to full size.
+### O2 Independent Budget
+- Option 2 (relaxed) has `independent_cap=True`
+- Trade count starts at 0 (doesn't consume O3's slots)
+- Separate `RiskManager` with `o2_max_trades_per_day` cap
 
 **Key file**: `src/tradingbot/risk/risk_manager.py`
 
 ---
 
-## Step 11: Three Options Output
+## Step 9: Three-Option Watchlist System
 
-Every scan produces 3 parallel watchlists:
+Every scan session produces three parallel watchlists:
 
-| Option | Scanner | Ranker | Risk Budget | Who it's for |
-|--------|---------|--------|-------------|--------------|
-| O1 Night Research | None (top catalysts) | By catalyst score | N/A (info only) | "What to watch" |
-| O2 Relaxed | Gap >= 0%, no vol/spread floor | CatalystWeightedRanker (33%) | Separate cap (3/day) | Catalyst believers |
-| O3 Strict | Full filters | Standard Ranker | Main cap (5-8/day) | Technical setups |
+### Option 1 — Night Research (Catalyst-Driven)
+- Top 10 stocks with highest catalyst scores from news research
+- Enriched with smart money signals (insider trades, 13F, congressional)
+- Best on **low-volatility days** when momentum is news-driven
+
+### Option 2 — Relaxed Filters
+- Uses `CatalystWeightedRanker` (catalyst weight = 30%)
+- Indicator confirmation bypassed if `catalyst_score >= 55` and gap positive
+- Separate daily budget (2 trades max via `o2_max_trades_per_day`)
+- Best on **medium-volatility days** or when strict scanner is empty
+
+### Option 3 — Strict Filters (High Probability)
+- Full indicator confirmation required
+- All filter gates enforced (confluence, fakeout guard, etc.)
+- Best on **high-volatility days** with strong pre-market activity
 
 ### Market Condition Recommendation
 
-The `MarketConditionAnalyzer` recommends which option based on live conditions:
+`MarketConditionAnalyzer` reads the live snapshot universe:
 
-| Condition | Recommendation |
-|-----------|---------------|
-| High vol (avg gap >= 3%, 5+ gappers) | "Use Strict" — `morning_premarket` |
-| Low vol + catalyst data | "Use Night Research" |
-| Low vol, no catalyst | "Wait for midday" — `midday_rescan` |
-| Medium vol (3+ high-vol stocks) | `midday_rescan` |
-| Medium vol (few stocks) | `morning_premarket` |
+| Market | Avg Gap | Recommendation |
+|--------|---------|----------------|
+| High volatility | ≥ 3%, 5+ gappers | Option 3 — Strict |
+| Low volatility | < 1.5% | Option 1 — Night Research |
+| Medium volatility | 1.5–3% | Option 2 or 3 based on signal count |
 
-### Regime-Adaptive Thresholds
-
-| Parameter | Low Vol | Medium | High Vol |
-|-----------|---------|--------|----------|
-| Max VWAP distance | 4.0% | 3.0% | 2.0% |
-| Min catalyst score | 35 | 40 | 45 |
-| Min relative volume | 2.5× | 3.0× | 3.5× |
-| Max trades/day | 10 | 8 | 6 |
-
-### Volatility Classification
-
-| Regime | Conditions |
-|--------|-----------|
-| High | `avg_gap >= 3.0%` AND `gappers_count >= 5` |
-| Medium | `avg_gap >= 1.5%` AND `gappers_count >= 3` |
-| Low | Everything else |
-
-**Key file**: `src/tradingbot/analysis/market_conditions.py`
+**Key files**: `src/tradingbot/analysis/market_conditions.py`, `src/tradingbot/models.py`
 
 ---
 
-## Step 12: Auto-Tuner (runs at session boot)
+## Step 10: Trade Tracking & Outcomes
 
-Looks at the last 20+ trades' outcomes in Supabase, calculates which thresholds are too tight or too loose, and adjusts.
+### Trailing Stop System
 
-### Tunable Parameters & Bounds
+| Trigger | Action |
+|---------|--------|
+| 1R gain | Move stop to breakeven (entry price) |
+| 2R gain | Move stop to entry + 1R |
+| TP1 hit | Move stop to TP1 price |
+| Price drops below trail | Stop triggered |
+| 3:30 PM ET expire | Market sell at current price |
 
-| Parameter | Min | Max |
-|-----------|-----|-----|
-| `min_catalyst_score` | 25 | 70 |
-| `min_relative_volume` | 1.5 | 5.0 |
-| `min_ranker_score` | 30 | 80 |
-| `min_confluence_score` | 5 | 20 |
-| `max_vwap_distance_pct` | 1.5 | 6.0 |
-| `max_trades_per_day` | 4 | 15 |
+### Outcome Recording
 
-### Logic
+All trades tracked in Supabase `trade_outcomes` table with:
+- Entry price, exit price, PnL percentage
+- Exit reason (stop, TP1, TP2, trail, expire)
+- Duration, session tag, patterns
 
-1. Runs `Backtester.run()` to get historical performance
-2. Analyzes per-filter and per-bucket performance
-3. Recommends tightening if too many false signals
-4. Recommends loosening if too many missed opportunities
-5. Only applies recommendations with **confidence >= 50%**
-6. Requires minimum 20 trades for any recommendations
-
-**Key file**: `src/tradingbot/analysis/auto_tuner.py`
+**Key files**: `src/tradingbot/tracking/trade_tracker.py`, `src/tradingbot/web/alert_store.py`
 
 ---
 
-## Step 13: Trade Outcome Tracking
+## Step 11: Chart Generation & Persistence
 
-**Purpose**: After alerts are sent, track whether trades hit TP1, TP2, or stopped out.
+### Charts
+- Candlestick charts generated per trade card alert
+- EMA9/EMA20 overlays, entry/stop/TP levels marked
+- VWAP and support/resistance annotated
+- Sent as Telegram image attachments
+- Stored in `outputs/charts/`
 
-### Outcome Lifecycle
+### Output Files
 
+| File | Session | Archived? |
+|------|---------|-----------|
+| `catalyst_scores.json` | Night research | Yes |
+| `smart_money_signals_{session}.json` | Each session | Yes |
+| `{session}_watchlist.csv` | Morning/Midday/Close | Yes |
+| `{session}_playbook.md` | Morning/Midday/Close | Yes |
+| `alerts.jsonl` | All sessions | Append-only |
+
+### Archive Structure
 ```
-open → tp1_hit → tp2_hit   (upgrade path — wins)
-open → stopped              (loss)
-open → expired              (at 16:00 ET market close — neither hit)
+outputs/archive/YYYY-MM-DD/
+├── INDEX.md                          # Auto-generated index
+├── catalyst_scores_HHMMSS.json
+├── morning_watchlist_HHMMSS.csv
+├── morning_playbook_HHMMSS.md
+└── ...
 ```
 
-### Tracking Logic
+### Supabase Tables
+- `alerts` — all trade card alerts
+- `trade_outcomes` — trade tracking results with PnL
+- `sessions` — scan session metadata
+- `close_picks` — close/hold scanner picks
+- JSONL fallback if Supabase is unavailable
 
-- **Price fetch fallback chain**:
-  1. Latest trade (most reliable for IEX feed)
-  2. Snapshot latest_trade + daily bar (catches gaps in feed)
-  3. Latest quote bid/ask (last resort)
-- **Seeding**: daily — creates new outcome records for today's alerted symbols
-- **Tick frequency**: every 5 minutes during market hours
-- Only checks symbols with open outcomes (API-efficient)
-
-**Key file**: `src/tradingbot/tracking/trade_tracker.py`
+**Key files**: `src/tradingbot/analysis/chart_generator.py`, `src/tradingbot/web/alert_store.py`
 
 ---
 
-## Step 14: Close/Hold Scanner (runs ~3:50 PM ET)
+## Data Quality Validation
 
-**Purpose**: Find stocks worth holding overnight based on end-of-day strength.
+Alpaca's free IEX tier occasionally returns stale or incorrect prices. Built-in checks:
 
-### Close Hold Scoring (weights to 100%)
-
-| Factor | Weight | How it's scored |
-|--------|--------|----------------|
-| Momentum | 25% | Intraday % change, capped at 15% |
-| Relative Volume | 20% | Capped at 5× |
-| Catalyst | 20% | Raw catalyst score (0-100) |
-| Technical | 15% | RSI + MACD + S/R proximity |
-| Closing Strength | 10% | Position within session range (high=strong) |
-| Liquidity | 10% | Spread + dollar volume |
-
-### RSI Sub-scoring (within Technical)
-
-| RSI Range | Points | Interpretation |
-|-----------|--------|---------------|
-| ≤ 30 | 90 | Oversold bounce opportunity |
-| 50-70 | 80 | Healthy momentum |
-| > 80 | 30 | Overbought, risky overnight |
-| Other | 50 | Neutral |
-
-- Min score: 40.0
-- Max picks: 5 per close scan
-
-**Key file**: `src/tradingbot/scanner/close_hold_scanner.py`
+- Extreme gaps (>50%) without obvious news → filtered
+- Wide bid-ask spreads (>5%) indicating stale quotes → filtered
+- Suspiciously low prices with high gaps → filtered
+- Round/placeholder prices → filtered
+- Enable `DEBUG=1` to see validation warnings in logs
 
 ---
 
-## Step 15: Chart Generation
+## Known Limitations
 
-**Purpose**: Generate candlestick charts attached to trade card alerts.
+1. **EMA hold check** uses `pullback_low >= ema20` which may be too loose (allows EMA9 breaks). Tightening to EMA9 may be too aggressive given ATR-based pullback_low computation. Deferred.
+2. **Midday volume multiplier** (1.3×) is low but has a fallback path via relvol + premarket check.
+3. **No higher-timeframe trend filter** — a stock gapping up in a weekly downtrend is a bear rally, not continuation. This is the single biggest potential improvement.
+4. **No volume decay detection** — snapshots are point-in-time, no tracking of fading participation.
+5. **IEX data tier** — 15-minute delayed intraday data. Consider paid tier ($9/mo) for real-time quotes.
 
-- Library: `mplfinance` with "nightclouds" dark theme
-- Dimensions: 14" wide × 8" tall
-- **Overlays**:
-  - EMA9 (blue line)
-  - EMA20 (orange line)
-  - VWAP (purple dashed line)
-  - Entry / Stop / TP1 / TP2 horizontal lines (from TradeCard)
-  - Volume subplot
-- Output: `outputs/charts/{symbol}_{YYYYMMDD_HHMM}.png`
-
-**Key file**: `src/tradingbot/analysis/chart_generator.py`
-
----
-
-## Persistence Layer
-
-### Alert Store (Supabase + JSONL hybrid)
-
-- **Primary**: Supabase insert
-- **Fallback**: JSONL file at `ALERT_STORE_PATH` env var (or `outputs/alerts.jsonl`)
-- Max JSONL records: 200 (auto-pruned)
-- **Weekend skip**: checks if `trade_date` is Saturday/Sunday, skips saving
-- **Schema compatibility**: tries insert with all columns first; if schema too old, retries without optional columns (e.g., `risk_level`)
-
-### Sessions Table
-
-- Written by the worker for every scan, even zero-card scans
-- Used by the dashboard to show scan times and counts
-- Enables scan-time filtering even when no alerts were generated
-
-**Key file**: `src/tradingbot/web/alert_store.py`
-
----
-
-## Scan Schedule
-
-| Job | Time (ET) | What runs |
-|-----|-----------|-----------|
-| Night research | ~10 PM | News scraping, catalyst scoring |
-| Pre-market scan | 8:45 AM | Morning 3-option scan |
-| Midday scans | Every 30 min, 9:30 AM - 3 PM | Midday re-scan with stricter filters |
-| Close scan | 3:50 PM | End-of-day recap + close/hold scanner |
-| Tracker | Every 5 min during market hours | Tracks open positions for outcome recording |
-
----
-
-## Configuration Files
-
-| File | What it controls |
-|------|-----------------|
-| `config/scanner.yaml` | Gap scanner thresholds, ranker min_score, max_candidates, O2 relaxed thresholds, midday overrides |
-| `config/risk.yaml` | Max trades, loss lockout, consecutive loss limit, stop %, risk % |
-| `config/indicators.yaml` | EMA periods (9/20), volume spike multipliers (morning 1.5×, midday 1.3×), VWAP hold bars |
-| `config/schedule.yaml` | Scan times |
-| `config/broker.yaml` | Alpaca credentials, news source toggles, AI settings |
-
----
-
-## Known Bugs & Issues
-
-These are actively tracked in [IMPROVEMENTS.md](IMPROVEMENTS.md). Key ones affecting live results:
-
-1. **`TradeCard.side` removed but still referenced** — `side` field was deleted from models in commit `e2babcb` but `telegram_notifier.py`, `cli.py`, `watchlist_report.py`, and `ai_trade_validator.py` still call `card.side`. These paths will crash at runtime.
-2. **EMA hold too loose** — checks `pullback_low >= ema20` instead of `ema9`, allowing broken momentum structures to pass as "holds".
-3. **Gap scanner uses `abs()`** — long-only system accepts negative gaps, wasting ranking slots.
-4. **No NaN guard in ranker** — a single NaN indicator silently kills the entire score, dropping valid candidates.
-5. **Relative volume overflow** — illiquid stocks with tiny prior-day volume can score 100x relvol, appearing as high conviction.
-6. **Midday volume multiplier too low** — 1.3x at midday is noise, not a real volume confirmation signal.
+See `docs/IMPROVEMENTS.md` for the full improvement tracker with validation verdicts and priorities.

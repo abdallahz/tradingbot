@@ -1,32 +1,66 @@
 # Algorithm Improvements Tracker
 
+> **Last updated:** April 3, 2026
+
 ## Status Key
 - [ ] Not started
 - [x] Completed
 - [~] In progress
 
-## Validation Summary (2026-03-31)
-
-All issues reviewed and triaged. Verdicts:
+## Summary Table
 
 | # | Issue | Verdict | Fix Status |
 |---|-------|---------|------------|
-| 0 | TradeCard.side crash | **CRITICAL** — 9 refs to `.side` which didn't exist | **FIXED** — added `side: str = "long"` to TradeCard + CloseHoldPick |
-| NEW | Fakeout guard wrong field names | **CRITICAL** — `card.stop_loss`/`card.entry` don't exist on TradeCard | **FIXED** — corrected to `card.stop_price`/`card.entry_price` |
-| 1 | EMA hold too loose | **REAL** but nuanced — pullback_low is invalidation level, often below EMA9 by design | Deferred — reverted, needs more analysis |
-| 2 | abs() in gap scanner | **REAL** (low impact) — negative gaps waste slots | **FIXED** — removed abs(), long-only |
-| 3 | Relvol overflow | **PARTIAL** — scoring already caps at 100, gate check is fine | Won't fix |
-| 4 | NaN kills scores | **REAL** — NaN from ta library silently drops candidates | **FIXED** — inline `math.isfinite()` guards in normalize methods |
-| 5 | RSI peak at 60 | **DEBATABLE** — RSI 60 is defensible for gap-and-go; weight is only 10% | Won't fix |
-| 6 | Gap quality cliff at 6% | **NEGLIGIBLE** — 8% weight × 20pt diff = 1.6pt impact | Won't fix |
-| 7 | OBV binary scoring | **NEGLIGIBLE** — 6% weight × 55pt diff = 3.3pt; most gappers score 80 anyway | Won't fix |
-| 8 | Midday multiplier 1.3x | **REAL but low** — has fallback path (relvol + 50K premarket) | Won't fix now |
-| 9 | No trend filter | Valid improvement — new feature, not a bug | Backlog |
-| 10 | Stop too tight at open | Partially addressed by fakeout guard (now fixed) | Backlog |
-| 11 | Dynamic R:R | Tuning preference, MIN_RR=1.5 is standard | Backlog |
-| 12 | Dollar volume 5x estimate | **RARELY HIT** — dead code for any stock with 1+ day history | Won't fix |
+| 0 | TradeCard.side crash | **CRITICAL** | **FIXED** (2026-03-31) |
+| 0b | Fakeout guard wrong field names | **CRITICAL** | **FIXED** (2026-03-31) |
+| 1 | EMA hold too loose | REAL but nuanced | Deferred |
+| 2 | abs() in gap scanner | REAL | **FIXED** (2026-03-31) |
+| 3 | Relvol overflow | PARTIAL | Won't fix |
+| 4 | NaN kills scores | REAL | **FIXED** (2026-03-31) |
+| 5 | RSI peak at 60 | DEBATABLE | Won't fix |
+| 6 | Gap quality cliff at 6% | NEGLIGIBLE | Won't fix |
+| 7 | OBV binary scoring | NEGLIGIBLE | Won't fix |
+| 8 | Midday multiplier 1.3x | REAL but low | Won't fix now |
+| 9 | No trend filter | New feature | Backlog |
+| 10 | Stop too tight at open | Partially addressed | Backlog |
+| 11 | Dynamic R:R | Tuning preference | Backlog |
+| 12 | Dollar volume 5x estimate | RARELY HIT | Won't fix |
 | 13 | No volume decay detection | New feature | Backlog |
-| 14 | Streak scaling ignores quality | **BY DESIGN** — conservative sizing after losses is intentional | Won't fix |
+| 14 | Streak scaling ignores quality | BY DESIGN | Won't fix |
+| 15 | Gap fill probability model | New feature | Backlog |
+| 16 | First 5-min volatility check | New feature | Backlog |
+| 17 | Sector correlation filter | New feature | Backlog |
+| 18 | Volume profile time-of-day | New feature | Backlog |
+| 19 | Entry timing signal | New feature | Backlog |
+
+### Additional Fixes Applied (2026-04-01 – 2026-04-02)
+
+These fixes were applied based on live performance analysis and are not in the original tracker:
+
+| Fix | Commit | Date | Description |
+|-----|--------|------|-------------|
+| min_score 40→50 | `1268d82` | Apr 1 | Raise ranker floor to filter marginal setups |
+| price_min $1→$5 | `1268d82` | Apr 1 | Eliminate penny stocks (both strict + relaxed) |
+| max_candidates 10→8 | `1268d82` | Apr 1 | Focus on highest-quality picks per session |
+| Market guard tightened | `1268d82` | Apr 1 | Yellow threshold -0.5%→-0.3% (catch weakness earlier) |
+| Confluence scoring fix | `1268d82` | Apr 1 | 60/40 blend of ranker + confluence engine |
+| Gap fade detection | `1268d82` | Apr 1 | Block gapped-up stocks trading below VWAP |
+| Screener catalyst default | `7d92f82` | Apr 1 | Screener movers without catalyst data get 30 (not 50) |
+| O2 relaxed price_min=$5 | `7d92f82` | Apr 1 | Option 2 was bypassing price floor |
+| Telegram retry logic | `8a4a054` | Apr 1 | 1.5s delay, 2 retries with 429 backoff |
+| Inverse/VIX ETF blocker | `8a4a054` | Apr 1 | Block TZA, SQQQ, SPXS, SDOW, UVIX, UVXY in long-only mode |
+| WORKER_ENABLED gate | `21514df` | Apr 2 | Prevent duplicate scans from Heroku+Render |
+| Missing inverse ETFs | `6852030` | Apr 2 | Added SPDN, SH, DOG, RWM, PSQ, SRTY, HDGE |
+| Secondary price guard | `6852030` | Apr 2 | Hard floor at scanner.price_min in `_build_cards` |
+| Yellow regime penalty | `1268d82` | Apr 1 | +5 point score floor during yellow market regime |
+
+### Performance Impact
+
+5-day analysis (Mar 27 – Apr 2): 72 trades, 47% WR. 
+- 12 preventable losses identified: 6 low-price (<$5), 6 inverse/VIX ETFs
+- All 12 now blocked by the fixes above
+- Estimated WR improvement: ~47% → ~57%+ with fixes active
+- Catalyst gate 40→50 analysis: ZERO trades had catalyst < 50, so no additional impact
 
 ---
 

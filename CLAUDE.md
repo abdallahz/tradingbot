@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-An automated day-trading **alert system** (no trades executed). Scans stocks for intraday setups, sends Telegram notifications, and serves a Flask web dashboard. Deployed on Heroku/Render with Supabase persistence.
+An automated day-trading **alert system** (no trades executed). Scans stocks for intraday setups, sends Telegram notifications, and serves a Flask web dashboard. Deployed on Heroku (web) + Render (crons) with Supabase persistence.
 
 ## Commands
 
 ```bash
 # Install (editable mode)
-pip install -e .
+pip install -r requirements.txt && pip install -e .
 
 # Run locally with mock data (no credentials needed)
 python -m tradingbot.cli run-day
@@ -24,7 +24,7 @@ python -m tradingbot.cli --real-data run-close      # 15:50 ET close scan
 # Show schedule
 python -m tradingbot.cli schedule
 
-# Tests
+# Tests (131 tests)
 pytest tests/ -v
 pytest tests/test_trade_card.py -v   # single file
 ```
@@ -35,8 +35,8 @@ pytest tests/test_trade_card.py -v   # single file
 
 Every scan session produces three parallel watchlists:
 - **Option 1 (Night Research)**: Top 10 catalyst-driven picks from news/SEC/social signals
-- **Option 2 (Relaxed)**: Gap ≥1%, volume ≥100K, DV ≥$10M
-- **Option 3 (Strict)**: Gap ≥4%, volume ≥500K, DV ≥$20M, spread ≤0.35%
+- **Option 2 (Relaxed)**: Catalyst-weighted ranker (30% catalyst). Separate budget (2 trades/day).
+- **Option 3 (Strict)**: Gap ≥0.5%, volume ≥50K, DV ≥$500K, spread ≤2%, score ≥50, max 8 cards
 
 `MarketConditionAnalyzer` recommends which option based on live volatility.
 
@@ -45,34 +45,42 @@ Every scan session produces three parallel watchlists:
 CLI → `Scheduler` → `SessionRunner` which:
 1. Loads catalyst scores (from prior `run-news` job saved to `catalyst_scores.json`)
 2. Fetches snapshots via `AlpacaClient`
-3. Filters through `GapScanner`
+3. Filters through `GapScanner` (price_min=$5, long-only positive gaps)
 4. Detects patterns, checks pullback setups, scores confluence
-5. Ranks via `CatalystWeightedRanker`
-6. Builds `TradeCard` (entry/stop/TP1/TP2)
-7. Sends via `TelegramNotifier`, persists to `AlertStore` (Supabase + JSONL fallback)
+5. Ranks via `CatalystWeightedRanker` (11 scoring components)
+6. `_build_cards` 21-step filter chain (market guard → price guard → inverse ETF blocker → gap fade → catalyst gate → confluence engine → etc.)
+7. Builds `TradeCard` (entry/stop/TP1/TP2), blends score 60% ranker + 40% confluence
+8. Sends via `TelegramNotifier` (1.5s delay, retries), persists to `AlertStore` (Supabase + JSONL fallback)
 
 ### Key Modules
 
-- `src/tradingbot/app/` — Scheduler orchestration, session runner, Heroku worker loop
-- `src/tradingbot/analysis/` — Pattern detection, market conditions, technical indicators, chart generation
-- `src/tradingbot/research/` — News aggregation (SEC EDGAR, RSS, social proxy), catalyst scoring, insider tracking
+- `src/tradingbot/app/` — Scheduler, session runner (~1200 lines), worker loop (WORKER_ENABLED gate)
+- `src/tradingbot/analysis/` — Pattern detection, market guard (SPY/QQQ), market conditions, confluence engine, chart generation
+- `src/tradingbot/research/` — News aggregation (SEC EDGAR, RSS, social proxy), catalyst scoring, insider/institutional/congressional tracking
 - `src/tradingbot/scanner/` — Gap scanner filters, close/hold scanner
 - `src/tradingbot/signals/` — Pullback setup detection (EMA hold, VWAP reclaim, volume confirmation)
-- `src/tradingbot/strategy/trade_card.py` — Trade card construction with entry/stop/target placement
-- `src/tradingbot/ranking/ranker.py` — Multi-factor scoring (gap, volume, spread, RSI, MACD, catalyst)
-- `src/tradingbot/risk/risk_manager.py` — Max trades/day, loss lockout, streak multiplier
-- `src/tradingbot/web/` — Flask dashboard (dark theme), Supabase alert store
+- `src/tradingbot/strategy/trade_card.py` — Trade card construction with entry/stop/target placement (MIN_RR=1.5)
+- `src/tradingbot/ranking/ranker.py` — 11-component multi-factor scoring (gap 15%, catalyst 15%, relvol 13%, etc.)
+- `src/tradingbot/risk/risk_manager.py` — Max 8 trades/day, 3 consecutive loss lockout, streak scaling (75%→50%→lockout)
+- `src/tradingbot/data/etf_metadata.py` — ETF family dedup, inverse ETF detection (11 inverse + 2 VIX blocked)
+- `src/tradingbot/web/` — Flask dashboard (dark theme), Supabase alert store with trade outcomes
 - `src/tradingbot/models.py` — Core dataclasses: `SymbolSnapshot`, `TradeCard`, `ThreeOptionWatchlist`, `RiskState`
 
 ### Configuration
 
-All thresholds live in YAML files under `config/` (scanner.yaml, risk.yaml, indicators.yaml, schedule.yaml). Environment variables override YAML values for cloud deployment. See `config/broker.example.yaml` for credential template.
+All thresholds live in YAML files under `config/`:
+- `scanner.yaml` — price_min=$5, min_gap=0.5%, min_score=50, max_candidates=8
+- `risk.yaml` — max_trades=8, o2_max=2, stop=2.5%, lockout=1.5%, consecutive=3
+- `indicators.yaml` — EMA 9/20, vol spike morning=1.5×, midday=1.3×
+- `schedule.yaml` — night 20:00, morning 08:00, premarket 08:45, close 15:30
+
+Environment variables override YAML for cloud deployment. See `config/broker.example.yaml` for credential template.
 
 ### Deployment
 
-Two Heroku/Render processes:
-- **Web**: `gunicorn` serving Flask dashboard
-- **Worker/Cron**: Scheduled scan jobs (night research, morning, midday every 30min, close)
+- **Heroku**: Web dyno only (worker OFF, `WORKER_ENABLED=false`). Flask dashboard + Supabase reads.
+- **Render**: 6 cron jobs handle all scheduling (news, morning, midday, tracker, close)
+- **Supabase**: Tables: alerts, trade_outcomes, sessions, close_picks
 
 Required env vars: `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `ALPACA_PAPER`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, `SUPABASE_KEY`
 
@@ -82,49 +90,48 @@ Required env vars: `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `ALPACA_PAPER`, `TELEG
 - **Alert-only**: No order execution — generates trade card recommendations.
 - **Free indicators only**: Uses `ta` library (not torch/transformers) to stay within Heroku slug size limits.
 - **Telegram-primary**: Telegram is the main notification channel; web dashboard is a secondary alert viewer.
-- **Stateless workers**: Heroku dynos can restart anytime — Supabase is the persistent source of truth for alerts.
+- **Stateless workers**: Heroku/Render dynos can restart anytime — Supabase is the persistent source of truth for alerts.
 - **AI optional**: LLM-based sentiment/validation (OpenAI/Anthropic) is opt-in and not required for core functionality.
+- **Inverse ETFs blocked**: 11 inverse ETFs + 2 VIX ETFs blocked — going long on inverse = short bet.
+- **Secondary price guard**: Hard floor at $5 in `_build_cards` regardless of scanner path.
 
 ## Live Deployment
 
 - **Heroku dashboard**: `https://aztradingbot-c8a5462555f3.herokuapp.com`
 - **Health check**: `https://aztradingbot-c8a5462555f3.herokuapp.com/api/health`
-- **Render config**: `render.yaml` (alternative deployment, cron jobs defined here)
+- **Render config**: `render.yaml` (6 cron jobs — sole scheduler)
 
 ## Local Development
 
 ```bash
-# Install all deps (pyproject.toml only has PyYAML — use requirements.txt)
 pip install -r requirements.txt && pip install -e .
 
 # Run Flask dashboard locally
 FLASK_APP=src/tradingbot/web/app.py python -m flask run --port 5000
-# Then visit http://127.0.0.1:5000
 
 # Run scanner with mock data (no credentials needed)
 python -m tradingbot.cli run-day
 ```
 
+## Documentation
+
+- `docs/ALGORITHM.md` — Full trading pipeline, scoring weights, filter chain, business rules
+- `docs/OPERATIONS.md` — Deployment, scheduling, file persistence, troubleshooting
+- `docs/IMPROVEMENTS.md` — Algorithm improvement tracker with validation verdicts
+- `docs/EXECUTION_ENGINE_PLAN.md` — Automated order execution plan (next MVP)
+
 ## Known Issues & Next Steps
 
-### Fixed (2026-03-31)
-1. **`TradeCard.side` crash** — `side` field was removed from models but 9 references remained. Fixed: added `side: str = "long"` default to `TradeCard` and `CloseHoldPick`.
-2. **Fakeout guard broken field names** — `session_runner.py` referenced `card.stop_loss`/`card.entry` which don't exist on `TradeCard`. Fixed: corrected to `card.stop_price`/`card.entry_price`. The fakeout guard (9:30-9:45 ET stop widening) had never worked.
-3. **NaN kills ranker scores** — `ta` library returns NaN for early bars, propagating through the weighted sum and silently dropping candidates. Fixed: inline `math.isfinite()` guards in `_normalize_rsi()`, `_normalize_macd()`, and `catalyst_score` read — NaN defaults to 50.0 (neutral).
-4. **`abs()` in gap scanner** — Long-only system was accepting negative gaps via `abs()`. Fixed: removed `abs()`, negative gaps now fail the threshold naturally.
-
 ### Deferred
-5. **EMA hold check** (`indicators.py`) — uses `pullback_low >= ema20` which may be too loose (allows EMA9 breaks), but tightening to `ema9` may be too aggressive given how `pullback_low` is computed with ATR. Needs more analysis.
+- **EMA hold check** — uses `pullback_low >= ema20` which may be too loose. Needs analysis.
 
 ### Still Open
-6. **pyproject.toml missing runtime deps** — only lists PyYAML; `pip install -e .` alone won't work. Need to sync deps from requirements.txt into pyproject.toml.
-7. **Render.yaml cron schedules (UTC/ET confusion)** — several schedules are off. Night research at 5:00 UTC = midnight ET (should be ~3 AM UTC for 10 PM ET). Midday stops at 18 UTC = 1 PM ET (should extend to ~20 UTC for 3 PM ET). Close scan at 19:30 UTC = 2:30 PM ET (should be ~19:50 UTC for 3:50 PM ET).
+- **pyproject.toml missing runtime deps** — only lists PyYAML; need to sync from requirements.txt.
+- **session_runner.py is ~1200 lines** — should extract CardBuilder and ScanStrategy classes.
 
-### Improvements Planned
-8. **Mock data too optimistic** — all 6 mock stocks pass every filter. Add diverse test data that exercises rejection/drop paths.
-9. **Dashboard filtering** — currently loads 500 alerts then filters in Python. Should push filters to Supabase query.
-10. **Test coverage gaps** — no tests for `_build_cards` core logic, ranker scoring, market guard, alert dedup, ETF family dedup.
-11. **session_runner.py is ~800 lines** — should extract CardBuilder and ScanStrategy classes.
-12. **Redundant datetime imports in cli.py** — imported 4 times in different blocks instead of once at top.
+### Backlog (biggest potential improvements)
+- **Higher-timeframe trend filter** — biggest single edge improvement. Stocks gapping up in a downtrend are bear rallies.
+- **Volume decay detection** — track fading participation across bars.
+- **Dynamic R:R by score** — high-conviction setups should accept lower R:R.
 
-See `docs/IMPROVEMENTS.md` for the full algorithm improvement tracker with validation verdicts.
+See `docs/IMPROVEMENTS.md` for the full tracker.

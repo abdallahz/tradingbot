@@ -148,24 +148,26 @@ worker: PYTHONPATH=src python -m tradingbot.app.worker
 git push heroku main   # or trigger via Heroku dashboard → Deploy tab
 ```
 
-Both dynos must be **ON** in Heroku → Resources for automated jobs and the
-dashboard to function.
+Heroku runs the **web dyno only**. Render handles all scheduled cron jobs.
+The `WORKER_ENABLED` env var gates the worker loop — set to `false` on Heroku.
 
 ## 3-Option Trading System
 
 Every scan session produces **three parallel views** with an intelligent recommendation:
 
 ### Option 1 — Night Research (Catalyst-Driven)
-Focuses on the top-10 stocks with catalyst score ≥ 60 from news research.  
+Focuses on the top-10 stocks with highest catalyst scores from news research.  
 Best on **low-volatility days** when momentum is news-driven.  
 Enriched with smart money signals (insider trades, 13F filings, congressional disclosures).
 
 ### Option 2 — Relaxed Filters (More Opportunities)
-Gap ≥ 1%, premarket volume ≥ 100k, dollar volume ≥ $10M.  
-Best on **medium-volatility days** or when the strict scanner comes up empty.
+Catalyst-weighted ranker (30% catalyst weight). Bypasses indicator confirmation
+for `catalyst_score >= 55` with positive gap. Separate daily budget (2 trades max).  
+Best on **medium-volatility days** or when the strict scanner is empty.
 
 ### Option 3 — Strict Filters (High Probability)
-Gap ≥ 4%, premarket volume ≥ 500k, dollar volume ≥ $20M, spread ≤ 0.35%.  
+Full indicator confirmation, confluence engine, fakeout guard.  
+Price ≥ $5, gap ≥ 0.5%, premarket volume ≥ 50K, dollar volume ≥ $500K, spread ≤ 2%.  
 Best on **high-volatility days** with strong pre-market activity.
 
 ### Intelligent Recommendation
@@ -220,29 +222,31 @@ All config lives in `config/` YAML files. Every value can be overridden with env
 
 ### `config/scanner.yaml`
 
-| Setting | Default | Notes |
+| Setting | Strict (O3) | Relaxed (O2) |
 |---|---|---|
-| `price_min` / `price_max` | $2 / $30 | Excludes penny stocks and expensive names |
-| `min_gap_pct` | 4.0% | Strict scanner; relaxed scanner uses 1% |
-| `min_premarket_volume` | 500 000 | Relaxed scanner: 100 000 |
-| `min_dollar_volume` | $20M | Relaxed scanner: $10M |
-| `max_spread_pct` | 0.35% | Relaxed scanner: 0.50% |
-| `min_score` | 70 | Ranker threshold |
-| `max_candidates` | 5 | Max cards per session |
+| `price_min` / `price_max` | **$5** / $2,000 | $5 / $2,000 |
+| `min_gap_pct` | **0.5%** | 0.0% |
+| `min_premarket_volume` | **50,000** | 0 |
+| `min_dollar_volume` | **$500K** | $50K |
+| `max_spread_pct` | **2.0%** | 5.0% |
+| `min_score` | **50** | 50 |
+| `max_candidates` | **8** | 8 |
 
-Midday stricter filters:
-- `min_relative_volume`: 1.8×
-- `min_dollar_volume`: $35M
-- `max_spread_pct`: 0.25%
+Midday filters:
+- `min_relative_volume`: 1.0×
+- `min_dollar_volume`: $500K
+- `max_spread_pct`: 2.0%
 
 ### `config/risk.yaml`
 
 | Setting | Default |
 |---|---|
-| `max_trades_per_day` | 3 |
+| `max_trades_per_day` | **8** |
+| `o2_max_trades_per_day` | **2** |
 | `daily_loss_lockout_pct` | 1.5% |
-| `max_consecutive_losses` | 2 |
-| `fixed_stop_pct` | 1.0% |
+| `max_consecutive_losses` | **3** |
+| `risk_per_trade_pct` | 0.5% |
+| `fixed_stop_pct` | **2.5%** |
 
 ### `config/indicators.yaml`
 
@@ -250,8 +254,8 @@ Midday stricter filters:
 |---|---|
 | `ema_fast` | 9 |
 | `ema_slow` | 20 |
-| `volume_spike_multiplier_morning` | 1.8× |
-| `volume_spike_multiplier_midday` | 2.2× |
+| `volume_spike_multiplier_morning` | **1.5×** |
+| `volume_spike_multiplier_midday` | **1.3×** |
 
 ### `config/schedule.yaml`
 
@@ -306,7 +310,7 @@ invalidation_price, session_tag, reason, patterns, risk_reward, generated_at
 python diagnostic.py   # Shows raw Alpaca data and per-symbol filter decisions
 ```
 
-## Project Status (March 10, 2026)
+## Project Status (April 3, 2026)
 
 | Phase | Status | Description |
 |---|---|---|
@@ -314,28 +318,36 @@ python diagnostic.py   # Shows raw Alpaca data and per-symbol filter decisions
 | Phase 2 | ✅ Complete | Alpaca API, news aggregation, catalyst scoring |
 | Phase 3 | ✅ Complete | 3-option system, market-condition recommendations |
 | Phase 4 | ✅ Complete | CLI split, SEC/RSS/social news, smart money tracking |
-| Phase 5 | ✅ Complete | Heroku deployment (web + worker dynos) |
+| Phase 5 | ✅ Complete | Heroku + Render deployment |
 | Phase 6 | ✅ Complete | Technical indicators: RSI, MACD, ATR, Bollinger, OBV |
 | Phase 7 | ✅ Complete | Telegram bot — trade cards, news summaries, error alerts |
 | Phase 8 | ✅ Complete | Flask web dashboard, on-demand scan, alert card UI |
+| Phase 9 | ✅ Complete | Supabase persistence, trade tracking with PnL outcomes |
+| Phase 10 | ✅ Complete | Performance analysis, filter hardening, inverse ETF blocker |
 
 **Current state:**
-- 18/18 tests passing
-- Heroku live: `aztradingbot-c8a5462555f3.herokuapp.com`
-- Both web and worker dynos ON and running
-- All 5 jobs send Telegram alerts on completion (including "no setups found")
-- `TradeCard` carries `risk_reward` and `generated_at` fields
+- 131 tests passing
+- Heroku live (web only): `aztradingbot-c8a5462555f3.herokuapp.com`
+- Render handles all scheduled cron jobs (Heroku worker OFF)
+- Supabase stores alerts + trade outcomes with exit price and PnL
+- Market guard (SPY/QQQ), inverse/VIX ETF blocker, gap fade detection, fakeout guard
+- Confluence engine (5-factor institutional scoring) with A–F grading
 
-## Planned Future Work
+## Next: Execution Engine (MVP)
 
-| | Feature |
+Full automated paper trading via Alpaca's Trading API. See `docs/EXECUTION_ENGINE_PLAN.md`.
+
+## Planned Improvements
+
+| Feature | Priority |
 |---|---|
-| Shared alert store | Heroku Postgres so worker alerts appear on the dashboard |
-| Alert cooldown | Suppress duplicate alerts for the same symbol within a session |
-| Daily trend filter | Confirm daily timeframe before acting on a 15-min signal |
-| P&L journal | Track trade outcomes against generated cards; compute win rate and avg R |
-| Backtesting | Replay historical data through the scanner to validate filter thresholds |
-| Semi-automated orders | Optional bracket-order placement via Alpaca (paper trading only) |
+| Higher-timeframe trend filter | High — biggest single edge improvement |
+| Volume decay detection | Medium |
+| Dynamic R:R by score | Medium |
+| Sector correlation filter | Low |
+| Entry timing signal (pullback zones) | Low |
+
+See `docs/IMPROVEMENTS.md` for the full tracker with validation verdicts.
 
 ⚠️ **Never use for live trading without extensive paper-trading validation first.**
 
@@ -347,16 +359,15 @@ python diagnostic.py   # Shows raw Alpaca data and per-symbol filter decisions
 - Check that `catalyst_scores.json` exists (run `run-news` first before scan commands)
 
 **Telegram alerts not arriving:**
-- Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in Heroku Config Vars
-- Check worker dyno logs: `heroku logs --tail --dyno worker`
-- Confirm worker dyno is ON in Heroku → Resources
+- Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in Heroku/Render Config Vars
+- Check Render cron job logs for errors
+- Telegram has rate limits — bot uses 1.5s delay + retry logic
 
-**"Run Scan Now" errors on dashboard:**
-- Check `heroku logs --tail --dyno web`
-- Ensure `catalyst_scores.json` exists in the worker dyno's `outputs/` directory
+**Duplicate alerts:**
+- Ensure only ONE scheduler is active (set `WORKER_ENABLED=false` on Heroku if Render handles crons)
 
 **API errors:**
-- Verify credentials in `config/broker.yaml` (local) or Heroku Config Vars (cloud)
+- Verify credentials in `config/broker.yaml` (local) or Heroku/Render Config Vars (cloud)
 - Ensure `ALPACA_PAPER=true` is set
 - Check Alpaca account status at https://alpaca.markets
 
@@ -371,15 +382,16 @@ python diagnostic.py   # Shows raw Alpaca data and per-symbol filter decisions
 | File | Contents |
 |---|---|
 | [README.md](README.md) | This file |
-| [FILE_PERSISTENCE_GUIDE.md](FILE_PERSISTENCE_GUIDE.md) | Output file structure and archiving |
-| [SCORING_METHODOLOGY.md](SCORING_METHODOLOGY.md) | Catalyst and confluence scoring logic |
-| [SMART_MONEY_TRACKING.md](SMART_MONEY_TRACKING.md) | Insider/13F/congressional signal enrichment |
-| [RSS_FEEDS_SUMMARY.md](RSS_FEEDS_SUMMARY.md) | News feed sources and configuration |
+| [CLAUDE.md](CLAUDE.md) | AI assistant context for this repository |
+| [docs/ALGORITHM.md](docs/ALGORITHM.md) | Full trading pipeline, scoring, filters, business rules |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Deployment, scheduling, file persistence, troubleshooting |
+| [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) | Algorithm improvement tracker with validation verdicts |
+| [docs/EXECUTION_ENGINE_PLAN.md](docs/EXECUTION_ENGINE_PLAN.md) | Automated order execution plan (next MVP) |
 | [config/broker.example.yaml](config/broker.example.yaml) | API credential template |
 
 ## Notes
 
 - Mock mode works without any API credentials
-- All tests pass (`pytest tests/ -v` → 18 passed)
+- All tests pass (`pytest tests/ -v` → 131 passed)
 - Heroku slug is under 1 GB (torch/transformers excluded; FinBERT degrades gracefully)
 - Python version pinned to 3.10 via `.python-version`
