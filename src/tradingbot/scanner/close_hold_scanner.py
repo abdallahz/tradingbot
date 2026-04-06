@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tradingbot.models import SymbolSnapshot
+from tradingbot.data.etf_metadata import get_leverage_factor
 
 
 @dataclass
@@ -62,6 +63,15 @@ class CloseHoldScanner:
 
     def _score(self, s: SymbolSnapshot) -> CloseHoldPick | None:
         if s.price <= 0:
+            return None
+
+        # Hard price floor — same $5 minimum as the main scanner
+        if s.price < 5.0:
+            return None
+
+        # Block inverse/VIX ETFs — going long on inverse = short bet
+        lev = get_leverage_factor(s.symbol)
+        if lev < 0:
             return None
 
         change_pct = s.gap_pct  # intraday change from previous close
