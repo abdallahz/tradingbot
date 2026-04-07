@@ -349,7 +349,11 @@ def healthz():
 
 @app.route("/api/diag/outcomes")
 def api_diag_outcomes():
-    """Diagnostic: show raw trade_outcomes state across recent days."""
+    """Diagnostic: show raw trade_outcomes state across recent days.
+
+    Query params:
+        days  — number of calendar days to look back (default 7, max 90)
+    """
     try:
         from tradingbot.web.alert_store import _get_supabase, _today_et
         from datetime import timedelta
@@ -360,13 +364,17 @@ def api_diag_outcomes():
         today = _today_et()
         today_str = today.isoformat()
 
-        # Check last 7 days of alerts and outcomes
+        lookback = min(int(request.args.get("days", 7)), 90)
+
+        # Check last N days of alerts and outcomes
         days_data = []
-        for i in range(7):
+        for i in range(lookback):
             d = (today - timedelta(days=i)).isoformat()
             alerts_resp = sb.table("alerts").select("id", count="exact").eq("trade_date", d).limit(1).execute()
             outcomes_resp = sb.table("trade_outcomes").select("id, symbol, status, pnl_pct, exit_price, entry_price").eq("trade_date", d).execute()
             outcomes = outcomes_resp.data or []
+            if not outcomes and (alerts_resp.count or 0) == 0:
+                continue  # skip empty days to keep response small
             status_counts = {}
             for o in outcomes:
                 s = o.get("status", "unknown")
@@ -385,6 +393,7 @@ def api_diag_outcomes():
 
         return jsonify({
             "today": today_str,
+            "lookback_days": lookback,
             "outcomes_all_time": total_all,
             "last_7_days": days_data,
         })
