@@ -83,6 +83,20 @@ Same logic as the current simulated tracker, but executed as real Alpaca order m
 
 Checked every 5 minutes by the existing tracker cron job.
 
+### 5b. Below-VWAP Scalp Mode
+
+When a trade card has the `BELOW VWAP` warning (price below VWAP after a gap-up), the execution engine treats it as a **scalp-only trade**:
+
+| Rule | Normal Trade | Below-VWAP Scalp |
+|------|-------------|-------------------|
+| TP1 sell | 50% of position | **100% of position** |
+| TP2 | Remaining 50% trails | **Not used** |
+| Trail after TP1 | Stop moves to TP1 | **Full exit at TP1** |
+
+**Rationale**: Stocks trading below VWAP after a gap-up face institutional selling pressure. The bounce toward VWAP (TP1) is realistic; continuation to TP2 is statistically unlikely. Exiting 100% at TP1 preserves the 1:1 R:R while avoiding the common scenario of giving back gains.
+
+Implementation: `OrderExecutor` checks `card.false_positive_flags` for `BELOW VWAP`. If present, the bracket order places the full position size on the TP1 limit sell (no partial). The trailing stop logic is skipped — TP1 fill closes the trade entirely.
+
 ---
 
 ## 6. Risk Protection

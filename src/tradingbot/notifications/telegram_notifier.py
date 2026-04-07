@@ -516,6 +516,14 @@ class TelegramNotifier:
             for flag in fp_flags[:3]:
                 lines.append(f"  ⚠️ {flag}")
 
+        # Scalp-only recommendation for below-VWAP setups
+        has_vwap_warning = any("BELOW VWAP" in f for f in fp_flags)
+        if has_vwap_warning:
+            lines.append("")
+            lines.append("⚡ <b>SCALP ONLY — exit 100% at TP1</b>")
+            lines.append("  Institutional bias is against this long.")
+            lines.append("  Take the quick profit, skip TP2.")
+
         return "\n".join(lines)
 
     # ── Low-level HTTP helpers ─────────────────────────────────────────────
