@@ -17,6 +17,7 @@ client = AlpacaClient(
     api_key=broker_cfg["api_key"],
     api_secret=broker_cfg["api_secret"],
     paper=broker_cfg["paper"],
+    data_feed=broker_cfg.get("data_feed", "iex"),
 )
 
 # Get universe

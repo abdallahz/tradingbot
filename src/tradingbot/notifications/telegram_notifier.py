@@ -451,6 +451,10 @@ class TelegramNotifier:
         }
         vol_line = f"📈 <b>Volume</b>  : {vol_emojis.get(vol_class, vol_class)}" if vol_class else ""
 
+        # Stop annotation: show tighter stop for low-risk
+        stop_pct = round(abs(card.entry_price - card.stop_price) / card.entry_price * 100, 1) if card.entry_price > 0 else 0
+        stop_note = f"(below support, {stop_pct}%)"
+
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
         ]
@@ -468,7 +472,7 @@ class TelegramNotifier:
             "",
             "🎯 <b>Trade Plan</b>",
             f"Entry  : <code>${card.entry_price:.2f}</code>  (scanned price)",
-            f"Stop   : <code>${card.stop_price:.2f}</code>  (below support)",
+            f"Stop   : <code>${card.stop_price:.2f}</code>  {stop_note}",
             f"TP 1   : <code>${card.tp1_price:.2f}</code>  (resistance)",
             f"TP 2   : <code>${card.tp2_price:.2f}</code>  (extended)",
             f"R:R    : <code>{card.risk_reward:.1f}:1</code>",

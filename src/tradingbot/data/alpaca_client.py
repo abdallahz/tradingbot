@@ -35,20 +35,22 @@ _JUNK_SUFFIX = re.compile(
 
 
 class AlpacaClient:
-    def __init__(self, api_key: str, api_secret: str, paper: bool = True) -> None:
+    def __init__(self, api_key: str, api_secret: str, paper: bool = True, data_feed: str = "iex") -> None:
         self.client = StockHistoricalDataClient(api_key, api_secret)
         self.screener = ScreenerClient(api_key, api_secret)
         self.paper = paper
+        self.data_feed = data_feed  # "iex" (free) or "sip" (paid)
 
     def _fetch_batch(self, symbols: list[str]) -> tuple[dict, dict, Any, Any]:
         """
         Fetch quotes, snapshots, daily bars, and intraday bars for a batch of symbols.
-        Uses IEX feed (free-tier compatible). Raises on failure so the caller can log and skip.
+        Feed is configurable: 'iex' (free) or 'sip' (paid). Raises on failure so the caller can log and skip.
         """
-        quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbols, feed="iex")
+        feed = self.data_feed
+        quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbols, feed=feed)
         quotes = self.client.get_stock_latest_quote(quote_request)
 
-        snapshot_request = StockSnapshotRequest(symbol_or_symbols=symbols, feed="iex")
+        snapshot_request = StockSnapshotRequest(symbol_or_symbols=symbols, feed=feed)
         snapshot_data = self.client.get_stock_snapshot(snapshot_request)
 
         end = datetime.now()
@@ -58,7 +60,7 @@ class AlpacaClient:
             timeframe=TimeFrame.Day,  # type: ignore[arg-type]
             start=start,
             end=end,
-            feed="iex",
+            feed=feed,
         )
         bars = self.client.get_stock_bars(bars_request)
 
@@ -72,7 +74,7 @@ class AlpacaClient:
                     timeframe=intraday_tf,
                     start=intraday_start,
                     end=end,
-                    feed="iex",
+                    feed=feed,
                 )
             )
         except Exception as e:

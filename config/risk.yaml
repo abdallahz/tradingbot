@@ -5,3 +5,9 @@ risk:
   max_consecutive_losses: 3
   risk_per_trade_pct: 0.5
   fixed_stop_pct: 2.5
+  # Risk-tiered stops: low-risk trades get tighter stops to reduce
+  # loss magnitude. Data shows low-risk trades have 36% WR with avg
+  # PnL +0.08% — tighter stops limit damage without hurting upside.
+  stop_pct_low_risk: 1.5
+  stop_pct_medium_risk: 2.5
+  stop_pct_high_risk: 2.5

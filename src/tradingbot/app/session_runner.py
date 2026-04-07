@@ -73,6 +73,7 @@ class SessionRunner:
                 api_key=alpaca_cfg["api_key"],
                 api_secret=alpaca_cfg["api_secret"],
                 paper=alpaca_cfg["paper"],
+                data_feed=alpaca_cfg.get("data_feed", "iex"),
             )
             news_cfg = broker_config["news"]
             news_agg = NewsAggregator(
@@ -124,6 +125,12 @@ class SessionRunner:
         risk_defaults = risk_config["risk"]
         self.fixed_stop_pct = risk_defaults["fixed_stop_pct"]
         self.risk_per_trade_pct = risk_defaults.get("risk_per_trade_pct", 0.5)
+        # Risk-tiered stop caps: low-risk trades get tighter stops
+        self.stop_pct_by_risk = {
+            "low": risk_defaults.get("stop_pct_low_risk", self.fixed_stop_pct),
+            "medium": risk_defaults.get("stop_pct_medium_risk", self.fixed_stop_pct),
+            "high": risk_defaults.get("stop_pct_high_risk", self.fixed_stop_pct),
+        }
         self.risk_manager = RiskManager(
             max_trades_per_day=risk_defaults["max_trades_per_day"],
             daily_loss_lockout_pct=risk_defaults["daily_loss_lockout_pct"],
@@ -748,6 +755,7 @@ class SessionRunner:
                 session_tag=session_tag,
                 risk_per_trade_pct=effective_risk_pct,
                 stop_buffer_multiplier=mh.stop_buffer_multiplier if mh else 1.0,
+                stop_pct_by_risk=self.stop_pct_by_risk,
             )
             if card is None:
                 if dropped is not None:

@@ -46,6 +46,10 @@ class TradeTracker:
     def __init__(self) -> None:
         self._alpaca = None
 
+    def _get_feed(self) -> str:
+        """Return the configured Alpaca data feed ('iex' or 'sip')."""
+        return os.getenv("ALPACA_DATA_FEED", "iex").strip().lower()
+
     # ── Lazy Alpaca client ─────────────────────────────────────────────────
     def _get_alpaca(self):
         if self._alpaca is not None:
@@ -72,12 +76,12 @@ class TradeTracker:
             log.warning(f"[tracker] Failed to init Alpaca client: {exc}")
             return None
 
-    # ── Fetch latest prices (IEX free feed) ──────────────────────────────
+    # ── Fetch latest prices ──────────────────────────────────────────
     def _fetch_quotes(self, symbols: list[str]) -> dict[str, float]:
         """Return {symbol: last_price} for the given symbols.
 
         Strategy (cascading fallbacks for IEX coverage gaps):
-        1. Latest *trade* — most reliable for actively-traded IEX names.
+        1. Latest *trade* — most reliable for actively-traded names.
         2. Snapshot (latest_trade + daily_bar) — catches symbols whose
            snapshot aggregation has data even when latest_trade is empty.
         3. Latest quote (bid/ask) — last resort, often 0 for small caps.
@@ -88,12 +92,13 @@ class TradeTracker:
             return {}
 
         prices: dict[str, float] = {}
+        feed = self._get_feed()
 
         # ── Primary: latest trade price ────────────────────────────
         try:
             from alpaca.data.requests import StockLatestTradeRequest
             req = StockLatestTradeRequest(
-                symbol_or_symbols=symbols, feed="iex"
+                symbol_or_symbols=symbols, feed=feed
             )
             trades = client.get_stock_latest_trade(req)
             for sym, t in trades.items():
@@ -109,7 +114,7 @@ class TradeTracker:
             try:
                 from alpaca.data.requests import StockSnapshotRequest
                 req = StockSnapshotRequest(
-                    symbol_or_symbols=missing, feed="iex"
+                    symbol_or_symbols=missing, feed=feed
                 )
                 snaps = client.get_stock_snapshot(req)
                 for sym, snap in snaps.items():
@@ -133,7 +138,7 @@ class TradeTracker:
             try:
                 from alpaca.data.requests import StockLatestQuoteRequest
                 req = StockLatestQuoteRequest(
-                    symbol_or_symbols=missing, feed="iex"
+                    symbol_or_symbols=missing, feed=feed
                 )
                 quotes = client.get_stock_latest_quote(req)
                 for sym, q in quotes.items():
@@ -230,7 +235,7 @@ class TradeTracker:
                 timeframe=intraday_tf,
                 start=market_open,
                 end=now_utc,
-                feed="iex",
+                feed=self._get_feed(),
             )
             bars_response = client.get_stock_bars(req)
         except Exception as exc:
@@ -612,7 +617,7 @@ class TradeTracker:
                 timeframe=TimeFrame(1, TimeFrameUnit.Day),  # type: ignore[call-arg]
                 start=start_dt,
                 end=end_dt,
-                feed="iex",
+                feed=self._get_feed(),
             )
             bars_resp = client.get_stock_bars(req)
             result: dict[str, float] = {}

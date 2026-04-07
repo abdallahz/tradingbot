@@ -4,6 +4,7 @@ alpaca:
   api_key: "YOUR_ALPACA_API_KEY"
   api_secret: "YOUR_ALPACA_SECRET_KEY"
   paper: true  # Set to false for live trading (NOT RECOMMENDED until fully validated)
+  data_feed: iex  # "iex" (free) or "sip" (paid Algo Trader Plus, ~$9/mo for consolidated data)
   
 news:
   # Enable/disable individual news sources

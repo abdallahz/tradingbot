@@ -44,6 +44,7 @@ class ConfigLoader:
 
         # If no YAML exists, set reasonable defaults
         alpaca.setdefault("paper", True)
+        alpaca.setdefault("data_feed", "iex")  # "iex" (free) or "sip" (paid)
         news.setdefault("sec_filings", True)
         news.setdefault("use_real_sec", True)
         news.setdefault("rss_feeds", True)
@@ -59,6 +60,7 @@ class ConfigLoader:
         self._set_if_present(alpaca, "api_key", "ALPACA_API_KEY")
         self._set_if_present(alpaca, "api_secret", "ALPACA_API_SECRET")
         self._set_if_present(alpaca, "paper", "ALPACA_PAPER", caster=self._to_bool)
+        self._set_if_present(alpaca, "data_feed", "ALPACA_DATA_FEED")
 
         self._set_if_present(news, "sec_filings", "NEWS_SEC_FILINGS", caster=self._to_bool)
         self._set_if_present(news, "rss_feeds", "NEWS_RSS_FEEDS", caster=self._to_bool)

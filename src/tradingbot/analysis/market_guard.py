@@ -93,10 +93,12 @@ class MarketGuard:
 
         from alpaca.data.historical import StockHistoricalDataClient
         from alpaca.data.requests import StockSnapshotRequest
-        from alpaca.data.enums import DataFeed
+
+        # Use configured data feed (ALPACA_DATA_FEED env var, default "iex")
+        data_feed = os.getenv("ALPACA_DATA_FEED", "iex").strip().lower()
 
         client = StockHistoricalDataClient(key, secret)
-        req = StockSnapshotRequest(symbol_or_symbols=["SPY", "QQQ"], feed=DataFeed.IEX)
+        req = StockSnapshotRequest(symbol_or_symbols=["SPY", "QQQ"], feed=data_feed)
         snaps = client.get_stock_snapshot(req)
 
         results = {}
