@@ -123,6 +123,18 @@ def get_leverage_factor(symbol: str) -> int:
     return LEVERAGED_ETFS.get(symbol, 1)
 
 
+def is_leveraged_etf(symbol: str) -> bool:
+    """Return True if the symbol is a leveraged ETF (bull or inverse).
+
+    Leveraged bull ETFs (TQQQ 3×, SOXL 3×, etc.) inflate gap_pct by their
+    leverage factor — a 1% move in the underlying becomes 3% in the ETF,
+    gaming the ranker's gap score.  Going long on these in a momentum-gap
+    strategy adds layer risk without real edge.
+    """
+    lev = LEVERAGED_ETFS.get(symbol, 1)
+    return abs(lev) > 1
+
+
 def get_etf_family(symbol: str) -> str | None:
     """Return the family name for an ETF, or None if not in any family."""
     return _SYMBOL_TO_FAMILY.get(symbol)

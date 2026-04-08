@@ -26,12 +26,18 @@ def get_premarket_snapshots() -> list[SymbolSnapshot]:
 def get_midday_snapshots() -> list[SymbolSnapshot]:
     data = []
     for item in _BASE:
+        # Simulate intraday: open_price ≈ prev_close + small gap,
+        # then price drifts further → intraday_change_pct > 0.
+        open_price = item.price / (1 + item.gap_pct / 100)  # approx prev_close
+        intraday_change = item.gap_pct * 0.6  # 60% of gap came after open
         data.append(
             replace(
                 item,
                 relative_volume=max(1.0, item.relative_volume - 0.3),
                 spread_pct=min(0.40, item.spread_pct + 0.02),
                 recent_volume=int(item.recent_volume * 0.85),
+                open_price=round(open_price, 2),
+                intraday_change_pct=round(intraday_change, 2),
             )
         )
     return data

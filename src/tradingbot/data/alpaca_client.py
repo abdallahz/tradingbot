@@ -208,6 +208,17 @@ class AlpacaClient:
                     # ATR for volatility sizing
                     atr_val = tech.get("atr", current_price * 0.02)
 
+                    # ── Today's open price & intraday change ──────────────
+                    # daily_bar.open at pre-market = today's first print.
+                    # During regular hours this is the official open price.
+                    open_price = float(snap.daily_bar.open) if snap.daily_bar else prev_close
+                    if not open_price or open_price <= 0:
+                        open_price = prev_close
+                    intraday_change_pct = (
+                        ((current_price - open_price) / open_price) * 100
+                        if open_price > 0 else 0.0
+                    )
+
                     # ── reclaim_level: pre-market session high ─────────────────
                     # This is the key structural level momentum traders watch.
                     # Long setups: entry = just above PM high (breakout of PM range)
@@ -334,6 +345,8 @@ class AlpacaClient:
                             key_support=key_support,
                             key_resistance=key_resistance,
                             atr=atr_val,
+                            open_price=open_price,
+                            intraday_change_pct=intraday_change_pct,
                             patterns=patterns,
                             raw_bars=symbol_bars,
                             tech_indicators=tech,

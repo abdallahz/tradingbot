@@ -28,6 +28,7 @@ from tradingbot.reports.watchlist_report import write_csv, write_markdown, write
 from tradingbot.research.catalyst_scorer import CatalystScorer
 from tradingbot.risk.risk_manager import RiskManager
 from tradingbot.scanner.gap_scanner import GapScanner
+from tradingbot.scanner.momentum_scanner import MomentumScanner
 from tradingbot.signals.pullback_setup import has_valid_setup
 from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
@@ -102,6 +103,9 @@ class SessionRunner:
             self.catalyst_scorer = None
             
         self.fallback_catalyst = CatalystScorer(min_catalyst_score=60)
+        # Quality symbols get a lower gap threshold (mega-cap names with
+        # 0.2-0.4% gaps are meaningful; micro-caps need bigger gaps).
+        quality_symbols = set(AlpacaClient._CORE_WATCHLIST) if hasattr(AlpacaClient, '_CORE_WATCHLIST') else set()
         self.scanner = GapScanner(
             price_min=scanner_defaults["price_min"],
             price_max=scanner_defaults["price_max"],
@@ -109,6 +113,20 @@ class SessionRunner:
             min_premarket_volume=scanner_defaults["min_premarket_volume"],
             min_dollar_volume=scanner_defaults["min_dollar_volume"],
             max_spread_pct=scanner_defaults["max_spread_pct"],
+            min_gap_pct_quality=scanner_defaults.get("min_gap_pct_quality"),
+            quality_symbols=quality_symbols,
+        )
+        # Intraday momentum scanner — finds stocks rallying from today's open
+        # (runs alongside GapScanner during midday/close sessions).
+        momentum_cfg = scanner_config.get("momentum", {})
+        self.momentum_scanner = MomentumScanner(
+            price_min=momentum_cfg.get("price_min", scanner_defaults["price_min"]),
+            price_max=momentum_cfg.get("price_max", scanner_defaults["price_max"]),
+            min_intraday_change_pct=momentum_cfg.get("min_intraday_change_pct", 1.5),
+            min_relative_volume=momentum_cfg.get("min_relative_volume", 1.3),
+            min_dollar_volume=momentum_cfg.get("min_dollar_volume", 500_000.0),
+            max_spread_pct=momentum_cfg.get("max_spread_pct", 2.0),
+            require_above_vwap=momentum_cfg.get("require_above_vwap", True),
         )
         self.ranker = Ranker(
             min_score=scanner_defaults["min_score"],
@@ -377,6 +395,22 @@ class SessionRunner:
         # ── Run O3 FIRST so high-quality strict picks claim the daily cap ──
         # Option 3: Strict filters scan
         strict_scan = self.scanner.run(snapshots)
+
+        # For midday/close sessions, also run the momentum scanner to catch
+        # intraday runners (stocks that opened flat but rallied).  Merge
+        # momentum candidates into the strict scan, deduplicating by symbol.
+        if stricter:
+            momentum_scan = self.momentum_scanner.run(snapshots)
+            if momentum_scan.candidates:
+                gap_symbols = {c.symbol for c in strict_scan.candidates}
+                new_momentum = [c for c in momentum_scan.candidates if c.symbol not in gap_symbols]
+                strict_scan.candidates.extend(new_momentum)
+                logging.info(
+                    f"[MOMENTUM] +{len(new_momentum)} intraday runners added "
+                    f"({len(momentum_scan.candidates)} total momentum, "
+                    f"{len(gap_symbols)} already from gap scan)"
+                )
+
         if stricter:
             cfg = self.midday_config
             strict_scan.candidates = [
@@ -399,6 +433,12 @@ class SessionRunner:
         # never steals slots from O3.  Alerts are saved & sent but counted
         # against a separate budget.
         relaxed_scan = self.relaxed_scanner.run(snapshots)
+        # Merge momentum candidates into O2 as well for midday/close
+        if stricter:
+            relaxed_symbols = {c.symbol for c in relaxed_scan.candidates}
+            for mc in momentum_scan.candidates:
+                if mc.symbol not in relaxed_symbols:
+                    relaxed_scan.candidates.append(mc)
         relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
         o2_dropped: list[tuple[str, str]] = []
         relaxed_cards = self._build_cards(
@@ -678,15 +718,22 @@ class SessionRunner:
             sym_is_etf = is_etf(symbol.symbol)
             sym_family = get_etf_family(symbol.symbol)
 
-            # Block inverse & volatility ETFs in long-only mode.
+            # Block inverse, leveraged, & volatility ETFs in long-only mode.
             # Going long on inverse ETFs (TZA, SQQQ, etc.) is effectively a
             # short bet; VIX ETFs (UVIX, UVXY) profit from panic, not momentum.
+            # Leveraged bull ETFs (TQQQ 3×, SOXL 3×) inflate gap_pct by their
+            # factor, gaming the ranker — added layer risk without real edge.
             if sym_is_etf:
                 lev = get_leverage_factor(symbol.symbol)
                 if lev < 0:
                     if dropped is not None:
                         dropped.append((symbol.symbol, f"inverse_etf:leverage={lev}"))
                     logging.info(f"[DROP] {symbol.symbol}: inverse ETF (leverage={lev}) blocked in long-only mode")
+                    continue
+                if abs(lev) > 1:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, f"leveraged_etf:leverage={lev}x"))
+                    logging.info(f"[DROP] {symbol.symbol}: leveraged ETF ({lev}x) blocked — inflates gap scores")
                     continue
                 if sym_family == "vix":
                     if dropped is not None:

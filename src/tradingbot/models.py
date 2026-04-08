@@ -26,6 +26,8 @@ class SymbolSnapshot:
     key_support: float = 0.0      # strongest nearby support level
     key_resistance: float = 0.0   # strongest nearby resistance level
     atr: float = 0.0              # ATR for stop buffer sizing
+    open_price: float = 0.0       # today's regular-session open (or pre-market proxy)
+    intraday_change_pct: float = 0.0  # % change from today's open (for midday/close)
     patterns: list[str] = field(default_factory=list)
     raw_bars: list = field(default_factory=list)
     tech_indicators: dict = field(default_factory=dict)
