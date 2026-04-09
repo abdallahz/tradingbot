@@ -42,9 +42,11 @@ def has_valid_setup(stock: SymbolSnapshot, volume_multiplier: float) -> bool:
     has_direction = has_ema or has_vwap
 
     # ATR exhaustion: skip if the intraday range is already spent
-    # Use VWAP as a proxy for today's open when daily open isn't available
+    # Prefer actual open_price (set by alpaca_client); fall back to
+    # VWAP only when open_price is unavailable.  VWAP drifts through
+    # the session, making ATR-consumed calculations progressively wrong.
     if stock.atr > 0:
-        open_proxy = stock.vwap if stock.vwap > 0 else stock.price
+        open_proxy = stock.open_price if stock.open_price > 0 else (stock.vwap if stock.vwap > 0 else stock.price)
         exhausted, _ = is_move_exhausted(
             current_price=stock.price,
             open_price=open_proxy,

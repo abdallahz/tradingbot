@@ -320,9 +320,12 @@ class AlpacaClient:
                                 and bar_resistance > current_price
                                 and (bar_resistance - current_price) <= max_res_dist):
                             resistance_candidates.append(bar_resistance)
-                        # Pick the highest valid candidate above price
+                        # Pick the NEAREST valid candidate above price.
+                        # Intraday trades stall at the first ceiling — using
+                        # the farthest level creates unreachable TP1s that
+                        # inflate R:R on paper but never hit.
                         above = [r for r in resistance_candidates if r > current_price]
-                        key_resistance = max(above) if above else current_price + atr_val
+                        key_resistance = min(above) if above else current_price + atr_val
 
                     snapshots.append(
                         SymbolSnapshot(
@@ -347,6 +350,7 @@ class AlpacaClient:
                             atr=atr_val,
                             open_price=open_price,
                             intraday_change_pct=intraday_change_pct,
+                            daily_ema50=tech.get("daily_ema50", 0.0),
                             patterns=patterns,
                             raw_bars=symbol_bars,
                             tech_indicators=tech,
@@ -441,8 +445,6 @@ class AlpacaClient:
         "WMT", "COST", "UBER", "RIVN", "LCID", "NIO",
         # Energy
         "XOM", "CVX",
-        # Retail favorites
-        "GME", "AMC", "SOFI", "IONQ", "QUBT", "RGTI", "SOUN", "LUNR",
         # ETFs (market context)
         "SPY", "QQQ", "IWM",
     ]

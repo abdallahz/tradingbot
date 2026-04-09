@@ -28,6 +28,7 @@ class SymbolSnapshot:
     atr: float = 0.0              # ATR for stop buffer sizing
     open_price: float = 0.0       # today's regular-session open (or pre-market proxy)
     intraday_change_pct: float = 0.0  # % change from today's open (for midday/close)
+    daily_ema50: float = 0.0      # 50-day EMA from daily bars (higher-timeframe trend)
     patterns: list[str] = field(default_factory=list)
     raw_bars: list = field(default_factory=list)
     tech_indicators: dict = field(default_factory=dict)

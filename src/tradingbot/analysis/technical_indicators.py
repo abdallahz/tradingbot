@@ -168,6 +168,22 @@ def compute_indicators(bars_data: list[Any], daily_bars: list[Any] | None = None
             if len(d_df) >= 2:
                 result["prev_day_high"] = float(d_df["high"].iloc[-2])
                 result["prev_day_low"]  = float(d_df["low"].iloc[-2])
+
+            # Daily EMA50 — higher-timeframe trend context.
+            # With only 5 daily bars the EMA won't be a true 50-day average,
+            # but it still captures the short-term daily trend direction.
+            # Stocks trading below this level are in a daily downtrend —
+            # gap-ups against the trend are bear rallies that fade.
+            if len(d_df) >= 3:
+                if TA_AVAILABLE:
+                    ema50_val = ta.trend.ema_indicator(
+                        d_df["close"], window=min(50, len(d_df))
+                    ).iloc[-1]
+                    result["daily_ema50"] = float(ema50_val)
+                else:
+                    result["daily_ema50"] = float(
+                        d_df["close"].ewm(span=min(50, len(d_df)), adjust=False).mean().iloc[-1]
+                    )
         else:
             # No daily bars — use intraday-derived values
             if "atr_intraday" in result:

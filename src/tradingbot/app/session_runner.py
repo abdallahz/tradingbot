@@ -192,6 +192,7 @@ class SessionRunner:
             min_premarket_volume=o2_cfg.get("min_premarket_volume", 0),
             min_dollar_volume=o2_cfg.get("min_dollar_volume", 0),
             max_spread_pct=o2_cfg.get("max_spread_pct", 5.0),
+            max_gap_pct=o2_cfg.get("max_gap_pct", 12.0),
         )
 
     def apply_tuning(self) -> None:
@@ -682,6 +683,48 @@ class SessionRunner:
             return False
         return True
 
+    def _passes_trend_filter(
+        self,
+        symbol: SymbolSnapshot,
+        dropped: list[tuple[str, str]] | None,
+        relaxed: bool = False,
+    ) -> bool:
+        """Return False if the stock is gapping up inside a daily downtrend.
+
+        Stocks trading below their daily EMA50 are in a higher-timeframe
+        downtrend.  A gap-up against the trend is a bear rally that fades
+        more often than it continues.  This is the single biggest edge
+        improvement for the scanner.
+
+        Bypass: relaxed mode (catalyst-driven) and stocks with strong
+        catalysts (score >= 70) — a significant news event can override
+        a weak daily trend.
+        """
+        if relaxed:
+            return True
+        # Skip if daily EMA50 not available (insufficient daily bars)
+        if symbol.daily_ema50 <= 0:
+            return True
+        # Only penalise gap-ups in downtrend (price below daily EMA50)
+        if symbol.price >= symbol.daily_ema50:
+            return True
+        # Strong catalyst can override a weak trend
+        if symbol.catalyst_score >= 70:
+            logging.info(
+                f"[TREND_BYPASS] {symbol.symbol}: below daily EMA50 "
+                f"(${symbol.price:.2f} < ${symbol.daily_ema50:.2f}) but "
+                f"catalyst={symbol.catalyst_score:.0f} overrides")
+            return True
+        if dropped is not None:
+            dropped.append((
+                symbol.symbol,
+                f"daily_downtrend:price={symbol.price:.2f}<ema50={symbol.daily_ema50:.2f}",
+            ))
+        logging.info(
+            f"[DROP] {symbol.symbol}: daily downtrend — price ${symbol.price:.2f} "
+            f"below daily EMA50 ${symbol.daily_ema50:.2f} (bear rally risk)")
+        return False
+
     def _build_cards(
         self,
         ranked: list,
@@ -801,6 +844,12 @@ class SessionRunner:
             if not self._passes_intraday_extension(symbol, dropped):
                 continue
 
+            # ── Daily trend filter (higher-timeframe EMA50) ─────────
+            # Block gap-ups inside a daily downtrend — bear rallies
+            # that fade more often than they continue.
+            if not self._passes_trend_filter(symbol, dropped, relaxed):
+                continue
+
             # ── Gap fade detection ──────────────────────────────────
             # If the stock gapped up but current price is below VWAP,
             # the gap is fading — skip to avoid catching falling knives.
@@ -918,7 +967,9 @@ class SessionRunner:
             # volume profile, market trend, ATR exhaustion, tech stack, catalyst.
             spy_pct = mh.spy_change_pct if mh else 0.0
             qqq_pct = mh.qqq_change_pct if mh else 0.0
-            open_price = symbol.tech_indicators.get("vwap", symbol.price)  # best proxy for open
+            # Use real open_price for ATR exhaustion accuracy;
+            # fall back to VWAP only when open isn't available.
+            open_price = symbol.open_price if symbol.open_price > 0 else symbol.tech_indicators.get("vwap", symbol.price)
             confluence_result = evaluate_confluence(
                 current_price=symbol.price,
                 open_price=open_price,

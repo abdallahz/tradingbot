@@ -37,8 +37,8 @@ class MarketGuard:
     """Check SPY/QQQ to gate trade entry and scale position sizes.
 
     Thresholds:
-    - GREEN:   SPY > -0.5%  → full size, normal stops
-    - YELLOW:  SPY -0.5% to -1.5%  → 50% size, 1.5x stop buffer
+    - GREEN:   SPY > -0.3%  → full size, normal stops
+    - YELLOW:  SPY -0.3% to -1.5%  → 50% size, 1.5x stop buffer
     - RED:     SPY < -1.5%  → halt new entries entirely
     """
 
