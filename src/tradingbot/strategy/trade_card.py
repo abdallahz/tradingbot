@@ -8,22 +8,32 @@ from tradingbot.data.etf_metadata import get_leverage_factor
 
 
 MIN_RR = 1.5   # Minimum reward:risk ratio (TP1 / stop distance)
+MAX_RR = 3.0   # Maximum R:R — inflated targets look great but never hit intraday
 
 
 def _assess_risk(stock: SymbolSnapshot, rr: float) -> str:
     """Return 'low', 'medium', or 'high' based on trade-quality factors.
 
-    Penalty points (0-10 scale):
-      +2  price < $3            (penny-stock territory)
-      +1  price < $5            (small-cap friction)
-      +2  spread > 1.5%         (execution risk)
-      +1  spread > 0.8%         (wider than ideal)
-      +2  dollar_volume < $500K (thin liquidity)
-      +1  dollar_volume < $2M   (below-average liquidity)
-      +1  R:R < 2.0             (marginal reward)
-      +1  ATR/price > 5%        (highly volatile)
+    Penalty points (0-14 scale):
+      +2  price < $3              (penny-stock territory)
+      +1  price < $5              (small-cap friction)
+      +2  spread > 1.5%           (execution risk)
+      +1  spread > 0.8%           (wider than ideal)
+      +2  dollar_volume < $500K   (thin liquidity)
+      +1  dollar_volume < $2M     (below-average liquidity)
+      +1  R:R < 2.0               (marginal reward)
+      +2  ATR/price > 5%          (highly volatile)
+      +1  ATR/price > 3%          (above-average volatility)
+      +2  gap_pct > 8%            (large gaps fade frequently)
+      +1  gap_pct > 4%            (moderate gap fade risk)
+      +1  relative_volume > 3.0   (frenzy buying, likely to reverse)
 
     Mapping:  0-2 -> low,  3-4 -> medium,  5+ -> high
+
+    History: Apr 6-8 data showed 22/23 trades classified 'low' despite
+    including IONQ, RGTI, SOXL, TQQQ — all speculative names with big
+    gaps.  The old 5% ATR threshold was too high (most volatile stocks
+    sit at 3-4%) and gap size was not considered at all.
     """
     penalty = 0
 
@@ -49,8 +59,26 @@ def _assess_risk(stock: SymbolSnapshot, rr: float) -> str:
     if rr < 2.0:
         penalty += 1
 
-    # Volatility
-    if stock.price > 0 and stock.atr / stock.price > 0.05:
+    # Volatility — tiered (old threshold of 5% was too high; most
+    # speculative stocks sit at 3-4% ATR/price and were slipping through)
+    if stock.price > 0 and stock.atr > 0:
+        atr_pct = stock.atr / stock.price
+        if atr_pct > 0.05:
+            penalty += 2
+        elif atr_pct > 0.03:
+            penalty += 1
+
+    # Gap size — large pre-market gaps fade more often.
+    # Apr 6-8 data: SOXL +20.6%, TQQQ +10.2%, INTC +9.8% all failed.
+    # The only winner (AAOX +8.7%) was the exception, not the rule.
+    if stock.gap_pct > 8:
+        penalty += 2
+    elif stock.gap_pct > 4:
+        penalty += 1
+
+    # Volume frenzy — extremely high relative volume (>3×) indicates
+    # speculative pile-in that tends to reverse intraday.
+    if stock.relative_volume > 3.0:
         penalty += 1
 
     if penalty >= 5:
@@ -177,6 +205,17 @@ def build_trade_card(
                 rr = round(reward / risk, 2)
                 if rr < MIN_RR:
                     return None
+
+    # ── R:R cap — prevent unrealistic targets ──────────────────────
+    # Apr 6-8 data: avg R:R was 3.1 (all losers).  Mar 30-31 winners
+    # averaged R:R 2.3.  When R:R > 3.0 the stock must move +4-6%
+    # without a -1.5% pullback — nearly impossible intraday.
+    # Cap TP1 so R:R never exceeds MAX_RR.
+    if rr > MAX_RR:
+        reward = risk * MAX_RR
+        tp1 = round(entry + reward, 2)
+        tp2 = round(tp1 + risk, 2)
+        rr = MAX_RR
 
     # ── Position sizing ──────────────────────────────────────────────
     # Adjust risk budget for leveraged ETFs — a 3x ETF moves 3x as far

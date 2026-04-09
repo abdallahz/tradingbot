@@ -266,6 +266,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "reasons":        r.get("reasons") or [],
                 "patterns":       r.get("patterns") or [],
                 "risk_level":     r.get("risk_level", "low"),
+                "catalyst_score": r.get("catalyst_score", 0),
                 "timestamp":      _format_ts(r.get("created_at", "")),
                 "timestamp_raw":  r.get("created_at", ""),
             })
@@ -305,6 +306,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                         "reasons":        j.get("reasons") or [],
                         "patterns":       j.get("patterns") or [],
                         "risk_level":     j.get("risk_level", "low"),
+                        "catalyst_score": j.get("catalyst_score", 0),
                         "timestamp":      j.get("timestamp", ""),
                         "timestamp_raw":  j.get("timestamp", ""),
                     })

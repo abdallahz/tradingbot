@@ -55,9 +55,11 @@ class TestAssessRisk:
         assert _assess_risk(stock, 2.5) == "low"
 
     def test_medium_risk_small_cap(self):
-        """Penny-ish price + thin volume → medium."""
+        """Penny-ish price + thin volume + high ATR volatility → high.
+        Penalties: price<$5(+1) + spread>0.8(+1) + dv<$2M(+1) + ATR/price>5%(+2) + gap>4%(+1) = 6 → high.
+        (Originally 'medium' before gap/ATR tiered penalties were added.)"""
         stock = _make_stock(price=4.0, spread_pct=1.0, dollar_volume=1_500_000, atr=0.3)
-        assert _assess_risk(stock, 2.0) == "medium"
+        assert _assess_risk(stock, 2.0) == "high"
 
     def test_high_risk_junk(self):
         """Sub-$3 + wide spread + thin → high."""
