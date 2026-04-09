@@ -18,10 +18,10 @@ scanner:
   max_candidates: 8
 
 midday:
-  min_relative_volume: 1.0
+  min_relative_volume: 1.5
   min_dollar_volume: 500000
   max_spread_pct: 2.0
-  min_score: 50
+  min_score: 60
 
 # Intraday momentum scanner — catches stocks rallying from today's open.
 # Runs alongside GapScanner during midday/close sessions.

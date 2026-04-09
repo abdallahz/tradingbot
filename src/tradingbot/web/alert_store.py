@@ -267,6 +267,8 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "patterns":       r.get("patterns") or [],
                 "risk_level":     r.get("risk_level", "low"),
                 "catalyst_score": r.get("catalyst_score", 0),
+                "confluence_grade": r.get("confluence_grade", ""),
+                "volume_classification": r.get("volume_classification", ""),
                 "timestamp":      _format_ts(r.get("created_at", "")),
                 "timestamp_raw":  r.get("created_at", ""),
             })
@@ -307,6 +309,8 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                         "patterns":       j.get("patterns") or [],
                         "risk_level":     j.get("risk_level", "low"),
                         "catalyst_score": j.get("catalyst_score", 0),
+                        "confluence_grade": j.get("confluence_grade", ""),
+                        "volume_classification": j.get("volume_classification", ""),
                         "timestamp":      j.get("timestamp", ""),
                         "timestamp_raw":  j.get("timestamp", ""),
                     })
@@ -613,6 +617,8 @@ def update_outcome(
     pnl_pct: float | None = None,
     hit_at: str | None = None,
     session: str | None = None,
+    session_high: float | None = None,
+    session_low: float | None = None,
 ) -> None:
     """Update a trade outcome row with new status and P&L."""
     sb = _get_supabase()
@@ -628,6 +634,10 @@ def update_outcome(
             updates["hit_at"] = hit_at
         if session:
             updates["session"] = session
+        if session_high is not None and session_high > 0:
+            updates["session_high"] = round(session_high, 2)
+        if session_low is not None and session_low > 0:
+            updates["session_low"] = round(session_low, 2)
         sb.table("trade_outcomes").update(updates).eq("id", outcome_id).execute()
     except Exception as exc:
         log.warning(f"[alert_store] update_outcome failed: {exc}")

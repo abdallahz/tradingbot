@@ -13,9 +13,9 @@ def _make_stock(
     price: float = 10.0,
     spread_pct: float = 0.2,
     dollar_volume: float = 25_000_000,
-    atr: float = 0.3,
-    key_support: float = 9.5,
-    key_resistance: float = 10.5,
+    atr: float = 0.20,
+    key_support: float = 9.85,
+    key_resistance: float = 10.25,
     **overrides,
 ) -> SymbolSnapshot:
     defaults = dict(
@@ -77,7 +77,7 @@ class TestRiskTieredStops:
         """Low-risk trade should use 1.5% max stop when tiered config is set."""
         stock = _make_stock(
             price=100.0, spread_pct=0.1, dollar_volume=50_000_000,
-            atr=2.0, key_support=95.0, key_resistance=106.0,
+            atr=1.5, key_support=99.0, key_resistance=103.0,
         )
         # Without tiered stops: 2.5% → max stop at $97.50
         card_default = build_trade_card(stock, 80, 2.5, "morning")
@@ -150,7 +150,10 @@ class TestRiskTieredStops:
 
     def test_risk_level_is_set_on_card(self):
         """Card must carry the risk_level field."""
-        stock = _make_stock()
+        stock = _make_stock(
+            price=100.0, spread_pct=0.1, dollar_volume=50_000_000,
+            atr=1.5, key_support=99.0, key_resistance=103.0,
+        )
         card = build_trade_card(stock, 80, 2.5, "morning")
         assert card is not None
         assert card.risk_level in ("low", "medium", "high")

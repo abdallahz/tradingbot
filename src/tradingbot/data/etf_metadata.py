@@ -49,6 +49,23 @@ KNOWN_ETFS: set[str] = {
     "VXX", "UVXY", "UVIX", "SVXY",  # VIX
     # International
     "EEM", "FXI", "KWEB", "EWZ",   # Emerging markets, China, Brazil
+    # Single-stock ETFs (leveraged / inverse bets on individual names)
+    "NVD", "NVDL", "NVDS", "NVDD",  # NVIDIA single-stock
+    "TSDD", "TSLL", "TSLQ",         # Tesla single-stock
+    "AAPD", "AAPU",                  # Apple single-stock
+    "MSFD", "MSFU",                  # Microsoft single-stock
+    "AMZD", "AMZU",                  # Amazon single-stock
+    "METD", "METU",                  # Meta single-stock
+    "GOOGD", "GOOU",                  # Google single-stock
+    "CONL", "CONY",                  # Coinbase single-stock
+    # Crypto / Digital assets ETFs
+    "BITO", "BITX", "BITI",         # Bitcoin Strategy
+    "ETHE", "ETHU",                  # Ethereum
+    "GBTC", "IBIT", "FBTC",         # Bitcoin spot
+    # Bonds / Fixed income ETFs
+    "HYG", "JNK", "LQD", "BND",     # Corporate / high yield bonds
+    "AGG", "VCIT", "VCSH",          # Aggregate / investment grade
+    "SHY", "IEF",                    # Treasury short / intermediate
 }
 
 # ── Leveraged ETF → leverage factor ──────────────────────────────────
@@ -78,6 +95,24 @@ LEVERAGED_ETFS: dict[str, int] = {
     "UVXY": 2, "UVIX": 2, "SVXY": -1,  # SVXY is -0.5x technically, we just use -1
     # Bear / hedge funds
     "HDGE": -1,
+    # Single-stock ETFs — NVIDIA
+    "NVD": -2, "NVDL": 2, "NVDS": -2, "NVDD": -1,
+    # Single-stock ETFs — Tesla
+    "TSDD": -2, "TSLL": 2, "TSLQ": -2,
+    # Single-stock ETFs — Apple
+    "AAPD": -2, "AAPU": 2,
+    # Single-stock ETFs — Microsoft
+    "MSFD": -2, "MSFU": 2,
+    # Single-stock ETFs — Amazon
+    "AMZD": -2, "AMZU": 2,
+    # Single-stock ETFs — Meta
+    "METD": -2, "METU": 2,
+    # Single-stock ETFs — Coinbase
+    "CONL": 2, "CONY": 2,
+    # Crypto
+    "BITX": 2, "BITI": -1,
+    # Ethereum
+    "ETHU": 2,
 }
 
 
@@ -98,6 +133,22 @@ ETF_FAMILIES: dict[str, set[str]] = {
     "silver":       {"SLV"},
     "vix":          {"VXX", "UVXY", "UVIX", "SVXY"},
     "nat_gas":      {"UNG"},
+    # Single-stock ETF families
+    "nvidia_single":   {"NVD", "NVDL", "NVDS", "NVDD"},
+    "tesla_single":    {"TSDD", "TSLL", "TSLQ"},
+    "apple_single":    {"AAPD", "AAPU"},
+    "msft_single":     {"MSFD", "MSFU"},
+    "amzn_single":     {"AMZD", "AMZU"},
+    "meta_single":     {"METD", "METU"},
+    "coinbase_single": {"CONL", "CONY"},
+    # Crypto / digital asset ETFs
+    "bitcoin":      {"BITO", "BITX", "BITI", "GBTC", "IBIT", "FBTC"},
+    "ethereum":     {"ETHE", "ETHU"},
+    # Fixed income
+    "high_yield":   {"HYG", "JNK"},
+    "invest_grade": {"LQD", "VCIT", "VCSH"},
+    "agg_bonds":    {"BND", "AGG"},
+    "treasury_short": {"SHY", "IEF"},
 }
 
 # Pre-compute reverse lookup: symbol → family name

@@ -209,10 +209,10 @@ class TestRRCap:
     def test_moderate_rr_not_capped(self):
         """R:R around 2.0 should not be touched."""
         stock = _make_stock(
-            price=20.0,
-            key_support=19.30,
-            key_resistance=21.00,  # ~5% above
-            atr=0.40,
+            price=100.0,
+            key_support=99.0,
+            key_resistance=103.0,  # ~3% above
+            atr=1.50,
         )
         card = build_trade_card(stock, 80, 2.5, "morning")
         assert card is not None
