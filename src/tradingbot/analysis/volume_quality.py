@@ -232,7 +232,11 @@ def is_move_exhausted(
     reasons = []
     exhausted = False
 
-    if atr_consumed_pct >= 80:
+    # Threshold lowered from 80% to 60%.  At 80%, a stock with ATR=$5
+    # could rally $4 (8% on $50) before being flagged — way too late.
+    # At 60% we catch the move earlier while still allowing healthy
+    # momentum (e.g. $3 of $5 ATR = a 6% move on a $50 stock).
+    if atr_consumed_pct >= 60:
         exhausted = True
         reasons.append(
             f"ATR {atr_consumed_pct:.0f}% consumed ({move_from_open:.2f} of {atr:.2f}) — move exhausted"
@@ -244,7 +248,7 @@ def is_move_exhausted(
             f"Spread eats {spread_vs_remaining:.0f}% of remaining range — poor reward"
         )
 
-    if retracement >= 40 and atr_consumed_pct >= 60:
+    if retracement >= 30 and atr_consumed_pct >= 45:
         exhausted = True
         reasons.append(
             f"Price already retraced {retracement:.0f}% of ATR from HOD — momentum fading"

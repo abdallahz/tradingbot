@@ -25,19 +25,20 @@ class Ranker:
     def _normalize_gap(self, stock: SymbolSnapshot) -> float:
         """Score gap magnitude (0-100).
 
-        - Peaks at ~6-8% (sweet spot for momentum).
-        - Gaps > 12% are penalised (exhaustion / mean-reversion risk).
+        - Peaks at ~4-6% (sweet spot for momentum continuation).
+        - Gaps > 8% are penalised (exhaustion / mean-reversion risk).
         - Uses a log curve so small gaps still differentiate.
         """
         import math
         g = abs(stock.gap_pct)
         if g <= 0:
             return 0.0
-        # Log curve: peaks around 8%, plateaus from 4-10%
+        # Log curve: peaks around 6%, plateaus from 3-8%
         base = min(1.0, math.log(1 + g / 3.0) / math.log(4.0)) * 100
-        # Exhaustion penalty: every % above 12% costs 5 pts
-        if g > 12:
-            base = max(0.0, base - (g - 12) * 5)
+        # Exhaustion penalty: every % above 8% costs 8 pts
+        # (was 5 pts above 12% — too lenient, let +10% gaps score ~90)
+        if g > 8:
+            base = max(0.0, base - (g - 8) * 8)
         return base
 
     def _normalize_rel_vol(self, stock: SymbolSnapshot) -> float:
@@ -229,13 +230,13 @@ class Ranker:
         else:
             vol_factor = 0.35  # low volume = likely gap fill
 
-        # Gap size factor: sweet spot 2-6%, penalise >10%
+        # Gap size factor: sweet spot 2-6%, penalise >8%
         if g <= 6.0:
             gap_factor = 0.9 + (g / 60.0)   # 0.9 to ~1.0
-        elif g <= 10.0:
-            gap_factor = 0.8
+        elif g <= 8.0:
+            gap_factor = 0.75
         else:
-            gap_factor = max(0.3, 0.8 - (g - 10) * 0.05)  # penalise big gaps
+            gap_factor = max(0.2, 0.75 - (g - 8) * 0.08)  # steep penalty for big gaps
 
         base = vol_factor * gap_factor * 100.0
 

@@ -22,6 +22,7 @@ class GapScanner:
         max_spread_pct: float,
         min_gap_pct_quality: float | None = None,
         quality_symbols: set[str] | None = None,
+        max_gap_pct: float = 0.0,
     ) -> None:
         self.price_min = price_min
         self.price_max = price_max
@@ -34,6 +35,9 @@ class GapScanner:
         # meaningful than a 2% gap on a $6 micro-cap.
         self.min_gap_pct_quality = min_gap_pct_quality or min_gap_pct
         self.quality_symbols = quality_symbols or set()
+        # Maximum gap % — stocks gapping too far have already made their
+        # move and tend to fade.  0 = no cap (disabled).
+        self.max_gap_pct = max_gap_pct
 
     def run(self, snapshots: list[SymbolSnapshot]) -> ScanResult:
         candidates: list[SymbolSnapshot] = []  
@@ -51,6 +55,12 @@ class GapScanner:
             )
             if stock.gap_pct < gap_threshold:
                 dropped.append((stock.symbol, "gap_too_small"))
+                continue
+            # Reject gaps that are too large — extended stocks fade intraday.
+            # The ranker's sweet spot is 2-6%; above max_gap_pct the
+            # continuation probability drops sharply.
+            if self.max_gap_pct > 0 and stock.gap_pct > self.max_gap_pct:
+                dropped.append((stock.symbol, f"gap_too_large:{stock.gap_pct:.1f}%"))
                 continue
             if stock.premarket_volume < self.min_premarket_volume:
                 dropped.append((stock.symbol, "premarket_volume_too_low"))

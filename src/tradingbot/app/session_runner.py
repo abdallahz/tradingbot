@@ -30,6 +30,7 @@ from tradingbot.risk.risk_manager import RiskManager
 from tradingbot.scanner.gap_scanner import GapScanner
 from tradingbot.scanner.momentum_scanner import MomentumScanner
 from tradingbot.signals.pullback_setup import has_valid_setup
+from tradingbot.signals.pullback_reentry import evaluate_pullback_reentry
 from tradingbot.strategy.trade_card import build_trade_card
 from tradingbot.analysis.chart_generator import generate_chart
 from tradingbot.analysis.pattern_detector import score_confluence, MIN_CONFLUENCE_SCORE
@@ -50,6 +51,10 @@ from tradingbot.data.etf_metadata import is_etf, get_etf_family, get_leverage_fa
 MAX_ETF_ALERTS = 3
 # Default maximum VWAP distance (%) — overridden by market regime
 MAX_VWAP_DISTANCE_PCT_DEFAULT = 3.0
+# Maximum intraday move (%) from today’s open allowed for new entries.
+# Stocks already up > this % have already made their move — chasing them
+# means buying late with slim upside and wide risk.
+MAX_INTRADAY_CHANGE_PCT_DEFAULT = 6.0
 
 
 class SessionRunner:
@@ -115,6 +120,7 @@ class SessionRunner:
             max_spread_pct=scanner_defaults["max_spread_pct"],
             min_gap_pct_quality=scanner_defaults.get("min_gap_pct_quality"),
             quality_symbols=quality_symbols,
+            max_gap_pct=scanner_defaults.get("max_gap_pct", 0.0),
         )
         # Intraday momentum scanner — finds stocks rallying from today's open
         # (runs alongside GapScanner during midday/close sessions).
@@ -505,20 +511,35 @@ class SessionRunner:
         already_alerted: dict[str, float],
         dropped: list[tuple[str, str]] | None,
     ) -> bool:
-        """Return True if the symbol should (re-)alert; False to skip."""
+        """Return True if the symbol should (re-)alert; False to skip.
+
+        First-time symbols always pass.  Previously-alerted symbols must
+        demonstrate a qualifying pullback re-entry:
+          - Pulled back 30-70% of its move (constructive dip)
+          - Holding VWAP or EMA20 (support intact)
+          - Recovering above EMA9 (bounce signal)
+          - Entry price at least 2% better than the first alert
+
+        This replaces the old crude 50% distance-to-support check with
+        the full pullback re-entry detector.
+        """
         prev_entry = already_alerted.get(symbol.symbol)
         if prev_entry is None or prev_entry <= 0:
             return True
-        support = symbol.key_support if symbol.key_support > 0 else symbol.price * 0.98
-        distance_before = prev_entry - support
-        distance_now = symbol.price - support
-        if distance_before > 0 and distance_now > 0:
-            pullback_pct = 1.0 - (distance_now / distance_before)
-            if pullback_pct < 0.50:
-                if dropped is not None:
-                    dropped.append((symbol.symbol, f"dedup:pullback_only_{pullback_pct:.0%}"))
-                return False
-        return True
+
+        # Run the pullback re-entry evaluator
+        signal = evaluate_pullback_reentry(symbol, prev_entry_price=prev_entry)
+        if signal.qualifies:
+            logging.info(
+                f"[RE-ENTRY] {symbol.symbol}: pullback re-entry qualified "
+                f"(score={signal.reentry_score:.0f}, depth={signal.pullback_depth_pct:.0f}%, "
+                f"prev_entry=${prev_entry:.2f}, new=${symbol.price:.2f})"
+            )
+            return True
+
+        if dropped is not None:
+            dropped.append((symbol.symbol, f"dedup:{signal.reason}"))
+        return False
 
     def _passes_etf_limits(
         self,
@@ -540,6 +561,48 @@ class SessionRunner:
             if dropped is not None:
                 dropped.append((symbol.symbol, f"etf_family_dup:{family}"))
             logging.info(f"[DROP] {symbol.symbol}: ETF family '{family}' already selected")
+            return False
+        return True
+
+    def _passes_intraday_extension(
+        self,
+        symbol: SymbolSnapshot,
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Return True if price has NOT moved too far from today's open.
+
+        Stocks already up >6% from the open have made their primary move.
+        Entering late means buying the top with slim remaining upside.
+        Morning pre-market scans skip this check (no open yet).
+
+        Exception: if the stock has pulled back constructively (30-70% of
+        its move, holding VWAP/EMA), we allow the re-entry — this is the
+        classic gap-up → pullback → bounce pattern.
+        """
+        if symbol.intraday_change_pct <= 0:
+            return True  # flat or down — not extended
+        max_move = self._tuning_overrides.get(
+            "max_intraday_change_pct", MAX_INTRADAY_CHANGE_PCT_DEFAULT
+        )
+        if symbol.intraday_change_pct > max_move:
+            # Before dropping, check if this is a pullback re-entry
+            signal = evaluate_pullback_reentry(symbol)
+            if signal.qualifies:
+                logging.info(
+                    f"[PULLBACK_PASS] {symbol.symbol}: extended +{symbol.intraday_change_pct:.1f}% "
+                    f"but qualifies as pullback re-entry (depth={signal.pullback_depth_pct:.0f}%, "
+                    f"score={signal.reentry_score:.0f})"
+                )
+                return True  # allow the pullback re-entry
+            if dropped is not None:
+                dropped.append((
+                    symbol.symbol,
+                    f"intraday_extended:{symbol.intraday_change_pct:.1f}%>{max_move:.0f}%",
+                ))
+            logging.info(
+                f"[DROP] {symbol.symbol}: already up {symbol.intraday_change_pct:.1f}% "
+                f"from open (max {max_move:.0f}%) — too extended"
+            )
             return False
         return True
 
@@ -730,6 +793,12 @@ class SessionRunner:
 
             # ── VWAP distance filter (regime-adaptive + auto-tune) ──────
             if not self._passes_vwap_distance(symbol, dropped):
+                continue
+
+            # ── Intraday extension filter ───────────────────────────
+            # Block stocks that have already moved too far from today's
+            # open — we don't want to chase extended runners.
+            if not self._passes_intraday_extension(symbol, dropped):
                 continue
 
             # ── Gap fade detection ──────────────────────────────────
