@@ -11,3 +11,18 @@ risk:
   stop_pct_low_risk: 1.5
   stop_pct_medium_risk: 2.5
   stop_pct_high_risk: 2.5
+
+# ── Execution engine (IBKR) ──────────────────────────────────────────
+execution:
+  mode: alert_only              # alert_only / paper / live
+  max_concurrent_positions: 3
+  max_morning_entries: 2
+  reserve_midday_slots: 1
+  morning_deadline: "10:30"     # ET — sell losers/flat, trail winners to BE
+  entry_order_buffer_pct: 0.1   # limit order buffer above scan price (morning)
+  midday_use_market_order: true # use market orders for midday session
+  expire_time: "15:30"          # ET — cancel all orders + market sell
+  pdt_protection: true          # track 3/5 rolling day trade limit
+  pdt_threshold: 25000          # PDT rule applies below this equity
+  kill_switch_enabled: true     # enable Telegram /killall command
+  max_notional_per_trade: 10000 # hard cap per trade ($10K)

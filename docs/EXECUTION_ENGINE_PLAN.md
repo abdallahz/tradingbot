@@ -376,8 +376,8 @@ Maximum daily loss before lockout: **~1.25%** (~$12.50 on $1K account).
 
 | Step | What | Status |
 |---|---|---|
-| 1 | Create IBKR individual account (Canadian) | ✅ Done — awaiting approval (~24h) |
-| 2 | Set up paper trading account | ⬜ After approval |
+| 1 | Create IBKR individual account (Canadian) | ✅ Done — approved |
+| 2 | Set up paper trading account (DUP749086, Margin) | ✅ Done |
 | 3 | Build `ibkr_client.py` data client (drop-in for `alpaca_client.py`) | ⬜ Can start now |
 | 4 | Build `order_executor.py` with bracket/OCA orders | ⬜ Can start now |
 | 5 | Write tests with mock `ib_insync` | ⬜ Can start now |

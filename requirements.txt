@@ -12,6 +12,7 @@ matplotlib>=3.7.0       # Required by mplfinance
 flask>=3.0.0            # Web dashboard
 gunicorn>=21.0.0        # Production WSGI server for Heroku
 supabase>=2.4.0         # Persistent storage — alerts, sessions, outcomes
+ib_insync>=0.9.86       # IBKR Python client (socket-based, async-ready)
 
 # Optional: AI sentiment analysis (Phase 6) — free local model (FinBERT)
 # torch and transformers are NOT installed on Heroku (slug would exceed 1GB limit).
