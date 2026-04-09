@@ -121,14 +121,14 @@ services:
       - key: SUPABASE_KEY
         sync: false
 
-  # -- Intraday/Midday Scans (every 30 min, ~9:00 AM to ~2:30 PM EDT, weekdays)
+  # -- Intraday/Midday Scans (every 15 min, ~9:00 AM to ~3:00 PM EDT, weekdays)
   - type: cron
     name: tradingbot-intraday
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: PYTHONPATH=src python -m tradingbot.cli --real-data run-midday
-    schedule: "*/30 13-18 * * 1-5"
+    schedule: "*/15 13-19 * * 1-5"
     envVars:
       - key: ALPACA_API_KEY
         sync: false

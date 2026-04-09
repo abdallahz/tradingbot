@@ -3,6 +3,7 @@ schedule:
   night_research: "20:00"      # 8:00 PM - Night news research
   morning_news: "08:00"         # 8:00 AM - Early morning news update
   premarket_scan: "08:45"       # 8:45 AM - Pre-market scan
+  midday_scan: "*/15 9:00-15:00"  # Every 15 min during market hours
   close_scan: "15:30"           # 3:30 PM - 30 min before market close
   # eod_reconcile removed — no handler implemented yet
 
