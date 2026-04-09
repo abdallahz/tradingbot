@@ -1,0 +1,37 @@
+# ═══════════════════════════════════════════════════════════════════
+# VPS Crontab — Trading Bot Schedule
+# ═══════════════════════════════════════════════════════════════════
+#
+# All times in UTC. Eastern Time = UTC - 4 (EDT) or UTC - 5 (EST).
+# These times assume EDT (Apr–Nov). Adjust +1h for EST (Nov–Mar).
+#
+# Install with: crontab vps_crontab.txt
+# Or copy-paste into: crontab -e
+# ═══════════════════════════════════════════════════════════════════
+
+SHELL=/bin/bash
+HOME=/home/ubuntu
+BOT=/home/ubuntu/tradingbot
+VENV=/home/ubuntu/tradingbot/venv/bin/python
+LOG=/home/ubuntu/tradingbot/logs/cron.log
+
+# ── Night: Catalyst research (8:00 PM ET = 00:00 UTC next day) ───
+0 0 * * 2-6 cd $BOT && $VENV -m tradingbot.cli --real-data run-news >> $LOG 2>&1
+
+# ── Morning: Pre-market scan (8:45 AM ET = 12:45 UTC) ───────────
+45 12 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-morning >> $LOG 2>&1
+
+# ── Intraday: Midday scans every 15 min (9:00 AM–3:00 PM ET) ────
+*/15 13-19 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-midday >> $LOG 2>&1
+
+# ── Tracker: Check fills & trail stops every 5 min (9:30 AM–4 PM ET) ──
+*/5 13-20 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-tracker >> $LOG 2>&1
+
+# ── Morning deadline: Sell losers at 10:30 AM ET (14:30 UTC) ────
+30 14 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-deadline >> $LOG 2>&1
+
+# ── Close: Expire all positions at 3:30 PM ET (19:30 UTC) ───────
+30 19 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-close >> $LOG 2>&1
+
+# ── Log rotation: Truncate cron log weekly ───────────────────────
+0 1 * * 0 truncate -s 0 $LOG
