@@ -25,13 +25,14 @@ LOG=/home/ubuntu/tradingbot/logs/cron.log
 */15 13-19 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-midday >> $LOG 2>&1
 
 # ── Tracker: Check fills & trail stops every 5 min (9:30 AM–4 PM ET) ──
+# Also handles morning deadline (10:30 AM) automatically via ExecutionTracker.tick()
 */5 13-20 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-tracker >> $LOG 2>&1
-
-# ── Morning deadline: Sell losers at 10:30 AM ET (14:30 UTC) ────
-30 14 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-deadline >> $LOG 2>&1
 
 # ── Close: Expire all positions at 3:30 PM ET (19:30 UTC) ───────
 30 19 * * 1-5 cd $BOT && $VENV -m tradingbot.cli --real-data run-close >> $LOG 2>&1
+
+# ── IB Gateway: Restart daily before pre-market (8:00 AM ET = 12:00 UTC) ──
+0 12 * * 1-5 sudo systemctl restart ibgateway >> $LOG 2>&1
 
 # ── Log rotation: Truncate cron log weekly ───────────────────────
 0 1 * * 0 truncate -s 0 $LOG
