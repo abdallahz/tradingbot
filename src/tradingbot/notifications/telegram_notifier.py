@@ -455,8 +455,13 @@ class TelegramNotifier:
         stop_pct = round(abs(card.entry_price - card.stop_price) / card.entry_price * 100, 1) if card.entry_price > 0 else 0
         stop_note = f"(below support, {stop_pct}%)"
 
+        # Source tag (VPS/IBKR vs Render/Alpaca)
+        import os
+        _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        _src_badge = "🖥 VPS/IBKR" if _provider == "ibkr" else "☁️ Render/Alpaca"
+
         lines = [
-            f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
+            f"🚨 <b>TRADE ALERT — {card.symbol}</b>  [{_src_badge}]",
         ]
         if grade_line:
             lines.append(f"<b>{grade_line}</b>")

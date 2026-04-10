@@ -181,6 +181,7 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "session":         alert.get("session", ""),
                 "symbol":          alert.get("symbol", ""),
                 "side":            alert.get("side", ""),
+                "source":          alert.get("source", "render-alpaca"),
                 "score":           alert.get("score"),
                 "entry_price":     alert.get("entry"),
                 "stop_price":      alert.get("stop"),
@@ -197,6 +198,7 @@ def save_alert(alert: dict[str, Any]) -> None:
             }
             # Optional columns added after initial schema — strip on retry
             _optional_cols = [
+                "source",
                 "risk_level",
                 "confluence_grade",
                 "confluence_score",
@@ -269,6 +271,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "catalyst_score": r.get("catalyst_score", 0),
                 "confluence_grade": r.get("confluence_grade", ""),
                 "volume_classification": r.get("volume_classification", ""),
+                "source":         r.get("source", "render-alpaca"),
                 "timestamp":      _format_ts(r.get("created_at", "")),
                 "timestamp_raw":  r.get("created_at", ""),
             })
@@ -311,6 +314,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                         "catalyst_score": j.get("catalyst_score", 0),
                         "confluence_grade": j.get("confluence_grade", ""),
                         "volume_classification": j.get("volume_classification", ""),
+                        "source":         j.get("source", "render-alpaca"),
                         "timestamp":      j.get("timestamp", ""),
                         "timestamp_raw":  j.get("timestamp", ""),
                     })
@@ -1055,6 +1059,15 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
         return {}
 
 
+def _alert_source() -> str:
+    """Return a short tag identifying which infra produced this alert."""
+    import os
+    provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+    if provider == "ibkr":
+        return "vps-ibkr"
+    return "render-alpaca"
+
+
 def card_to_dict(card: Any) -> dict[str, Any]:
     """Convert a TradeCard dataclass to a JSON-serialisable dict."""
     generated = getattr(card, "generated_at", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -1062,6 +1075,7 @@ def card_to_dict(card: Any) -> dict[str, Any]:
         "trade_date":     _today_et().isoformat(),
         "symbol":         card.symbol,
         "side":           "long",
+        "source":         _alert_source(),
         "score":          round(float(card.score), 1),
         "entry":          round(float(card.entry_price), 2),
         "stop":           round(float(card.stop_price), 2),
