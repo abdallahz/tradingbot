@@ -1,15 +1,15 @@
 # Trading Algorithm — Full Pipeline
 
-> **Last updated:** April 3, 2026
+> **Last updated:** April 10, 2026
 > Consolidated from: ALGORITHM.md, SCORING_METHODOLOGY.md, SMART_MONEY_TRACKING.md, AI_INTEGRATION.md
 
 ## Overview
 
-This is a **gap-and-go momentum alert system** (long-only). It scans for stocks that gapped up overnight on news/catalysts, confirms the move has real participation, then generates trade card alerts with entry/stop/targets. No trades are executed — alerts go to Telegram and the web dashboard.
+This is a **gap-and-go momentum alert system** (long-only). It scans for stocks that gapped up overnight on news/catalysts, confirms the move has real participation, then generates trade card alerts with entry/stop/targets. Alerts go to Telegram and the web dashboard. An optional IBKR execution engine (feature branch) can execute paper/live bracket orders.
 
 **Design principles:**
 - **Long-only**: No short setups. `TradeCard.side` is always `"long"`.
-- **Alert-only**: No order execution — generates trade card recommendations.
+- **Alert-primary**: Main branch is alert-only. Feature branch adds optional IBKR execution.
 - **Free indicators only**: Uses `ta` library (not torch/transformers) to stay within Heroku slug limits.
 - **Telegram-primary**: Main notification channel; web dashboard is secondary.
 - **Stateless workers**: Heroku/Render dynos can restart — Supabase is the persistent source of truth.
@@ -231,11 +231,12 @@ This is the core filter pipeline. Each candidate passes through **every gate in 
  3. Risk Manager (daily trade limit, loss lockout, streak)
  4. Secondary Price Guard (hard floor at scanner.price_min = $5)
  5. Dedup Check (skip if already alerted today, unless 50% pullback)
- 6. Inverse/VIX ETF Blocker (negative leverage or VIX family)
+ 6. ALL ETF Blocker (all ETFs blocked — going long on ETFs has poor edge)
  7. ETF Family / Concentration Limit
- 8. VWAP Distance Filter (not too extended from fair value)
+ 8. VWAP Distance Filter (session-adaptive: 3% morning, 5% midday/close)
  9. Gap Fade Detection (price < VWAP after positive gap → fading)
-10. Pullback Setup / Indicator Confirmation
+10. Daily EMA50 Trend Filter (block stocks below daily EMA50 — bear rally)
+11. Pullback Setup / Indicator Confirmation
 11. Catalyst Gate (min catalyst or strong volume override)
 12. Relaxed Mode Bypass (catalyst >= 55 + positive gap)
 13. Trade Card Construction (entry/stop/TP1/TP2)
@@ -246,7 +247,8 @@ This is the core filter pipeline. Each candidate passes through **every gate in 
 18. Confluence Engine (5-factor institutional scoring)
 19. Grade-F Veto (composite < 40 blocked in strict mode)
 20. Score Blending: 60% ranker + 40% confluence engine
-21. Chart Generation + Telegram Send
+21. Source Tagging (render-alpaca or vps-ibkr)
+22. Chart Generation + Telegram Send
 ```
 
 ### Key Filter Details
@@ -263,6 +265,13 @@ Blocks in long-only mode (going long on inverse = short bet):
 - **Inverse ETFs**: TZA, SQQQ, SPXS, SDOW, SPDN, SH, DOG, RWM, PSQ, SRTY, HDGE
 - **VIX ETFs**: UVIX, UVXY
 - Detection: `get_leverage_factor()` returns negative for inverse ETFs
+
+> **Note (Apr 6+)**: ALL ETFs are now blocked, not just inverse/VIX. Going long on ETFs has poor edge for gap-and-go. The inverse/VIX blocker remains as a secondary safety net.
+
+#### Daily EMA50 Trend Filter (added Apr 8)
+- Fetches daily bars and computes 50-period EMA
+- **Blocks** stocks gapping up below their daily EMA50 — these are bear rallies, not continuation
+- Partially addresses the "higher-timeframe trend filter" backlog item (#9)
 
 #### Gap Fade Detection
 - If stock gapped up but current price < VWAP → gap is fading → blocked
@@ -327,12 +336,19 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 - Fixed stop fallback: 2.5% from entry (`config/risk.yaml`)
 
 ### Target Placement
-- `TP1 = entry + 1 × risk_distance` (1:1 R:R)
-- `TP2 = entry + 2 × risk_distance` (2:1 R:R)
+- `max_tp_dist = min(2.5 × ATR, 5% of entry)`
+- `TP1 = min(key_resistance, entry + max_tp_dist)`
+- `TP2 = TP1 + 1 × risk_distance`
 - `invalidation = key_support` (below stop — full thesis broken)
+
+**TP1 cap history:**
+- v1 (pre-Apr 6): `min(3×ATR, 6%)` — too wide, ETF losses
+- v2 (Apr 6–9): `min(2×ATR, 3%)` — **broken**: max R:R = 3%/2.5% = 1.2 < MIN_RR 1.5, zero cards
+- v3 (Apr 10+): `min(2.5×ATR, 5%)` — max R:R = 2.0, sweet spot
 
 ### R:R Floor
 - Minimum R:R: **1.5:1** — cards below this are rejected (`build_trade_card()` returns `None`)
+- Maximum R:R cap: **3.0:1** — unusually high R:R often means thin resistance
 
 ### Position Sizing
 - Base risk per trade: 0.5% of account
@@ -488,8 +504,9 @@ Alpaca's free IEX tier occasionally returns stale or incorrect prices. Built-in 
 
 1. **EMA hold check** uses `pullback_low >= ema20` which may be too loose (allows EMA9 breaks). Tightening to EMA9 may be too aggressive given ATR-based pullback_low computation. Deferred.
 2. **Midday volume multiplier** (1.3×) is low but has a fallback path via relvol + premarket check.
-3. **No higher-timeframe trend filter** — a stock gapping up in a weekly downtrend is a bear rally, not continuation. This is the single biggest potential improvement.
+3. ~~**No higher-timeframe trend filter**~~ — **Partially addressed** (Apr 8): Daily EMA50 trend filter blocks stocks below daily EMA50. Weekly trend check still in backlog.
 4. **No volume decay detection** — snapshots are point-in-time, no tracking of fading participation.
 5. **IEX data tier** — 15-minute delayed intraday data. Consider paid tier ($9/mo) for real-time quotes.
+6. **Midday scans underperform** — Apr 10 backtest showed 0% WR on midday vs 100% on morning. Gap momentum fades by midday.
 
 See `docs/IMPROVEMENTS.md` for the full improvement tracker with validation verdicts and priorities.
