@@ -2360,7 +2360,13 @@
             <div class="card long-card">
                 <!-- Top row -->
                 <div class="card-top">
-                    <div class="card-symbol">{{ a.symbol }}</div>
+                    <div class="card-symbol">{{ a.symbol }}
+                        {% if a.source == 'vps-ibkr' %}
+                        <span style="font-size:0.55em; background:#1e90ff; color:#fff; padding:1px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;">VPS</span>
+                        {% elif a.source == 'render-alpaca' %}
+                        <span style="font-size:0.55em; background:#6c757d; color:#fff; padding:1px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;">RENDER</span>
+                        {% endif %}
+                    </div>
                 </div>
 
                 <!-- Score bar -->
