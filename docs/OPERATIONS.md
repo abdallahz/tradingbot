@@ -1,6 +1,6 @@
 # Operations & Deployment Guide
 
-> **Last updated:** April 3, 2026
+> **Last updated:** April 10, 2026
 > Consolidated from: CLOUD_DEPLOYMENT.md, TASK_SCHEDULER.md, FILE_PERSISTENCE_GUIDE.md
 
 ## Deployment Architecture
@@ -11,7 +11,7 @@ Render.com (cron jobs)                  Heroku (web only)
 news-night    (20:00 ET)                Flask dashboard
 news-premarket(08:00 ET)                gunicorn (web dyno)
 morning-scan  (08:45 ET)                └── /api/alerts
-intraday-scan (every 30m)                   /api/health
+intraday-scan (every 15m)                   /api/health
 tracker       (every 5m)                    /api/status
 close-scan    (15:30 ET)                    POST /scan
        │
@@ -47,6 +47,7 @@ worker: PYTHONPATH=src python -m tradingbot.app.worker
 | `SUPABASE_KEY` | Supabase anon/service key |
 | `SEC_USER_AGENT` | e.g. `TradingBot/1.0 (you@example.com)` |
 | `WORKER_ENABLED` | `false` on Heroku (Render handles crons) |
+| `DATA_PROVIDER` | `alpaca` (default) or `ibkr` for VPS |
 
 ### Optional Variables
 
@@ -57,6 +58,8 @@ worker: PYTHONPATH=src python -m tradingbot.app.worker
 | `NEWS_RSS_FEEDS` | `true` | Enable RSS feed scraping |
 | `NEWS_MAX_AGE_HOURS` | `24` | News recency threshold |
 | `DEBUG` | `false` | Show detailed validation logs |
+| `DATA_PROVIDER` | `alpaca` | Set to `ibkr` on VPS for IBKR data |
+| `EXECUTION_MODE` | — | `paper` or `live` (VPS only) |
 
 ### Deploy
 
@@ -82,8 +85,8 @@ Six cron services defined in `render.yaml`, all UTC:
 | news-night | `0 3 * * 1-5` | ~10 PM ET | `run-news` |
 | news-premarket | `0 13 * * 1-5` | ~8 AM ET | `run-news` |
 | morning-scan | `45 13 * * 1-5` | 8:45 AM ET | `run-morning` |
-| intraday-scan | `*/30 14-20 * * 1-5` | 10 AM–4 PM ET | `run-midday` |
-| tracker | `*/5 13-21 * * 1-5` | 9 AM–5 PM ET | trade tracker |
+| intraday-scan | `*/15 13-19 * * 1-5` | 9 AM–3 PM ET (every 15 min) | `run-midday` |
+| tracker | `*/5 13-20 * * 1-5` | 9 AM–4 PM ET | trade tracker |
 | close-scan | `50 19 * * 1-5` | 3:50 PM ET | `run-close` |
 
 ### Setup
@@ -201,6 +204,36 @@ Every run automatically creates a timestamped copy in `outputs/archive/YYYY-MM-D
 | `close_picks` | Close/hold scanner picks |
 
 JSONL fallback (`outputs/alerts.jsonl`) if Supabase is unavailable.
+
+### Source Tagging
+
+Each alert is tagged with its source infrastructure:
+- `render-alpaca` — from Render cron jobs using Alpaca data (default)
+- `vps-ibkr` — from VPS using IBKR data (set `DATA_PROVIDER=ibkr`)
+
+The source tag appears in Telegram messages as `[☁️ Render/Alpaca]` or `[🖥 VPS/IBKR]` and is stored in the Supabase `source` column.
+
+---
+
+## VPS / IBKR Architecture (feature branch)
+
+```
+VPS (178.156.202.27)                     Render (cron jobs)
+────────────────────                     ──────────────────
+IB Gateway (paper: DUP749086)            Same as above
+IBKR Execution Engine                    Alerts only (no execution)
+├── IBKRClient (656 lines)               DATA_PROVIDER=alpaca
+├── CapitalAllocator (355 lines)
+├── OrderExecutor (571 lines)
+├── PositionMonitor (170 lines)
+├── ExecutionManager (336 lines)
+└── ExecutionTracker (182 lines)
+       │
+       └──→ Supabase (same tables + execution fields)
+       └──→ Telegram (same channel, [🖥 VPS/IBKR] badge)
+```
+
+**Status**: All 13 modules implemented, 119 tests passing. Blocked on IBKR Non-Professional market data approval.
 
 ---
 
