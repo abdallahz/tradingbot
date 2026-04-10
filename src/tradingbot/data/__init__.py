@@ -31,11 +31,21 @@ class DataClient(Protocol):
         ...
 
 
-def create_data_client(broker_config: dict[str, Any]) -> DataClient:
+def create_data_client(
+    broker_config: dict[str, Any],
+    *,
+    client_id_override: int | None = None,
+) -> DataClient:
     """Factory: build the right data client based on ``provider`` key.
 
     ``provider`` is read from broker.yaml (or the ``DATA_PROVIDER``
     env var).  Defaults to ``"alpaca"`` for backward compatibility.
+
+    Args:
+        broker_config: Full broker.yaml dict.
+        client_id_override: If set, use this IB client ID instead of
+            the one in broker.yaml.  Useful when multiple long-running
+            processes need separate connections (e.g. command handler).
 
     Returns an **already-connected** client for IBKR, or a ready-to-use
     AlpacaClient (which connects lazily per request).
@@ -47,15 +57,16 @@ def create_data_client(broker_config: dict[str, Any]) -> DataClient:
         from tradingbot.data.ibkr_client import IBKRClient
 
         ibkr_cfg = broker_config.get("ibkr", {})
+        cid = client_id_override if client_id_override is not None else int(ibkr_cfg.get("client_id", 1))
         client = IBKRClient(
             host=ibkr_cfg.get("host", "127.0.0.1"),
             port=int(ibkr_cfg.get("port", 4002)),
-            client_id=int(ibkr_cfg.get("client_id", 1)),
+            client_id=cid,
             timeout=float(ibkr_cfg.get("timeout", 30)),
             readonly=ibkr_cfg.get("readonly", False),
         )
         client.connect()
-        logger.info("Data provider: IBKR (IB Gateway)")
+        logger.info("Data provider: IBKR (IB Gateway, clientId=%d)", cid)
         return client  # type: ignore[return-value]
 
     # Default: Alpaca

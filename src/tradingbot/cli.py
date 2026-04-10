@@ -33,11 +33,16 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_execution_tracker():
+def _build_execution_tracker(*, client_id: int | None = None):
     """Build an ExecutionTracker if execution is enabled.
 
     Returns the tracker instance, or None when execution is disabled.
     Shared by ``run-tracker``, ``run-close``, and ``run-commands``.
+
+    Args:
+        client_id: Override IBKR client ID (default: from broker.yaml).
+            Use a unique ID for long-running processes to avoid
+            conflicts with cron jobs.
     """
     try:
         from tradingbot.config import ConfigLoader
@@ -48,7 +53,7 @@ def _build_execution_tracker():
         cfg = ConfigLoader(Path.cwd())
         broker_config = cfg.broker()
         risk_config = cfg.risk()
-        data_client = create_data_client(broker_config)
+        data_client = create_data_client(broker_config, client_id_override=client_id)
         mgr = create_execution_manager(data_client, risk_config)
         return create_execution_tracker(mgr)
     except Exception as exc:
@@ -62,7 +67,8 @@ def _run_execution_tracker_tick() -> dict | None:
     Returns the tick result dict, or None when execution is disabled
     (alert_only mode, Alpaca provider, missing credentials).
     """
-    tracker = _build_execution_tracker()
+    # client_id=2 for tracker (cron); scanner uses 1, command handler uses 3
+    tracker = _build_execution_tracker(client_id=2)
     if tracker is None:
         return None
     try:
@@ -176,7 +182,8 @@ def main() -> None:
         from tradingbot.notifications.telegram_commands import TelegramCommandHandler
 
         # Build execution tracker (None if alert_only)
-        exec_tracker = _build_execution_tracker()
+        # Use client_id=3 to avoid conflicts with scanner (1) and tracker (2)
+        exec_tracker = _build_execution_tracker(client_id=3)
         handler = TelegramCommandHandler.from_env(execution_tracker=exec_tracker)
         if not handler.enabled:
             print("[commands] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — exiting.")
