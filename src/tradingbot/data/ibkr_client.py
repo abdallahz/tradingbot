@@ -207,6 +207,129 @@ class IBKRClient:
             })
         return result
 
+    # ── Volume computation helpers ─────────────────────────────────────
+
+    @staticmethod
+    def _compute_today_volume(intraday_bars: list[dict]) -> int:
+        """Sum volume from today's intraday bars.
+
+        Separates today's 15-min bars from yesterday's by checking the
+        date portion of each bar's timestamp.  Returns 0 if no intraday
+        bars exist or none belong to today.
+        """
+        if not intraday_bars:
+            return 0
+
+        from datetime import date as dt_date
+
+        # Determine today's date from the most recent bar
+        last_bar = intraday_bars[-1]
+        bar_date = last_bar.get("date")
+        if bar_date is None:
+            return 0
+
+        if hasattr(bar_date, "date"):
+            today = bar_date.date()
+        elif isinstance(bar_date, str):
+            today = dt_date.fromisoformat(bar_date[:10])
+        else:
+            today = bar_date
+
+        total = 0
+        for bar in intraday_bars:
+            bd = bar.get("date")
+            if bd is None:
+                continue
+            if hasattr(bd, "date"):
+                bd_date = bd.date()
+            elif isinstance(bd, str):
+                bd_date = dt_date.fromisoformat(bd[:10])
+            else:
+                bd_date = bd
+            if bd_date == today:
+                total += int(bar.get("volume", 0))
+        return total
+
+    @staticmethod
+    def _compute_relative_volume(
+        today_volume: int,
+        prev_day_volume: int,
+        intraday_bars: list[dict] | None = None,
+    ) -> float:
+        """Compute time-normalised relative volume.
+
+        Compares today's partial-day cumulative volume against yesterday's
+        full-day volume, scaled by the fraction of the 390-minute trading
+        session elapsed.  This avoids the pitfall of comparing a 5-hour
+        partial session against a full 6.5-hour previous day.
+
+        Falls back to intraday bar comparison when possible, and returns
+        1.0 when data is insufficient.
+        """
+        if prev_day_volume <= 0:
+            return 1.0 if today_volume > 0 else 0.0
+
+        # If intraday bars are available, try to get prev-day volume from them
+        # for a more apples-to-apples comparison (same bar count).
+        if intraday_bars:
+            from datetime import date as dt_date
+
+            last_bar = intraday_bars[-1]
+            bar_date = last_bar.get("date")
+            if bar_date is not None:
+                if hasattr(bar_date, "date"):
+                    today_date = bar_date.date()
+                elif isinstance(bar_date, str):
+                    today_date = dt_date.fromisoformat(bar_date[:10])
+                else:
+                    today_date = bar_date
+
+                today_vol = 0
+                today_bar_count = 0
+                prev_vol = 0
+                prev_bar_count = 0
+
+                for bar in intraday_bars:
+                    bd = bar.get("date")
+                    if bd is None:
+                        continue
+                    if hasattr(bd, "date"):
+                        bd_date = bd.date()
+                    elif isinstance(bd, str):
+                        bd_date = dt_date.fromisoformat(bd[:10])
+                    else:
+                        bd_date = bd
+
+                    vol = int(bar.get("volume", 0))
+                    if bd_date == today_date:
+                        today_vol += vol
+                        today_bar_count += 1
+                    else:
+                        prev_vol += vol
+                        prev_bar_count += 1
+
+                # Compare same number of bars for fairness
+                if prev_bar_count > 0 and today_bar_count > 0:
+                    prev_per_bar = prev_vol / prev_bar_count
+                    today_per_bar = today_vol / today_bar_count
+                    if prev_per_bar > 0:
+                        return today_per_bar / prev_per_bar
+
+        # Fallback: time-of-day scaling
+        from zoneinfo import ZoneInfo
+        _ET = ZoneInfo("America/New_York")
+        now_et = datetime.now(_ET)
+        market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+        elapsed_min = max((now_et - market_open).total_seconds() / 60, 1)
+        day_fraction = min(elapsed_min / 390.0, 1.0)
+
+        if day_fraction <= 0:
+            return 1.0
+
+        # Expected volume at this point in the day
+        expected = prev_day_volume * day_fraction
+        return today_volume / expected if expected > 0 else 1.0
+
     def _fetch_batch_data(self, contracts: dict[str, Any]) -> dict[str, dict]:
         """Fetch snapshot + historical data for a batch of contracts.
 
@@ -327,9 +450,25 @@ class IBKRClient:
                     spread_pct = ((ask - bid) / current_price) * 100 if current_price > 0 else 0
 
                     # Volume metrics
-                    premarket_vol = snap["volume"]
+                    # IBKR delayed data's ticker.volume can be unreliable
+                    # (partial / stale), so we compute cumulative day volume
+                    # from intraday bars when available.
+                    snapshot_vol = snap["volume"]
                     prev_volume = daily_bars[-2]["volume"] if len(daily_bars) >= 2 else 0
-                    relative_volume = premarket_vol / prev_volume if prev_volume > 0 else 1.0
+
+                    # Compute today's cumulative volume from intraday 15-min bars
+                    # (more reliable than delayed snapshot volume).
+                    today_bar_vol = self._compute_today_volume(intraday_bars)
+                    premarket_vol = today_bar_vol if today_bar_vol > 0 else snapshot_vol
+
+                    # Time-normalised relative volume: compare today's
+                    # cumulative volume vs yesterday's full-day volume,
+                    # scaled by the fraction of the trading day elapsed.
+                    relative_volume = self._compute_relative_volume(
+                        today_volume=premarket_vol,
+                        prev_day_volume=prev_volume,
+                        intraday_bars=intraday_bars,
+                    )
                     dollar_volume = (prev_volume * prev_close) if prev_volume else (premarket_vol * current_price * 5)
 
                     # Technical indicators from intraday bars
