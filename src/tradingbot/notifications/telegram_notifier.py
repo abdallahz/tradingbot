@@ -530,6 +530,14 @@ class TelegramNotifier:
 
         return "\n".join(lines)
 
+    # ── Public messaging API ───────────────────────────────────────────────
+
+    def send_message(self, text: str, parse_mode: str = "Markdown") -> bool:
+        """Send a plain text message (public entry-point for execution alerts)."""
+        if not self._enabled:
+            return False
+        return self._send_message(text, parse_mode=parse_mode)
+
     # ── Low-level HTTP helpers ─────────────────────────────────────────────
 
     def _send_message(self, text: str, parse_mode: str = "Markdown") -> bool:

@@ -643,6 +643,50 @@ def update_outcome(
         log.warning(f"[alert_store] update_outcome failed: {exc}")
 
 
+def update_outcome_by_symbol(
+    symbol: str,
+    status: str,
+    exit_price: float | None = None,
+    pnl_pct: float | None = None,
+    hit_at: str | None = None,
+) -> bool:
+    """Look up today's open outcome for *symbol* and update it.
+
+    Used by :class:`ExecutionTracker` which knows the symbol but not the
+    Supabase outcome row ID.  Returns True if a row was found and updated.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return False
+    try:
+        today_str = _today_et().isoformat()
+        resp = (
+            sb.table("trade_outcomes")
+            .select("id")
+            .eq("trade_date", today_str)
+            .eq("symbol", symbol)
+            .in_("status", ["open", "tp1_hit"])
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            log.warning(f"[alert_store] update_outcome_by_symbol: no open row for {symbol}")
+            return False
+        outcome_id = rows[0]["id"]
+        update_outcome(
+            outcome_id=outcome_id,
+            status=status,
+            exit_price=exit_price,
+            pnl_pct=pnl_pct,
+            hit_at=hit_at,
+        )
+        return True
+    except Exception as exc:
+        log.warning(f"[alert_store] update_outcome_by_symbol failed: {exc}")
+        return False
+
+
 def load_outcomes_for_date(trade_date: str | None = None) -> list[dict[str, Any]]:
     """Return all trade outcomes for a given date (default: today)."""
     sb = _get_supabase()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from pathlib import Path
 
@@ -29,6 +30,32 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("run-tracker", help="Run one tracker tick (check open trades for TP/stop hits)")
     sub.add_parser("auto-tune", help="Run auto-tuner analysis and print recommendations")
     return parser
+
+
+def _run_execution_tracker_tick() -> dict | None:
+    """Try to create and tick the ExecutionTracker.
+
+    Returns the tick result dict, or None when execution is disabled
+    (alert_only mode, Alpaca provider, missing credentials).
+    """
+    try:
+        from tradingbot.config import ConfigLoader
+        from tradingbot.data import create_data_client
+        from tradingbot.execution.execution_manager import create_execution_manager
+        from tradingbot.tracking.execution_tracker import create_execution_tracker
+
+        cfg = ConfigLoader(Path.cwd())
+        broker_config = cfg.broker()
+        risk_config = cfg.risk()
+        data_client = create_data_client(broker_config)
+        mgr = create_execution_manager(data_client, risk_config)
+        tracker = create_execution_tracker(mgr)
+        if tracker is None:
+            return None
+        return tracker.tick()
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"[exec-tracker] Skipped: {exc}")
+        return None
 
 
 def main() -> None:
@@ -116,6 +143,7 @@ def main() -> None:
         has_sb_key = bool(os.getenv("SUPABASE_KEY", "").strip())
         print(f"[tracker] env: alpaca={'yes' if has_alpaca else 'NO'} sb_url={'yes' if has_sb_url else 'NO'} sb_key={'yes' if has_sb_key else 'NO'}")
 
+        # Simulated tracker (Alpaca prices → Supabase outcomes)
         from tradingbot.tracking.trade_tracker import TradeTracker
         tracker = TradeTracker()
         result = tracker.tick()
@@ -123,6 +151,11 @@ def main() -> None:
         updates = result.get("updates", 0)
         seeded = result.get("seeded", 0)
         print(f"[tracker] checked={checked} updates={updates} seeded={seeded}")
+
+        # Execution tracker (live IBKR positions) — runs only when enabled
+        exec_result = _run_execution_tracker_tick()
+        if exec_result:
+            print(f"[exec-tracker] trails={exec_result['trails']} fills={exec_result['fills']}")
         return
 
     if args.command == "auto-tune":
@@ -179,6 +212,11 @@ def main() -> None:
         tracker.tick()
         expired = tracker.expire_open_trades()
         print(f"\n>> Expired {expired} open trade(s)")
+
+        # Step 2b: Execution tracker — expire live IBKR positions
+        exec_result = _run_execution_tracker_tick()
+        if exec_result:
+            print(f">> [exec-tracker] trails={exec_result['trails']} fills={exec_result['fills']} expired={exec_result['expired']}")
 
         # Step 3: Build daily recap
         stats = get_trade_stats()
