@@ -1,0 +1,335 @@
+"""
+execution_manager.py — Facade for the IBKR execution engine.
+
+Coordinates CapitalAllocator, OrderExecutor, and PositionMonitor into
+a single entry point that session_runner calls after generating a
+TradeCard.
+
+Gated by ``execution.mode`` in risk.yaml (or ``EXECUTION_MODE`` env var).
+When mode is ``alert_only`` (the default), no ExecutionManager is
+created and the system stays alert-only.
+
+Usage (inside session_runner):
+    if self.execution_mgr:
+        self.execution_mgr.execute_card(card)
+"""
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any, Literal
+
+from tradingbot.models import TradeCard
+
+logger = logging.getLogger(__name__)
+
+
+class ExecutionManager:
+    """Thin façade over CapitalAllocator → OrderExecutor → PositionMonitor.
+
+    Created once by SessionRunner.__init__ when execution is enabled.
+    Each public method is safe to call — errors are caught and logged
+    so a failed order never crashes the scan loop.
+    """
+
+    def __init__(
+        self,
+        ibkr_client,
+        execution_config: dict[str, Any],
+        risk_per_trade_pct: float = 0.5,
+    ) -> None:
+        from tradingbot.risk.capital_allocator import CapitalAllocator
+        from tradingbot.execution.order_executor import OrderExecutor
+        from tradingbot.execution.position_monitor import PositionMonitor
+
+        self._client = ibkr_client
+        self._config = execution_config
+
+        mode = execution_config.get("mode", "alert_only")
+        self._mode: Literal["alert_only", "paper", "live"] = mode  # type: ignore[assignment]
+
+        self.allocator = CapitalAllocator(
+            mode=mode,
+            max_concurrent_positions=execution_config.get("max_concurrent_positions", 3),
+            max_morning_entries=execution_config.get("max_morning_entries", 2),
+            reserve_midday_slots=execution_config.get("reserve_midday_slots", 1),
+            risk_per_trade_pct=risk_per_trade_pct,
+            max_single_position_pct=40.0,
+            max_notional_per_trade=execution_config.get("max_notional_per_trade", 10_000.0),
+            pdt_protection=execution_config.get("pdt_protection", True),
+            pdt_threshold=execution_config.get("pdt_threshold", 25_000.0),
+        )
+
+        self.executor = OrderExecutor(ibkr_client)
+        self.monitor = PositionMonitor(ibkr_client, self.executor, self.allocator)
+
+        # Pre-load account balances so position sizing works on first card
+        self._sync_account()
+
+        logger.info(
+            f"ExecutionManager ready — mode={mode}, "
+            f"max_positions={self.allocator.max_concurrent_positions}, "
+            f"risk/trade={risk_per_trade_pct}%"
+        )
+
+    # ── Account sync ───────────────────────────────────────────────────
+
+    def _sync_account(self) -> None:
+        """Pull latest NLV / buying power from IBKR into the allocator."""
+        try:
+            acct = self._client.get_account_summary()
+            self.allocator.update_account(
+                net_liquidation=acct.get("net_liquidation", 0.0),
+                buying_power=acct.get("buying_power", 0.0),
+                cash_balance=acct.get("cash_balance", 0.0),
+            )
+        except Exception as e:
+            logger.error(f"Account sync failed: {e}")
+
+    # ── Main entry point — called per TradeCard ────────────────────────
+
+    def execute_card(
+        self,
+        card: TradeCard,
+        streak_multiplier: float = 1.0,
+    ) -> dict[str, Any]:
+        """Attempt to execute a TradeCard as a bracket order on IBKR.
+
+        Steps:
+          1. Pre-trade gate (slot + PDT + buying-power + sizing)
+          2. Submit bracket order (entry + stop + TP1 as OCA)
+          3. Record position in allocator
+
+        Returns a result dict with keys:
+            executed (bool), symbol, shares, reason, order_result (if any)
+        """
+        symbol = card.symbol
+        session = card.session_tag
+        entry = card.entry_price
+        stop = card.stop_price
+        tp1 = card.tp1_price
+        tp2 = card.tp2_price
+
+        result: dict[str, Any] = {
+            "executed": False,
+            "symbol": symbol,
+            "shares": 0,
+            "reason": "",
+        }
+
+        # ── 1. Pre-trade check ────────────────────────────────────────
+        try:
+            allowed, shares, reason = self.allocator.pre_trade_check(
+                entry_price=entry,
+                stop_price=stop,
+                session=session,
+                streak_multiplier=streak_multiplier,
+            )
+        except Exception as e:
+            result["reason"] = f"pre_trade_check error: {e}"
+            logger.error(f"[EXEC] {symbol}: pre-trade check failed — {e}")
+            return result
+
+        if not allowed:
+            result["reason"] = reason
+            logger.info(f"[EXEC] {symbol}: blocked — {reason}")
+            return result
+
+        result["shares"] = shares
+
+        # ── 2. Determine order type ───────────────────────────────────
+        use_market = (
+            session in ("midday", "close")
+            and self._config.get("midday_use_market_order", True)
+        )
+        entry_buffer = self._config.get("entry_order_buffer_pct", 0.1)
+
+        # Below-VWAP scalp detection: if entry < VWAP → 100% exit at TP1
+        is_scalp = False  # snapshot not available here; conservative default
+
+        # ── 3. Submit bracket order ───────────────────────────────────
+        try:
+            order_result = self.executor.submit_bracket_order(
+                symbol=symbol,
+                entry_price=entry,
+                stop_price=stop,
+                tp1_price=tp1,
+                tp2_price=tp2,
+                quantity=shares,
+                session=session,
+                use_market_order=use_market,
+                entry_buffer_pct=entry_buffer,
+                is_scalp=is_scalp,
+            )
+        except Exception as e:
+            result["reason"] = f"order submission error: {e}"
+            logger.error(f"[EXEC] {symbol}: bracket order failed — {e}")
+            return result
+
+        if not order_result.success:
+            result["reason"] = f"order rejected: {order_result.error}"
+            logger.warning(f"[EXEC] {symbol}: order rejected — {order_result.error}")
+            return result
+
+        # ── 4. Book position in allocator ─────────────────────────────
+        from datetime import datetime
+        self.allocator.open_position(
+            symbol=symbol,
+            entry_price=order_result.fill_price or entry,
+            quantity=shares,
+            entry_time=datetime.utcnow().isoformat(),
+            session=session,
+            order_ids=[
+                order_result.parent_order_id,
+                order_result.tp_order_id,
+                order_result.stop_order_id,
+            ],
+        )
+
+        # Also record position size on the card so Telegram shows it
+        card.position_size = shares
+
+        result["executed"] = True
+        result["reason"] = "ok"
+        result["order_result"] = {
+            "parent_id": order_result.parent_order_id,
+            "tp_id": order_result.tp_order_id,
+            "stop_id": order_result.stop_order_id,
+            "fill_price": order_result.fill_price,
+        }
+        logger.info(
+            f"[EXEC] ✅ {symbol}: {shares} shares bracket submitted "
+            f"| entry ~${entry:.2f} | stop ${stop:.2f} | TP1 ${tp1:.2f}"
+        )
+        return result
+
+    # ── Trailing ───────────────────────────────────────────────────────
+
+    def check_trails(self, current_prices: dict[str, float]) -> list[str]:
+        """Check and advance trailing stops for all managed trades."""
+        actions: list[str] = []
+        for symbol, price in current_prices.items():
+            try:
+                action = self.executor.check_and_trail(symbol, price)
+                if action:
+                    actions.append(f"{symbol}: {action}")
+            except Exception as e:
+                logger.error(f"Trail check failed for {symbol}: {e}")
+        return actions
+
+    # ── Morning deadline ───────────────────────────────────────────────
+
+    def morning_deadline(self, current_prices: dict[str, float]) -> list[str]:
+        """Execute 10:30 AM deadline logic."""
+        try:
+            return self.executor.morning_deadline_check(current_prices)
+        except Exception as e:
+            logger.error(f"Morning deadline failed: {e}")
+            return [f"ERROR: {e}"]
+
+    # ── EOD expire ─────────────────────────────────────────────────────
+
+    def expire_all(self) -> list[str]:
+        """Execute 3:30 PM expiry — cancel + market-sell everything."""
+        try:
+            return self.executor.expire_all()
+        except Exception as e:
+            logger.error(f"Expire failed: {e}")
+            return [f"ERROR: {e}"]
+
+    # ── Kill switch ────────────────────────────────────────────────────
+
+    def kill_all(self) -> list[str]:
+        """Emergency flatten — cancel all orders + sell all positions."""
+        try:
+            return self.executor.kill_all()
+        except Exception as e:
+            logger.error(f"Kill switch failed: {e}")
+            return [f"ERROR: {e}"]
+
+    # ── Reconciliation ─────────────────────────────────────────────────
+
+    def reconcile(self):
+        """Run position reconciliation cycle."""
+        try:
+            return self.monitor.reconcile()
+        except Exception as e:
+            logger.error(f"Reconciliation failed: {e}")
+            return None
+
+    # ── Check fills ────────────────────────────────────────────────────
+
+    def check_fills(self) -> list[dict]:
+        """Check for new fills (TP/stop hit) on managed trades."""
+        try:
+            return self.executor.check_fills()
+        except Exception as e:
+            logger.error(f"Fill check failed: {e}")
+            return []
+
+    # ── Daily reset ────────────────────────────────────────────────────
+
+    def reset_daily(self) -> None:
+        """Reset daily counters at start of trading day."""
+        self.allocator.reset_daily()
+        self._sync_account()
+        logger.info("[EXEC] Daily reset complete")
+
+    # ── Status ─────────────────────────────────────────────────────────
+
+    def get_status(self) -> dict[str, Any]:
+        """Combined status for Telegram /status or dashboard."""
+        exec_status = self.executor.get_status()
+        monitor_status = self.monitor.get_health_status()
+        return {
+            "mode": self._mode,
+            "account_value": self.allocator.account_value,
+            "buying_power": self.allocator.buying_power,
+            "open_positions": self.allocator.open_position_count,
+            "max_positions": self.allocator.max_concurrent_positions,
+            "pdt_remaining": self.allocator.pdt_trades_remaining,
+            "open_trades": exec_status["open_trades"],
+            "closed_today": exec_status["closed_today"],
+            "monitor": monitor_status,
+        }
+
+
+def create_execution_manager(
+    data_client,
+    risk_config: dict[str, Any],
+) -> ExecutionManager | None:
+    """Factory: create an ExecutionManager if execution is enabled.
+
+    Returns None when mode is ``alert_only`` or the data provider
+    is not IBKR (execution requires IBKR connection).
+
+    Args:
+        data_client: The active DataClient (must be IBKRClient for execution).
+        risk_config: Full risk.yaml dict (contains ``execution`` section).
+    """
+    exec_cfg = risk_config.get("execution", {})
+
+    # Environment override: EXECUTION_MODE=paper / live / alert_only
+    mode = os.environ.get("EXECUTION_MODE", exec_cfg.get("mode", "alert_only"))
+    exec_cfg["mode"] = mode
+
+    if mode == "alert_only":
+        logger.info("[EXEC] Execution disabled (mode=alert_only)")
+        return None
+
+    # Execution requires IBKRClient — check before importing
+    from tradingbot.data.ibkr_client import IBKRClient
+    if not isinstance(data_client, IBKRClient):
+        logger.warning(
+            f"[EXEC] Execution requires IBKR provider, got {type(data_client).__name__}. "
+            f"Falling back to alert_only."
+        )
+        return None
+
+    risk_per_trade = risk_config.get("risk", {}).get("risk_per_trade_pct", 0.5)
+
+    return ExecutionManager(
+        ibkr_client=data_client,
+        execution_config=exec_cfg,
+        risk_per_trade_pct=risk_per_trade,
+    )

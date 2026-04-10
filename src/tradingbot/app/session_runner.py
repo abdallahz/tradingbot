@@ -44,6 +44,7 @@ from tradingbot.analysis.institutional_alert import (
     build_institutional_context,
     format_institutional_alert,
 )
+from tradingbot.execution.execution_manager import create_execution_manager
 from tradingbot.notifications.telegram_notifier import TelegramNotifier
 from tradingbot.web.alert_store import card_to_dict, save_alert, get_today_alerted_symbols
 from tradingbot.data.etf_metadata import is_etf, get_etf_family, get_leverage_factor
@@ -176,6 +177,13 @@ class SessionRunner:
         self.ai_validator = AITradeValidator() if ai_validation_enabled else None
         self.notifier = TelegramNotifier.from_env()
         self._alerts_sent_count: int = 0
+
+        # ── Execution engine (optional — requires IBKR + mode != alert_only)
+        self.execution_mgr = create_execution_manager(
+            data_client=self.data_client,
+            risk_config=risk_config,
+        ) if use_real_data else None
+
         # Auto-tune overrides (populated by apply_tuning before first scan)
         self._tuning_overrides: dict[str, float] = {}
         
@@ -1057,7 +1065,33 @@ class SessionRunner:
             save_alert(card_to_dict(card))
             self._alerts_sent_count += 1
 
+            # ── Optional execution (paper/live via IBKR) ──────────
+            self._maybe_execute(card)
+
         return cards
+
+    def _maybe_execute(self, card: TradeCard) -> None:
+        """Submit a bracket order for *card* if execution is enabled.
+
+        Errors are caught and logged — a failed order never blocks the
+        scan loop.  The result is logged and (in a future iteration)
+        sent as a Telegram confirmation.
+        """
+        if not self.execution_mgr:
+            return
+
+        try:
+            result = self.execution_mgr.execute_card(card)
+            if result["executed"]:
+                logging.info(
+                    f"[EXEC] {card.symbol}: {result['shares']} shares submitted"
+                )
+            else:
+                logging.info(
+                    f"[EXEC] {card.symbol}: not executed — {result['reason']}"
+                )
+        except Exception as exc:
+            logging.error(f"[EXEC] {card.symbol}: unexpected error — {exc}")
 
     def _write_outputs(self, morning: list[TradeCard], midday: list[TradeCard]) -> None:
         output_dir = self.root / "outputs"
