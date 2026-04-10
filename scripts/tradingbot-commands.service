@@ -1,0 +1,18 @@
+[Unit]
+Description=TradingBot Telegram Command Handler
+After=network.target ibgateway.service
+Wants=ibgateway.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/tradingbot
+EnvironmentFile=/home/ubuntu/tradingbot/.env
+ExecStart=/home/ubuntu/tradingbot/venv/bin/python -m tradingbot.cli --real-data run-commands
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/tradingbot/logs/telegram-commands.log
+StandardError=append:/home/ubuntu/tradingbot/logs/telegram-commands.log
+
+[Install]
+WantedBy=multi-user.target
