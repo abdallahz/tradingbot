@@ -148,7 +148,6 @@ def main() -> None:
         return
     
     if args.command == "run-tracker":
-        import logging
         logging.basicConfig(level=logging.INFO, format="%(message)s")
 
         # Diagnostic: verify environment before running
@@ -198,7 +197,6 @@ def main() -> None:
         return
 
     if args.command == "run-close":
-        import logging
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from datetime import datetime, timezone
         from zoneinfo import ZoneInfo
