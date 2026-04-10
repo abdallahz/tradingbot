@@ -39,8 +39,27 @@ class ConfigLoader:
         return self._apply_broker_env_overrides(config)
 
     def _apply_broker_env_overrides(self, config: dict[str, Any]) -> dict[str, Any]:
+        # Top-level provider selection ("alpaca" or "ibkr")
+        self._set_if_present(config, "provider", "DATA_PROVIDER")
+        config.setdefault("provider", "alpaca")
+
         alpaca = config.setdefault("alpaca", {})
+        ibkr = config.setdefault("ibkr", {})
         news = config.setdefault("news", {})
+
+        # IBKR defaults
+        ibkr.setdefault("host", "127.0.0.1")
+        ibkr.setdefault("port", 4002)
+        ibkr.setdefault("client_id", 1)
+        ibkr.setdefault("timeout", 30)
+        ibkr.setdefault("readonly", False)
+
+        # IBKR env overrides
+        self._set_if_present(ibkr, "host", "IBKR_HOST")
+        self._set_if_present(ibkr, "port", "IBKR_PORT", caster=int)
+        self._set_if_present(ibkr, "client_id", "IBKR_CLIENT_ID", caster=int)
+        self._set_if_present(ibkr, "timeout", "IBKR_TIMEOUT", caster=float)
+        self._set_if_present(ibkr, "readonly", "IBKR_READONLY", caster=self._to_bool)
 
         # If no YAML exists, set reasonable defaults
         alpaca.setdefault("paper", True)

@@ -25,6 +25,6 @@ def test_session_runner_real_mode_initialization():
     runner = SessionRunner(root, use_real_data=True)
     
     # Verify real data components are initialized
-    assert runner.alpaca_client is not None
+    assert runner.data_client is not None
     assert runner.catalyst_scorer is not None
     assert runner.use_real_data is True

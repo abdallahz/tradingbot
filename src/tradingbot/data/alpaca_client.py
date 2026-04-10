@@ -495,6 +495,10 @@ class AlpacaClient:
         logger.debug(f"screener returned {len(cleaned)} unique symbols")
         return list(cleaned)
 
+    def get_screener_symbols(self) -> list[str]:
+        """Public alias for _get_screener_symbols (used by session_runner)."""
+        return self._get_screener_symbols()
+
     def get_tradable_universe(self) -> list[str]:
         """Build today's scan universe by merging dynamic screener data with a
         small core watchlist.  This replaces the old hardcoded 170-symbol list

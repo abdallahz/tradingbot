@@ -8,6 +8,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from tradingbot.config import ConfigLoader
+from tradingbot.data import create_data_client, DataClient
 from tradingbot.data.alpaca_client import AlpacaClient
 from tradingbot.data.mock_data import (
     get_midday_snapshots,
@@ -74,13 +75,7 @@ class SessionRunner:
 
         # Initialize data sources
         if use_real_data:
-            alpaca_cfg = broker_config["alpaca"]
-            self.alpaca_client = AlpacaClient(
-                api_key=alpaca_cfg["api_key"],
-                api_secret=alpaca_cfg["api_secret"],
-                paper=alpaca_cfg["paper"],
-                data_feed=alpaca_cfg.get("data_feed", "iex"),
-            )
+            self.data_client: DataClient | None = create_data_client(broker_config)
             news_cfg = broker_config["news"]
             news_agg = NewsAggregator(
                 sec_enabled=news_cfg["sec_filings"],
@@ -104,12 +99,13 @@ class SessionRunner:
             
             self.catalyst_scorer = CatalystScorerV2(news_agg, ai_sentiment_analyzer=ai_analyzer)
         else:
-            self.alpaca_client = None
+            self.data_client = None
             self.catalyst_scorer = None
             
         self.fallback_catalyst = CatalystScorer(min_catalyst_score=60)
         # Quality symbols get a lower gap threshold (mega-cap names with
         # 0.2-0.4% gaps are meaningful; micro-caps need bigger gaps).
+        # Both AlpacaClient and IBKRClient share the same _CORE_WATCHLIST.
         quality_symbols = set(AlpacaClient._CORE_WATCHLIST) if hasattr(AlpacaClient, '_CORE_WATCHLIST') else set()
         self.scanner = GapScanner(
             price_min=scanner_defaults["price_min"],
@@ -238,15 +234,15 @@ class SessionRunner:
         catalyst_scores: dict[str, float] = {}
         night_universe_str: list[str] = []
         
-        if self.use_real_data and self.alpaca_client and self.catalyst_scorer:
+        if self.use_real_data and self.data_client and self.catalyst_scorer:
             # Real data flow
-            universe = self.alpaca_client.get_tradable_universe()
+            universe = self.data_client.get_tradable_universe()
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
             night_universe_str = [s for s, score in catalyst_scores.items() if score >= 40]
             if not night_universe_str:
                 night_universe_str = [s for s, _ in sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:50]]
             
-            premarket_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
+            premarket_snapshots = self.data_client.get_premarket_snapshots(night_universe_str)
             # Apply catalyst scores
             for snap in premarket_snapshots:
                 snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
@@ -265,9 +261,9 @@ class SessionRunner:
                 snapshots=premarket_snapshots_filtered,
                 session_tag="morning",
             )
-        if self.use_real_data and self.alpaca_client:
+        if self.use_real_data and self.data_client:
             # For midday, re-fetch current snapshots
-            midday_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
+            midday_snapshots = self.data_client.get_premarket_snapshots(night_universe_str)
             for snap in midday_snapshots:
                 snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
             midday = self._run_session(
@@ -288,15 +284,15 @@ class SessionRunner:
         """Run full day with 3 trading options and recommendations."""
         night_universe_str: list[str] = []
         
-        if self.use_real_data and self.alpaca_client and self.catalyst_scorer:
+        if self.use_real_data and self.data_client and self.catalyst_scorer:
             # Real data flow
-            universe = self.alpaca_client.get_tradable_universe()
+            universe = self.data_client.get_tradable_universe()
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
             night_universe_str = [s for s, score in catalyst_scores.items() if score >= 40]
             if not night_universe_str:
                 night_universe_str = [s for s, _ in sorted(catalyst_scores.items(), key=lambda x: x[1], reverse=True)[:50]]
             
-            premarket_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
+            premarket_snapshots = self.data_client.get_premarket_snapshots(night_universe_str)
             # Apply catalyst scores
             for snap in premarket_snapshots:
                 snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
@@ -320,8 +316,8 @@ class SessionRunner:
             )
         
         # Midday scan
-        if self.use_real_data and self.alpaca_client:
-            midday_snapshots = self.alpaca_client.get_premarket_snapshots(night_universe_str)
+        if self.use_real_data and self.data_client:
+            midday_snapshots = self.data_client.get_premarket_snapshots(night_universe_str)
             for snap in midday_snapshots:
                 snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
             midday_results = self._run_three_option_session(
@@ -1088,9 +1084,9 @@ class SessionRunner:
         Returns:
             dict[str, float]: Catalyst scores for each symbol
         """
-        if self.use_real_data and self.alpaca_client and self.catalyst_scorer:
+        if self.use_real_data and self.data_client and self.catalyst_scorer:
             # Real news sources
-            universe = self.alpaca_client.get_tradable_universe()
+            universe = self.data_client.get_tradable_universe()
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
 
             # Persist latest social proxy signals (if available)
@@ -1112,11 +1108,11 @@ class SessionRunner:
     ) -> list[SymbolSnapshot]:
         """Fetch market snapshots and annotate each with its catalyst score."""
         universe_set = set(universe_str)
-        if self.use_real_data and self.alpaca_client:
+        if self.use_real_data and self.data_client:
             # Sort by catalyst score (highest first) so the most
             # promising symbols are fetched in the earliest batches.
             sorted_universe = sorted(universe_str, key=lambda s: catalyst_scores.get(s, 0), reverse=True)
-            snapshots = self.alpaca_client.get_premarket_snapshots(sorted_universe)
+            snapshots = self.data_client.get_premarket_snapshots(sorted_universe)
         elif session_type == "morning":
             snapshots = [s for s in get_premarket_snapshots() if s.symbol in universe_set]
         else:
@@ -1203,8 +1199,8 @@ class SessionRunner:
 
         # Merge live screener movers so we catch intraday runners
         # that weren't in last night's research universe.
-        if self.use_real_data and self.alpaca_client:
-            screener_syms = self.alpaca_client._get_screener_symbols()
+        if self.use_real_data and self.data_client:
+            screener_syms = self.data_client.get_screener_symbols()
             new_syms = [s for s in screener_syms if s not in catalyst_scores]
             if new_syms:
                 # Give new movers a penalised baseline catalyst score of 30

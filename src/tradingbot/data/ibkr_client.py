@@ -532,6 +532,10 @@ class IBKRClient:
         logger.debug(f"IBKR scanner returned {len(symbols)} unique symbols")
         return list(symbols)
 
+    def get_screener_symbols(self) -> list[str]:
+        """Public alias matching AlpacaClient.get_screener_symbols()."""
+        return self._get_scanner_symbols()
+
     def get_tradable_universe(self) -> list[str]:
         """Build today's scan universe — same interface as AlpacaClient."""
         dynamic = self._get_scanner_symbols()
