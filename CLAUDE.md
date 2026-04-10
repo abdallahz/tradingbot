@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-An automated day-trading **alert system** with optional IBKR execution. Scans stocks for intraday setups, sends Telegram notifications, and serves a Flask web dashboard. Deployed on Heroku (web) + Render (crons) with Supabase persistence. IBKR execution engine on `feature/ibkr-execution` branch.
+An automated day-trading **alert system** (no trades executed). Scans stocks for intraday setups, sends Telegram notifications, and serves a Flask web dashboard. Deployed on Heroku (web) + Render (crons) with Supabase persistence.
 
 ## Commands
 
@@ -24,7 +24,7 @@ python -m tradingbot.cli --real-data run-close      # 15:30 ET close scan
 # Show schedule
 python -m tradingbot.cli schedule
 
-# Tests (268 on main, 387+ on feature/ibkr-execution)
+# Tests (268 tests)
 pytest tests/ -v
 pytest tests/test_trade_card.py -v   # single file
 ```
@@ -82,16 +82,13 @@ Environment variables override YAML for cloud deployment. See `config/broker.exa
 - **Heroku**: Web dyno only (worker OFF, `WORKER_ENABLED=false`). Flask dashboard + Supabase reads.
 - **Render**: 6 cron jobs handle all scheduling (news, morning, midday every 15min, tracker, close)
 - **Supabase**: Tables: alerts (with `source` column), trade_outcomes, sessions, close_picks
-- **VPS** (feature branch): `178.156.202.27` — IB Gateway + IBKR execution (pending Non-Professional approval)
 
 Required env vars: `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `ALPACA_PAPER`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, `SUPABASE_KEY`
-
-Optional: `DATA_PROVIDER=ibkr` (VPS only), `EXECUTION_MODE=paper|live` (VPS only)
 
 ## Design Decisions
 
 - **Long-only**: No short setups. `TradeCard` and `CloseHoldPick` have `side: str = "long"` as a constant default.
-- **Alert-primary**: Main branch is alert-only. Feature branch (`feature/ibkr-execution`) adds optional IBKR bracket order execution.
+- **Alert-only**: No order execution — generates trade card alerts.
 - **Free indicators only**: Uses `ta` library (not torch/transformers) to stay within Heroku slug size limits.
 - **Telegram-primary**: Telegram is the main notification channel; web dashboard is a secondary alert viewer.
 - **Stateless workers**: Heroku/Render dynos can restart anytime — Supabase is the persistent source of truth for alerts.
@@ -100,7 +97,7 @@ Optional: `DATA_PROVIDER=ibkr` (VPS only), `EXECUTION_MODE=paper|live` (VPS only
 - **Secondary price guard**: Hard floor at $5 in `_build_cards` regardless of scanner path.
 - **TP1 cap**: `min(2.5×ATR, 5%)` — max possible R:R = 2.0. Previous 3% cap made R:R mathematically impossible.
 - **Session-adaptive VWAP**: Morning 3% max distance, Midday/Close 5% — stocks drift from VWAP as day progresses.
-- **Source tagging**: Each alert tagged `render-alpaca` or `vps-ibkr` in Telegram + Supabase.
+- **Source tagging**: Each alert tagged with source identifier in Telegram + Supabase.
 - **Daily EMA50 trend filter**: Blocks stocks gapping up below daily EMA50 (bear rally protection).
 
 ## Live Deployment
@@ -137,11 +134,6 @@ python -m tradingbot.cli run-day
 - **pyproject.toml missing runtime deps** — only lists PyYAML; need to sync from requirements.txt.
 - **session_runner.py is ~1200 lines** — should extract CardBuilder and ScanStrategy classes.
 - **test_catalyst_scorer_with_mocked_news** — hangs indefinitely (network call issue). Pre-existing.
-
-### IBKR Execution (feature branch)
-- All 13 modules DONE (IBKRClient, CapitalAllocator, OrderExecutor, PositionMonitor, ExecutionManager, ExecutionTracker, TelegramCommands, 119 tests)
-- **Blocked on**: IBKR Non-Professional market data status approval
-- **Next**: Paper test on VPS → Dashboard execution badges → Validate → Go live
 
 ### Backlog (biggest potential improvements)
 - **Volume decay detection** — track fading participation across bars.

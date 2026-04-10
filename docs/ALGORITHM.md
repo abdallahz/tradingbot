@@ -5,11 +5,11 @@
 
 ## Overview
 
-This is a **gap-and-go momentum alert system** (long-only). It scans for stocks that gapped up overnight on news/catalysts, confirms the move has real participation, then generates trade card alerts with entry/stop/targets. Alerts go to Telegram and the web dashboard. An optional IBKR execution engine (feature branch) can execute paper/live bracket orders.
+This is a **gap-and-go momentum alert system** (long-only). It scans for stocks that gapped up overnight on news/catalysts, confirms the move has real participation, then generates trade card alerts with entry/stop/targets. Alerts go to Telegram and the web dashboard.
 
 **Design principles:**
 - **Long-only**: No short setups. `TradeCard.side` is always `"long"`.
-- **Alert-primary**: Main branch is alert-only. Feature branch adds optional IBKR execution.
+- **Alert-only**: No order execution — generates trade card alerts.
 - **Free indicators only**: Uses `ta` library (not torch/transformers) to stay within Heroku slug limits.
 - **Telegram-primary**: Main notification channel; web dashboard is secondary.
 - **Stateless workers**: Heroku/Render dynos can restart — Supabase is the persistent source of truth.

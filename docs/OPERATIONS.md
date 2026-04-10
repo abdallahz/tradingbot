@@ -47,7 +47,6 @@ worker: PYTHONPATH=src python -m tradingbot.app.worker
 | `SUPABASE_KEY` | Supabase anon/service key |
 | `SEC_USER_AGENT` | e.g. `TradingBot/1.0 (you@example.com)` |
 | `WORKER_ENABLED` | `false` on Heroku (Render handles crons) |
-| `DATA_PROVIDER` | `alpaca` (default) or `ibkr` for VPS |
 
 ### Optional Variables
 
@@ -58,8 +57,6 @@ worker: PYTHONPATH=src python -m tradingbot.app.worker
 | `NEWS_RSS_FEEDS` | `true` | Enable RSS feed scraping |
 | `NEWS_MAX_AGE_HOURS` | `24` | News recency threshold |
 | `DEBUG` | `false` | Show detailed validation logs |
-| `DATA_PROVIDER` | `alpaca` | Set to `ibkr` on VPS for IBKR data |
-| `EXECUTION_MODE` | — | `paper` or `live` (VPS only) |
 
 ### Deploy
 
@@ -207,33 +204,7 @@ JSONL fallback (`outputs/alerts.jsonl`) if Supabase is unavailable.
 
 ### Source Tagging
 
-Each alert is tagged with its source infrastructure:
-- `render-alpaca` — from Render cron jobs using Alpaca data (default)
-- `vps-ibkr` — from VPS using IBKR data (set `DATA_PROVIDER=ibkr`)
-
-The source tag appears in Telegram messages as `[☁️ Render/Alpaca]` or `[🖥 VPS/IBKR]` and is stored in the Supabase `source` column.
-
----
-
-## VPS / IBKR Architecture (feature branch)
-
-```
-VPS (178.156.202.27)                     Render (cron jobs)
-────────────────────                     ──────────────────
-IB Gateway (paper: DUP749086)            Same as above
-IBKR Execution Engine                    Alerts only (no execution)
-├── IBKRClient (656 lines)               DATA_PROVIDER=alpaca
-├── CapitalAllocator (355 lines)
-├── OrderExecutor (571 lines)
-├── PositionMonitor (170 lines)
-├── ExecutionManager (336 lines)
-└── ExecutionTracker (182 lines)
-       │
-       └──→ Supabase (same tables + execution fields)
-       └──→ Telegram (same channel, [🖥 VPS/IBKR] badge)
-```
-
-**Status**: All 13 modules implemented, 119 tests passing. Blocked on IBKR Non-Professional market data approval.
+Each alert is tagged with its source infrastructure (stored in the Supabase `source` column and shown in Telegram message headers).
 
 ---
 
