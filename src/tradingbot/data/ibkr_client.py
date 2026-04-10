@@ -74,9 +74,14 @@ class IBKRClient:
             timeout=self.timeout,
             readonly=self.readonly,
         )
+        # Request delayed-frozen data as fallback when real-time
+        # subscriptions are unavailable.  Type 3 = delayed data,
+        # Type 4 = delayed-frozen.  If a real-time subscription
+        # exists, IBKR silently upgrades to real-time anyway.
+        self._ib.reqMarketDataType(3)
         logger.info(
             f"Connected to IBKR Gateway at {self.host}:{self.port} "
-            f"(clientId={self.client_id})"
+            f"(clientId={self.client_id}, marketDataType=delayed-fallback)"
         )
 
     def disconnect(self) -> None:
@@ -124,20 +129,39 @@ class IBKRClient:
         """Request a snapshot of market data for a single contract.
 
         Returns a dict with price, bid, ask, volume, etc.
-        Uses snapshot mode (no streaming subscription).
+
+        Uses non-snapshot streaming mode so that delayed data (type 3)
+        can populate the ticker when no real-time subscription exists.
+        ``snapshot=True`` only works with real-time subscriptions.
         """
-        ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=True)
-        self.ib.sleep(2)  # allow time for snapshot to fill
+        import math
+
+        ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
+        # Wait up to 4 seconds for data to arrive (delayed data takes longer)
+        for _ in range(8):
+            self.ib.sleep(0.5)
+            # Check if we have a usable price
+            price = ticker.last if ticker.last == ticker.last else (
+                ticker.close if ticker.close == ticker.close else None
+            )
+            if price is not None and not math.isnan(price):
+                break
+
+        def _safe(val: float) -> float:
+            """Return 0.0 for NaN / inf values."""
+            if val != val or (isinstance(val, float) and math.isinf(val)):
+                return 0.0
+            return float(val)
 
         result = {
-            "last": ticker.last if ticker.last == ticker.last else 0.0,  # NaN check
-            "bid": ticker.bid if ticker.bid == ticker.bid else 0.0,
-            "ask": ticker.ask if ticker.ask == ticker.ask else 0.0,
-            "open": ticker.open if ticker.open == ticker.open else 0.0,
-            "high": ticker.high if ticker.high == ticker.high else 0.0,
-            "low": ticker.low if ticker.low == ticker.low else 0.0,
-            "close": ticker.close if ticker.close == ticker.close else 0.0,
-            "volume": int(ticker.volume) if ticker.volume == ticker.volume else 0,
+            "last": _safe(ticker.last),
+            "bid": _safe(ticker.bid),
+            "ask": _safe(ticker.ask),
+            "open": _safe(ticker.open),
+            "high": _safe(ticker.high),
+            "low": _safe(ticker.low),
+            "close": _safe(ticker.close),
+            "volume": int(ticker.volume) if ticker.volume == ticker.volume and ticker.volume >= 0 else 0,
         }
 
         self.ib.cancelMktData(contract)
