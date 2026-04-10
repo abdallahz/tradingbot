@@ -51,8 +51,11 @@ from tradingbot.data.etf_metadata import is_etf, get_etf_family, get_leverage_fa
 
 # Maximum number of ETF alerts per scan pass (individual stocks get priority)
 MAX_ETF_ALERTS = 3
-# Default maximum VWAP distance (%) — overridden by market regime
-MAX_VWAP_DISTANCE_PCT_DEFAULT = 3.0
+# Default maximum VWAP distance (%) — overridden by market regime.
+# Morning pre-market uses a tighter limit (VWAP barely established);
+# midday/close widen to 5% because stocks naturally extend from VWAP.
+MAX_VWAP_DISTANCE_PCT_MORNING = 3.0
+MAX_VWAP_DISTANCE_PCT_MIDDAY  = 5.0
 # Maximum intraday move (%) from today’s open allowed for new entries.
 # Stocks already up > this % have already made their move — chasing them
 # means buying late with slim upside and wide risk.
@@ -214,7 +217,7 @@ class SessionRunner:
                 "min_relative_volume": 3.0,
                 "min_ranker_score": self.ranker.min_score,
                 "min_confluence_score": MIN_CONFLUENCE_SCORE,
-                "max_vwap_distance_pct": MAX_VWAP_DISTANCE_PCT_DEFAULT,
+                "max_vwap_distance_pct": MAX_VWAP_DISTANCE_PCT_MORNING,
                 "max_trades_per_day": self.risk_manager.max_trades_per_day,
             },
         )
@@ -615,10 +618,25 @@ class SessionRunner:
         self,
         symbol: SymbolSnapshot,
         dropped: list[tuple[str, str]] | None,
+        session_tag: str = "midday",
     ) -> bool:
-        """Return True if price is not extended too far from VWAP."""
+        """Return True if price is not extended too far from VWAP.
+
+        Session-adaptive: morning uses a tighter 3% limit (VWAP barely
+        established in pre-market), while midday/close allow 5% because
+        stocks naturally drift from VWAP as the day progresses.
+        """
+        session_default = (
+            MAX_VWAP_DISTANCE_PCT_MORNING
+            if session_tag == "morning"
+            else MAX_VWAP_DISTANCE_PCT_MIDDAY
+        )
         mc = self._market_condition
-        max_vwap = mc.max_vwap_distance_pct if mc else MAX_VWAP_DISTANCE_PCT_DEFAULT
+        max_vwap = mc.max_vwap_distance_pct if mc else session_default
+        # If market condition returns the old 3% flat default, upgrade
+        # midday/close to the session-appropriate value.
+        if session_tag != "morning" and max_vwap < MAX_VWAP_DISTANCE_PCT_MIDDAY:
+            max_vwap = MAX_VWAP_DISTANCE_PCT_MIDDAY
         max_vwap = self._tuning_overrides.get("max_vwap_distance_pct", max_vwap)
         if symbol.vwap > 0 and symbol.price > 0:
             vwap_dist_pct = abs(symbol.price - symbol.vwap) / symbol.vwap * 100
@@ -838,8 +856,8 @@ class SessionRunner:
                 logging.info(f"[DROP] {symbol.symbol}: ETF blocked — ETFs have 0% intraday WR")
                 continue
 
-            # ── VWAP distance filter (regime-adaptive + auto-tune) ──────
-            if not self._passes_vwap_distance(symbol, dropped):
+            # ── VWAP distance filter (regime-adaptive + session-adaptive) ──
+            if not self._passes_vwap_distance(symbol, dropped, session_tag):
                 continue
 
             # ── Intraday extension filter ───────────────────────────

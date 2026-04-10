@@ -144,24 +144,29 @@ class MarketConditionAnalyzer:
 
         High-volatility days → tighten filters (more noise, need conviction).
         Low-volatility days  → loosen VWAP + catalyst (fewer setups, take what's there).
+
+        Note: max_vwap_distance_pct here is a *morning* baseline. The
+        session_runner applies a session-adaptive multiplier for midday/close
+        (typically 5% vs 3% morning) so stocks that drift from VWAP
+        during the day aren't falsely rejected.
         """
         if volatility == "high":
             return {
-                "max_vwap_distance_pct": 2.0,   # tighter: avoid chasing extended gaps
+                "max_vwap_distance_pct": 3.0,   # morning baseline; midday auto-widens to 5%
                 "min_catalyst_score": 50,         # raise bar: more noise on wild days
                 "min_relative_volume": 4.0,       # demand stronger volume conviction
                 "max_trades_per_day": 5,          # fewer but higher-quality slots
             }
         if volatility == "low":
             return {
-                "max_vwap_distance_pct": 3.5,     # widen slightly: moves are smaller
+                "max_vwap_distance_pct": 3.5,     # morning; midday auto-widens to 5%
                 "min_catalyst_score": 40,          # moderate bar
                 "min_relative_volume": 3.0,        # accept reasonable volume
                 "max_trades_per_day": 8,           # moderate number of slots
             }
         # Medium (default)
         return {
-            "max_vwap_distance_pct": 3.0,
+            "max_vwap_distance_pct": 3.0,         # morning; midday auto-widens to 5%
             "min_catalyst_score": 45,
             "min_relative_volume": 3.0,
             "max_trades_per_day": 8,
