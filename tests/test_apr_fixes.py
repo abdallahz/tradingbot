@@ -125,37 +125,37 @@ class TestTP1Cap:
             atr=atr,
         )
 
-    def test_tp1_capped_at_3pct(self):
-        """When resistance is 20% above entry, TP1 must not exceed ~3%."""
+    def test_tp1_capped_at_5pct(self):
+        """When resistance is 20% above entry, TP1 must not exceed ~5%."""
         stock = self._make_stock(price=100.0, resistance=120.0, support=97.0, atr=5.0)
         card = build_trade_card(stock, score=80, fixed_stop_pct=2.5, session_tag="morning")
         if card is None:
             return  # card rejected for other reasons; not what we test
-        max_tp1 = card.entry_price * 1.03
+        max_tp1 = card.entry_price * 1.05
         assert card.tp1_price <= max_tp1 + 0.01, (
-            f"TP1 ${card.tp1_price:.2f} exceeds 3% cap (${max_tp1:.2f})"
+            f"TP1 ${card.tp1_price:.2f} exceeds 5% cap (${max_tp1:.2f})"
         )
 
     def test_tp1_respects_atr_bound(self):
-        """When 2×ATR < 3%, the ATR bound should be tighter."""
+        """When 2.5×ATR < 5%, the ATR bound should be tighter."""
         stock = self._make_stock(price=100.0, resistance=110.0, support=97.0, atr=1.0)
         card = build_trade_card(stock, score=80, fixed_stop_pct=2.5, session_tag="morning")
         if card is None:
             return
-        # 2 × ATR = $2 → max TP1 = $102
-        max_tp1_atr = card.entry_price + 2 * stock.atr
+        # 2.5 × ATR = $2.50 → max TP1 = $102.50
+        max_tp1_atr = card.entry_price + 2.5 * stock.atr
         assert card.tp1_price <= max_tp1_atr + 0.01, (
-            f"TP1 ${card.tp1_price:.2f} exceeds 2×ATR bound (${max_tp1_atr:.2f})"
+            f"TP1 ${card.tp1_price:.2f} exceeds 2.5×ATR bound (${max_tp1_atr:.2f})"
         )
 
     def test_old_6pct_cap_no_longer_applies(self):
-        """Verify the old 6% cap no longer governs — 3% is the new ceiling."""
+        """Verify the old 6% cap no longer governs — 5% is the new ceiling."""
         stock = self._make_stock(price=50.0, resistance=56.0, support=48.0, atr=3.0)
         card = build_trade_card(stock, score=80, fixed_stop_pct=2.5, session_tag="morning")
         if card is None:
             return
-        # Old cap would be $53 (6%), new cap is $51.50 (3%)
-        assert card.tp1_price <= 50 * 1.03 + 0.50, (
+        # Old cap would be $53 (6%), new cap is $52.50 (5%)
+        assert card.tp1_price <= 50 * 1.05 + 0.01, (
             f"TP1 ${card.tp1_price:.2f} appears to still use the old 6% cap"
         )
 

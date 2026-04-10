@@ -87,7 +87,7 @@ def test_trade_card_breakout_long():
     Breakout mode in alpaca_client would set:
       key_support  = PM_high - 0.25*ATR ≈ $14.93
       key_resistance = price + 2*ATR     ≈ $15.60
-    With 3% TP1 cap: max_tp_dist = min(0.60, 0.45) = $0.45 → TP1 capped at $15.45
+    With 5% TP1 cap: max_tp_dist = min(0.75, 0.75) = $0.75 → TP1 = min(resistance, entry+0.75) = $15.60
     """
     stock = SymbolSnapshot(
         symbol="RGTI",
@@ -113,8 +113,8 @@ def test_trade_card_breakout_long():
     card = build_trade_card(stock, 58, 2.5, "morning")
     assert card is not None, "Breakout setup should produce a valid card"
     assert card.entry_price == 15.0
-    # TP1 capped at min(2*ATR=0.60, 3%=0.45) = 0.45 → $15.45
-    assert card.tp1_price == 15.45
+    # TP1 capped at min(2.5*ATR=0.75, 5%=0.75) = 0.75 → resistance $15.60
+    assert card.tp1_price == 15.60
     assert card.stop_price < card.entry_price
     assert card.risk_reward >= 1.5
 
