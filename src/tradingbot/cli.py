@@ -28,15 +28,16 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("run-midday", help="Run midday scan (12:00 PM)")
     sub.add_parser("run-close", help="Run close scan (overnight holds + daily recap)")
     sub.add_parser("run-tracker", help="Run one tracker tick (check open trades for TP/stop hits)")
+    sub.add_parser("run-commands", help="Run Telegram command handler (long-running poller)")
     sub.add_parser("auto-tune", help="Run auto-tuner analysis and print recommendations")
     return parser
 
 
-def _run_execution_tracker_tick() -> dict | None:
-    """Try to create and tick the ExecutionTracker.
+def _build_execution_tracker():
+    """Build an ExecutionTracker if execution is enabled.
 
-    Returns the tick result dict, or None when execution is disabled
-    (alert_only mode, Alpaca provider, missing credentials).
+    Returns the tracker instance, or None when execution is disabled.
+    Shared by ``run-tracker``, ``run-close``, and ``run-commands``.
     """
     try:
         from tradingbot.config import ConfigLoader
@@ -49,12 +50,25 @@ def _run_execution_tracker_tick() -> dict | None:
         risk_config = cfg.risk()
         data_client = create_data_client(broker_config)
         mgr = create_execution_manager(data_client, risk_config)
-        tracker = create_execution_tracker(mgr)
-        if tracker is None:
-            return None
+        return create_execution_tracker(mgr)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"[exec] Tracker init failed: {exc}")
+        return None
+
+
+def _run_execution_tracker_tick() -> dict | None:
+    """Try to create and tick the ExecutionTracker.
+
+    Returns the tick result dict, or None when execution is disabled
+    (alert_only mode, Alpaca provider, missing credentials).
+    """
+    tracker = _build_execution_tracker()
+    if tracker is None:
+        return None
+    try:
         return tracker.tick()
     except Exception as exc:
-        logging.getLogger(__name__).warning(f"[exec-tracker] Skipped: {exc}")
+        logging.getLogger(__name__).warning(f"[exec-tracker] Tick failed: {exc}")
         return None
 
 
@@ -158,8 +172,22 @@ def main() -> None:
             print(f"[exec-tracker] trails={exec_result['trails']} fills={exec_result['fills']}")
         return
 
+    if args.command == "run-commands":
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+        from tradingbot.notifications.telegram_commands import TelegramCommandHandler
+
+        # Build execution tracker (None if alert_only)
+        exec_tracker = _build_execution_tracker()
+        handler = TelegramCommandHandler.from_env(execution_tracker=exec_tracker)
+        if not handler.enabled:
+            print("[commands] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — exiting.")
+            return
+        mode = "execution" if exec_tracker else "alert-only"
+        print(f"[commands] Starting Telegram command handler ({mode} mode)...")
+        handler.run_forever()
+        return
+
     if args.command == "auto-tune":
-        import logging
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from tradingbot.analysis.auto_tuner import AutoTuner, persist_tuning
         tuner = AutoTuner()
