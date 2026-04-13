@@ -621,8 +621,6 @@ def update_outcome(
     pnl_pct: float | None = None,
     hit_at: str | None = None,
     session: str | None = None,
-    session_high: float | None = None,
-    session_low: float | None = None,
 ) -> None:
     """Update a trade outcome row with new status and P&L."""
     sb = _get_supabase()
@@ -638,10 +636,6 @@ def update_outcome(
             updates["hit_at"] = hit_at
         if session:
             updates["session"] = session
-        if session_high is not None and session_high > 0:
-            updates["session_high"] = round(session_high, 2)
-        if session_low is not None and session_low > 0:
-            updates["session_low"] = round(session_low, 2)
         sb.table("trade_outcomes").update(updates).eq("id", outcome_id).execute()
     except Exception as exc:
         log.warning(f"[alert_store] update_outcome failed: {exc}")

@@ -359,8 +359,6 @@ class TradeTracker:
                     exit_price=exit_price,
                     pnl_pct=pnl,
                     hit_at=now_str,
-                    session_high=sess_high if sess_high > 0 else None,
-                    session_low=sess_low if sess_low > 0 else None,
                 )
                 updates += 1
                 bar_tag = " (bar-detected)" if exit_price != price else ""
