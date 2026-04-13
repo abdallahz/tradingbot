@@ -1076,6 +1076,7 @@ class SessionRunner:
             tg_ok = self.notifier.send_institutional_alert(card, inst_ctx)
             if not tg_ok:
                 logging.warning(f"[TELEGRAM] Failed to send alert for {card.symbol} — alert saved to dashboard only")
+
             save_alert(card_to_dict(card))
             self._alerts_sent_count += 1
 
