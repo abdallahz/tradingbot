@@ -148,13 +148,13 @@ class IBKRClient:
     # ── Market data fetchers ───────────────────────────────────────────
 
     def _request_market_data(self, contract) -> dict:
-        """Request a snapshot of market data for a single contract.
+        """Request market data for a single contract via streaming mode.
 
         Returns a dict with price, bid, ask, volume, etc.
 
-        Uses ``snapshot=True`` for a one-shot frozen snapshot (requires
-        real-time market data subscription).  Falls back to streaming
-        mode if the snapshot returns no usable price.
+        Uses streaming mode (snapshot=False) because delayed-data
+        subscriptions don't support snapshot=True, which causes
+        Error 300 (Can't find EId).  Streaming fills within ~2-3s.
         """
         import math
 
@@ -170,19 +170,12 @@ class IBKRClient:
             )
             return p is not None and not math.isnan(p)
 
-        # Try snapshot first (fast — single round-trip)
-        ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=True)
-        self.ib.sleep(1)
-
-        if not _has_price(ticker):
-            # Snapshot may fail if exchange doesn't support it — fall back
-            # to streaming mode and wait for data to arrive.
-            self.ib.cancelMktData(contract)
-            ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
-            for _ in range(6):
-                self.ib.sleep(0.5)
-                if _has_price(ticker):
-                    break
+        # Use streaming mode directly — snapshot=True fails with delayed data
+        ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
+        for _ in range(6):
+            self.ib.sleep(0.5)
+            if _has_price(ticker):
+                break
 
         result = {
             "last": _safe(ticker.last),
