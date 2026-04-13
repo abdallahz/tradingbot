@@ -62,18 +62,39 @@ class IBKRClient:
     # ── Connection management ──────────────────────────────────────────
 
     def connect(self) -> None:
-        """Establish connection to IB Gateway / TWS."""
+        """Establish connection to IB Gateway / TWS.
+
+        If the initial clientId is already in use, retry once with a
+        random ID (100–999) so overlapping cron jobs don't block each other.
+        """
+        import random
         from ib_insync import IB
         if self._ib is not None and self._ib.isConnected():
             return
         self._ib = IB()
-        self._ib.connect(
-            host=self.host,
-            port=self.port,
-            clientId=self.client_id,
-            timeout=self.timeout,
-            readonly=self.readonly,
-        )
+        try:
+            self._ib.connect(
+                host=self.host,
+                port=self.port,
+                clientId=self.client_id,
+                timeout=self.timeout,
+                readonly=self.readonly,
+            )
+        except Exception as first_err:
+            fallback_id = random.randint(100, 999)
+            logger.warning(
+                "clientId %d in use, retrying with %d: %s",
+                self.client_id, fallback_id, first_err,
+            )
+            self._ib = IB()
+            self._ib.connect(
+                host=self.host,
+                port=self.port,
+                clientId=fallback_id,
+                timeout=self.timeout,
+                readonly=self.readonly,
+            )
+            self.client_id = fallback_id
         # Request live streaming data (type 1).  Requires an active
         # market data subscription (Non-Professional approved).
         # IBKR automatically falls back to delayed if no subscription
