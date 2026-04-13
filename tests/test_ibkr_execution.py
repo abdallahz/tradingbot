@@ -118,6 +118,199 @@ class TestIBKRClientCoreWatchlist:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# IBKRClient Scanner tests
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestIBKRClientScanner:
+    """Tests for the enhanced TWS scanner with gap-specific scan codes."""
+
+    def _make_client(self):
+        from tradingbot.data.ibkr_client import IBKRClient
+        client = IBKRClient.__new__(IBKRClient)
+        client._ib = MagicMock()
+        client._ib.isConnected.return_value = True
+        client._ib.sleep = MagicMock()
+        return client
+
+    def _make_scanner_result(self, symbol: str):
+        item = MagicMock()
+        item.contractDetails.contract.symbol = symbol
+        return item
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TagValue", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_returns_symbols(self):
+        client = self._make_client()
+        client._ib.reqScannerData.return_value = [
+            self._make_scanner_result("AAPL"),
+            self._make_scanner_result("TSLA"),
+            self._make_scanner_result("NVDA"),
+        ]
+        result = client._run_single_scan("TEST_SCAN", num_rows=50)
+        assert result == {"AAPL", "TSLA", "NVDA"}
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TagValue", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_filters_junk_suffixes(self):
+        client = self._make_client()
+        client._ib.reqScannerData.return_value = [
+            self._make_scanner_result("AAPL"),
+            self._make_scanner_result("ABCD.WS"),  # warrant
+            self._make_scanner_result("XYZ.UN"),    # unit
+            self._make_scanner_result("TEST.RT"),   # rights
+        ]
+        result = client._run_single_scan("TEST_SCAN")
+        assert "AAPL" in result
+        assert "ABCD.WS" not in result
+        assert "XYZ.UN" not in result
+        assert "TEST.RT" not in result
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TagValue", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_filters_dot_symbols(self):
+        client = self._make_client()
+        client._ib.reqScannerData.return_value = [
+            self._make_scanner_result("AAPL"),
+            self._make_scanner_result("BRK.B"),  # dot class symbol
+        ]
+        result = client._run_single_scan("TEST_SCAN")
+        assert "AAPL" in result
+        assert "BRK.B" not in result
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TV", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_with_price_filter(self):
+        """Verify that price filter TagValue is passed to reqScannerData."""
+        client = self._make_client()
+        client._ib.reqScannerData.return_value = []
+        client._run_single_scan("TEST", above_price=5.0)
+
+        call_args = client._ib.reqScannerData.call_args
+        tag_values = call_args.kwargs.get("scannerSubscriptionFilterOptions", [])
+        price_tags = [tv for tv in tag_values if tv.tag == "priceAbove"]
+        assert len(price_tags) == 1
+        assert price_tags[0].value == "5.0"
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TV", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_with_volume_filter(self):
+        """Verify that volume filter TagValue is passed to reqScannerData."""
+        client = self._make_client()
+        client._ib.reqScannerData.return_value = []
+        client._run_single_scan("TEST", above_volume=50000)
+
+        call_args = client._ib.reqScannerData.call_args
+        tag_values = call_args.kwargs.get("scannerSubscriptionFilterOptions", [])
+        vol_tags = [tv for tv in tag_values if tv.tag == "volumeAbove"]
+        assert len(vol_tags) == 1
+        assert vol_tags[0].value == "50000"
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TV", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_no_filters_when_zero(self):
+        """Zero values should NOT add filter tags."""
+        client = self._make_client()
+        client._ib.reqScannerData.return_value = []
+        client._run_single_scan("TEST", above_price=0.0, above_volume=0)
+
+        call_args = client._ib.reqScannerData.call_args
+        tag_values = call_args.kwargs.get("scannerSubscriptionFilterOptions", [])
+        assert tag_values == []
+
+    @patch.dict("sys.modules", {
+        "ib_insync": MagicMock(
+            ScannerSubscription=MagicMock,
+            TagValue=type("TV", (), {"__init__": lambda self, tag, value: setattr(self, "tag", tag) or setattr(self, "value", value)}),
+        ),
+    })
+    def test_run_single_scan_catches_exception(self):
+        client = self._make_client()
+        client._ib.reqScannerData.side_effect = RuntimeError("timeout")
+        result = client._run_single_scan("BROKEN_SCAN")
+        assert result == set()  # graceful failure, empty set
+
+    def test_get_scanner_symbols_runs_five_scans(self):
+        """_get_scanner_symbols should call _run_single_scan 5 times
+        (TOP_OPEN_PERC_GAIN, HIGH_OPEN_GAP, MOST_ACTIVE, TOP_PERC_GAIN, HOT_BY_VOLUME)."""
+        client = self._make_client()
+        call_count = 0
+        def mock_scan(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return {f"SYM{call_count}"}
+        client._run_single_scan = mock_scan
+        result = client._get_scanner_symbols()
+        assert call_count == 5
+        assert len(result) == 5  # 5 unique symbols
+
+    def test_get_scanner_symbols_deduplicates(self):
+        """Symbols appearing in multiple scanners should be de-duplicated."""
+        client = self._make_client()
+        # All scanners return the same symbols
+        client._run_single_scan = lambda *a, **kw: {"AAPL", "TSLA"}
+        result = client._get_scanner_symbols()
+        assert sorted(result) == ["AAPL", "TSLA"]
+
+    def test_get_scanner_symbols_includes_gap_scanners(self):
+        """Verify gap-specific scan codes are used."""
+        client = self._make_client()
+        scan_codes_used = []
+        original_run = client._run_single_scan
+
+        def track_scans(scan_code, **kwargs):
+            scan_codes_used.append(scan_code)
+            return set()
+
+        client._run_single_scan = track_scans
+        client._get_scanner_symbols()
+
+        assert "TOP_OPEN_PERC_GAIN" in scan_codes_used
+        assert "HIGH_OPEN_GAP" in scan_codes_used
+        assert "MOST_ACTIVE" in scan_codes_used
+
+    def test_get_tradable_universe_merges_scanner_and_core(self):
+        """Universe should include both scanner results and core watchlist."""
+        client = self._make_client()
+        client._run_single_scan = lambda *a, **kw: {"WULF", "VG"}
+        result = client.get_tradable_universe()
+        # Should have WULF and VG from scanner + all core watchlist symbols
+        assert "WULF" in result
+        assert "VG" in result
+        assert "AAPL" in result  # from core watchlist
+        assert "SPY" in result   # from core watchlist
+
+    def test_get_screener_symbols_alias(self):
+        """get_screener_symbols should alias _get_scanner_symbols."""
+        client = self._make_client()
+        client._run_single_scan = lambda *a, **kw: {"AAPL"}
+        assert client.get_screener_symbols() == client._get_scanner_symbols()
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # CapitalAllocator tests
 # ═══════════════════════════════════════════════════════════════════════
 

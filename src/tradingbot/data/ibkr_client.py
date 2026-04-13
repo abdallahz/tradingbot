@@ -74,14 +74,14 @@ class IBKRClient:
             timeout=self.timeout,
             readonly=self.readonly,
         )
-        # Request delayed-frozen data as fallback when real-time
-        # subscriptions are unavailable.  Type 3 = delayed data,
-        # Type 4 = delayed-frozen.  If a real-time subscription
-        # exists, IBKR silently upgrades to real-time anyway.
-        self._ib.reqMarketDataType(3)
+        # Request live streaming data (type 1).  Requires an active
+        # market data subscription (Non-Professional approved).
+        # IBKR automatically falls back to delayed if no subscription
+        # covers a particular exchange.
+        self._ib.reqMarketDataType(1)
         logger.info(
             f"Connected to IBKR Gateway at {self.host}:{self.port} "
-            f"(clientId={self.client_id}, marketDataType=delayed-fallback)"
+            f"(clientId={self.client_id}, marketDataType=live)"
         )
 
     def disconnect(self) -> None:
@@ -130,28 +130,37 @@ class IBKRClient:
 
         Returns a dict with price, bid, ask, volume, etc.
 
-        Uses non-snapshot streaming mode so that delayed data (type 3)
-        can populate the ticker when no real-time subscription exists.
-        ``snapshot=True`` only works with real-time subscriptions.
+        Uses ``snapshot=True`` for a one-shot frozen snapshot (requires
+        real-time market data subscription).  Falls back to streaming
+        mode if the snapshot returns no usable price.
         """
         import math
-
-        ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
-        # Wait up to 4 seconds for data to arrive (delayed data takes longer)
-        for _ in range(8):
-            self.ib.sleep(0.5)
-            # Check if we have a usable price
-            price = ticker.last if ticker.last == ticker.last else (
-                ticker.close if ticker.close == ticker.close else None
-            )
-            if price is not None and not math.isnan(price):
-                break
 
         def _safe(val: float) -> float:
             """Return 0.0 for NaN / inf values."""
             if val != val or (isinstance(val, float) and math.isinf(val)):
                 return 0.0
             return float(val)
+
+        def _has_price(t) -> bool:
+            p = t.last if t.last == t.last else (
+                t.close if t.close == t.close else None
+            )
+            return p is not None and not math.isnan(p)
+
+        # Try snapshot first (fast — single round-trip)
+        ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=True)
+        self.ib.sleep(1)
+
+        if not _has_price(ticker):
+            # Snapshot may fail if exchange doesn't support it — fall back
+            # to streaming mode and wait for data to arrive.
+            self.ib.cancelMktData(contract)
+            ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
+            for _ in range(6):
+                self.ib.sleep(0.5)
+                if _has_price(ticker):
+                    break
 
         result = {
             "last": _safe(ticker.last),
@@ -632,67 +641,94 @@ class IBKRClient:
         "SPY", "QQQ", "IWM",
     ]
 
-    def _get_scanner_symbols(self) -> list[str]:
-        """Fetch today's most-active symbols using IBKR scanner.
+    def _run_single_scan(
+        self,
+        scan_code: str,
+        num_rows: int = 50,
+        above_price: float = 0.0,
+        above_volume: int = 0,
+        location: str = "STK.US.MAJOR",
+    ) -> set[str]:
+        """Run one TWS scanner and return matched symbols.
 
-        Uses IBKR's built-in market scanner to find top volume leaders
-        and biggest percent gainers. Returns de-duplicated list.
+        Wraps ``reqScannerData`` with common filtering (junk suffix,
+        dot symbols) and error handling.
         """
-        from ib_insync import ScannerSubscription
+        from ib_insync import ScannerSubscription, TagValue
 
+        found: set[str] = set()
+        try:
+            sub = ScannerSubscription(
+                instrument="STK",
+                locationCode=location,
+                scanCode=scan_code,
+                numberOfRows=num_rows,
+            )
+            # Server-side filters — narrows results before they reach us,
+            # reducing noise and speeding up the scan.
+            tag_values: list[TagValue] = []
+            if above_price > 0:
+                tag_values.append(TagValue("priceAbove", str(above_price)))
+            if above_volume > 0:
+                tag_values.append(TagValue("volumeAbove", str(above_volume)))
+
+            results = self.ib.reqScannerData(sub, scannerSubscriptionFilterOptions=tag_values)
+            for item in results:
+                sym = item.contractDetails.contract.symbol
+                if not _JUNK_SUFFIX.search(sym) and "." not in sym:
+                    found.add(sym)
+            self.ib.sleep(0.5)
+        except Exception as e:
+            logger.warning(f"IBKR scanner {scan_code} failed: {e}")
+
+        return found
+
+    def _get_scanner_symbols(self) -> list[str]:
+        """Fetch today's gappers + movers using IBKR's TWS Scanner API.
+
+        Runs 5 scanner subscriptions to build a broad candidate universe:
+        1. TOP_OPEN_PERC_GAIN — stocks gapping UP from previous close (key scan)
+        2. HIGH_OPEN_GAP — alternative gap scanner (overlaps with #1)
+        3. MOST_ACTIVE — highest volume (catches mega-cap momentum)
+        4. TOP_PERC_GAIN — biggest % gainers intraday
+        5. HOT_BY_VOLUME — unusual volume vs recent average (pre-market movers)
+
+        All scanners have server-side filters: price >= $5, volume >= 50K.
+        This eliminates penny stocks and illiquid names at the IBKR server
+        level, before data reaches us.
+
+        Returns de-duplicated list of symbols (~150-300 unique).
+        """
         symbols: set[str] = set()
 
-        # Scanner 1: Most active by volume
-        try:
-            sub = ScannerSubscription(
-                instrument="STK",
-                locationCode="STK.US.MAJOR",
-                scanCode="MOST_ACTIVE",
-                numberOfRows=50,
-            )
-            results = self.ib.reqScannerData(sub)
-            for item in results:
-                sym = item.contractDetails.contract.symbol
-                if not _JUNK_SUFFIX.search(sym) and "." not in sym:
-                    symbols.add(sym)
-            self.ib.sleep(1)
-        except Exception as e:
-            logger.warning(f"IBKR scanner MOST_ACTIVE failed: {e}")
+        # ── Gap-specific scanners (highest value for gap-and-go) ──────
+        # These find stocks opening above previous close — exactly what
+        # the GapScanner needs.  Addresses the 68× universe gap identified
+        # in backtest analysis.
+        symbols |= self._run_single_scan(
+            "TOP_OPEN_PERC_GAIN", num_rows=100,
+            above_price=5.0, above_volume=50_000,
+        )
+        symbols |= self._run_single_scan(
+            "HIGH_OPEN_GAP", num_rows=100,
+            above_price=5.0, above_volume=50_000,
+        )
 
-        # Scanner 2: Top percent gainers
-        try:
-            sub = ScannerSubscription(
-                instrument="STK",
-                locationCode="STK.US.MAJOR",
-                scanCode="TOP_PERC_GAIN",
-                numberOfRows=50,
-            )
-            results = self.ib.reqScannerData(sub)
-            for item in results:
-                sym = item.contractDetails.contract.symbol
-                if not _JUNK_SUFFIX.search(sym) and "." not in sym:
-                    symbols.add(sym)
-            self.ib.sleep(1)
-        except Exception as e:
-            logger.warning(f"IBKR scanner TOP_PERC_GAIN failed: {e}")
+        # ── Activity scanners (catch momentum in mega-caps) ───────────
+        symbols |= self._run_single_scan(
+            "MOST_ACTIVE", num_rows=50,
+            above_price=5.0,
+        )
+        symbols |= self._run_single_scan(
+            "TOP_PERC_GAIN", num_rows=50,
+            above_price=5.0, above_volume=50_000,
+        )
+        symbols |= self._run_single_scan(
+            "HOT_BY_VOLUME", num_rows=50,
+            above_price=5.0, above_volume=50_000,
+        )
 
-        # Scanner 3: Hot by volume (pre-market movers)
-        try:
-            sub = ScannerSubscription(
-                instrument="STK",
-                locationCode="STK.US.MAJOR",
-                scanCode="HOT_BY_VOLUME",
-                numberOfRows=50,
-            )
-            results = self.ib.reqScannerData(sub)
-            for item in results:
-                sym = item.contractDetails.contract.symbol
-                if not _JUNK_SUFFIX.search(sym) and "." not in sym:
-                    symbols.add(sym)
-        except Exception as e:
-            logger.warning(f"IBKR scanner HOT_BY_VOLUME failed: {e}")
-
-        logger.debug(f"IBKR scanner returned {len(symbols)} unique symbols")
+        logger.info(f"IBKR scanner returned {len(symbols)} unique symbols")
         return list(symbols)
 
     def get_screener_symbols(self) -> list[str]:

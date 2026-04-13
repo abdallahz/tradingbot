@@ -139,9 +139,11 @@ python -m tradingbot.cli run-day
 - **test_catalyst_scorer_with_mocked_news** — hangs indefinitely (network call issue). Pre-existing.
 
 ### IBKR Execution (feature branch)
-- All 13 modules DONE (IBKRClient, CapitalAllocator, OrderExecutor, PositionMonitor, ExecutionManager, ExecutionTracker, TelegramCommands, 119 tests)
-- **Blocked on**: IBKR Non-Professional market data status approval
-- **Next**: Paper test on VPS → Dashboard execution badges → Validate → Go live
+- All 13 modules DONE (IBKRClient, CapitalAllocator, OrderExecutor, PositionMonitor, ExecutionManager, ExecutionTracker, TelegramCommands, 119+ tests)
+- **Non-Professional approval**: APPROVED — subscribe to US Securities Snapshot & Futures Value Bundle ($10/mo) or US Equity and Options Add-On Streaming Bundle ($4.50/mo)
+- **Market data type**: Switched to live (type 1) — auto-falls back to delayed if subscription missing for an exchange
+- **Scanner enhanced**: 5 TWS scanners including gap-specific codes (`TOP_OPEN_PERC_GAIN`, `HIGH_OPEN_GAP`) with server-side `priceAbove` and `volumeAbove` filters
+- **Next**: Subscribe to market data → Paper test on VPS → Dashboard execution badges → Validate → Go live
 
 ### Backlog (biggest potential improvements)
 - **Volume decay detection** — track fading participation across bars.
