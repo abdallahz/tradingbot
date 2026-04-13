@@ -85,6 +85,76 @@ class MarketGuard:
         )
 
     def _fetch_index_changes(self) -> tuple[float, float]:
+        """Return (spy_change_pct, qqq_change_pct).
+
+        Uses IBKR if DATA_PROVIDER=ibkr, otherwise falls back to Alpaca.
+        """
+        provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        if provider == "ibkr":
+            return self._fetch_via_ibkr()
+        return self._fetch_via_alpaca()
+
+    # ── IBKR path ──────────────────────────────────────────────────
+
+    def _fetch_via_ibkr(self) -> tuple[float, float]:
+        """Fetch SPY/QQQ intraday change from IB Gateway."""
+        from ib_insync import IB, Stock
+        import random, math
+
+        ib = IB()
+        cid = random.randint(200, 299)
+        try:
+            ib.connect(
+                host=os.getenv("IBKR_HOST", "127.0.0.1"),
+                port=int(os.getenv("IBKR_PORT", "4002")),
+                clientId=cid,
+                timeout=15,
+                readonly=True,
+            )
+            ib.reqMarketDataType(4)  # delayed-frozen fallback
+
+            results: dict[str, float] = {}
+            for sym in ("SPY", "QQQ"):
+                contract = Stock(sym, "SMART", "USD")
+                ib.qualifyContracts(contract)
+
+                bars = ib.reqHistoricalData(
+                    contract,
+                    endDateTime="",
+                    durationStr="1 D",
+                    barSizeSetting="1 day",
+                    whatToShow="TRADES",
+                    useRTH=True,
+                    formatDate=1,
+                )
+                if bars:
+                    open_price = float(bars[-1].open)
+                    close_price = float(bars[-1].close)
+                    if open_price > 0:
+                        results[sym] = round((close_price - open_price) / open_price * 100, 2)
+                        continue
+
+                # Fallback: snapshot
+                ticker = ib.reqMktData(contract, genericTickList="", snapshot=True)
+                ib.sleep(2)
+                op = ticker.open if ticker.open == ticker.open else 0.0
+                last = ticker.last if ticker.last == ticker.last else (
+                    ticker.close if ticker.close == ticker.close else 0.0
+                )
+                ib.cancelMktData(contract)
+                if op > 0 and last > 0:
+                    results[sym] = round((last - op) / op * 100, 2)
+                else:
+                    results[sym] = 0.0
+
+            return results.get("SPY", 0.0), results.get("QQQ", 0.0)
+        finally:
+            if ib.isConnected():
+                ib.disconnect()
+
+    # ── Alpaca path ────────────────────────────────────────────────
+
+    def _fetch_via_alpaca(self) -> tuple[float, float]:
         """Return (spy_change_pct, qqq_change_pct) from Alpaca snapshots."""
         key = os.getenv("ALPACA_API_KEY", "").strip()
         secret = os.getenv("ALPACA_API_SECRET", "").strip()
