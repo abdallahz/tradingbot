@@ -130,12 +130,16 @@ class TelegramNotifier:
         if not self._enabled:
             return False
 
+        import os
+        _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+
         if card_count == 0:
-            text = f"\U0001f4ed *{session} scan complete* \u2014 no qualifying setups found."
+            text = f"\U0001f4ed *{session} scan complete* \u2014 no qualifying setups found. [{_src}]"
         else:
             text = (
                 f"\U0001f4cb *{session} scan complete* \u2014 "
-                f"{card_count} alert{'s' if card_count != 1 else ''} sent above."
+                f"{card_count} alert{'s' if card_count != 1 else ''} sent above. [{_src}]"
             )
         if pipeline_info:
             text += f"\n\n\U0001f50e Pipeline: {pipeline_info}"
