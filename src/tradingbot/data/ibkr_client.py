@@ -196,6 +196,7 @@ class IBKRClient:
         }
 
         self.ib.cancelMktData(contract)
+        self.ib.sleep(0.3)  # Let EId recycle before next request
         return result
 
     def _request_historical_bars(
@@ -391,8 +392,8 @@ class IBKRClient:
                     "intraday_bars": intraday_bars,
                 }
 
-                # Rate limiting: IBKR allows ~50 requests/sec but be cautious
-                self.ib.sleep(0.2)
+                # Rate limiting: give IBKR time to recycle EIds between symbols
+                self.ib.sleep(0.5)
 
             except Exception as e:
                 logger.warning(f"Error fetching data for {symbol}: {e}")
@@ -428,16 +429,20 @@ class IBKRClient:
         Drop-in replacement for AlpacaClient.get_premarket_snapshots().
         """
         snapshots: list[SymbolSnapshot] = []
-        BATCH_SIZE = 40  # IBKR more conservative on concurrent requests
+        BATCH_SIZE = 15  # Conservative to avoid EId exhaustion on IBKR socket
 
         batches = [universe[i:i + BATCH_SIZE] for i in range(0, len(universe), BATCH_SIZE)]
         for batch_idx, batch in enumerate(batches):
+            if batch_idx > 0:
+                self.ib.sleep(2)  # Pause between batches for EId pool recovery
+            logger.info(f"Batch {batch_idx + 1}/{len(batches)}: {len(batch)} symbols")
             try:
                 # Qualify contracts first (validates symbols exist on IBKR)
                 contracts = self._qualify_contracts(batch)
                 if not contracts:
                     logger.warning(f"Batch {batch_idx + 1}: no contracts qualified")
                     continue
+                logger.info(f"Batch {batch_idx + 1}: {len(contracts)}/{len(batch)} qualified")
 
                 # Fetch all data for this batch
                 batch_data = self._fetch_batch_data(contracts)
