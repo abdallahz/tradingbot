@@ -195,11 +195,17 @@ def save_alert(alert: dict[str, Any]) -> None:
                 "reasons":         alert.get("reasons") or [],
                 "patterns":        alert.get("patterns") or [],
                 "risk_level":      alert.get("risk_level", "low"),
+                "position_size":         alert.get("position_size", 0),
+                "confluence_grade":      alert.get("confluence_grade", ""),
+                "confluence_score":      alert.get("confluence_score", 0.0),
+                "volume_classification": alert.get("volume_classification", ""),
+                "false_positive_flags":  alert.get("false_positive_flags", []),
             }
             # Optional columns added after initial schema — strip on retry
             _optional_cols = [
                 "source",
                 "risk_level",
+                "position_size",
                 "confluence_grade",
                 "confluence_score",
                 "volume_classification",
