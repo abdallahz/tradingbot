@@ -421,8 +421,13 @@ def format_institutional_alert(
     patterns = format_patterns(getattr(card, "patterns", []))
     signals = ", ".join(card.reason) if card.reason else "—"
 
+    # ── Source badge (VPS vs Render) ───────────────────────────────
+    import os
+    _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+    _src_badge = "🖥 VPS/IBKR" if _provider == "ibkr" else "☁️ Render/Alpaca"
+
     lines = [
-        f"🚨 <b>TRADE ALERT — {card.symbol}</b>",
+        f"🚨 <b>TRADE ALERT — {card.symbol}</b>  [{_src_badge}]",
         f"<b>{grade_line}</b>",
         f"Score: <code>{card.score:.0f}/100</code>  |  Session: {card.session_tag.upper()}",
         "",
