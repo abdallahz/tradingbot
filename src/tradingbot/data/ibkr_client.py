@@ -95,14 +95,15 @@ class IBKRClient:
                 readonly=self.readonly,
             )
             self.client_id = fallback_id
-        # Request live streaming data (type 1).  Requires an active
-        # market data subscription (Non-Professional approved).
-        # IBKR automatically falls back to delayed if no subscription
-        # covers a particular exchange.
-        self._ib.reqMarketDataType(1)
+        # Request live market data (type 1) if subscription is active.
+        # Type 4 = "delayed-frozen" acts as automatic fallback:
+        #   live → delayed → frozen → delayed-frozen.
+        # This prevents Error 10089 from blocking all data when live
+        # subscription hasn't propagated yet.
+        self._ib.reqMarketDataType(4)
         logger.info(
             f"Connected to IBKR Gateway at {self.host}:{self.port} "
-            f"(clientId={self.client_id}, marketDataType=live)"
+            f"(clientId={self.client_id}, marketDataType=delayed-frozen-fallback)"
         )
 
     def disconnect(self) -> None:
