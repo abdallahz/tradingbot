@@ -1194,20 +1194,45 @@ class SessionRunner:
         session_type: Literal["morning", "midday", "close"],
         universe_str: list[str],
         catalyst_scores: dict[str, float],
+        on_batch_ready: "callable | None" = None,
     ) -> list[SymbolSnapshot]:
-        """Fetch market snapshots and annotate each with its catalyst score."""
+        """Fetch market snapshots and annotate each with its catalyst score.
+
+        If *on_batch_ready* is provided (progressive execution mode),
+        it is forwarded to the IBKR client so the session runner can
+        process/execute high-priority candidates while later batches
+        are still being fetched.  Each batch's snapshots are annotated
+        with catalyst scores before the callback fires.
+        """
         universe_set = set(universe_str)
+
+        def _annotate_and_notify(batch_snaps: list[SymbolSnapshot]) -> None:
+            """Annotate batch with catalyst scores, then forward to caller."""
+            for snap in batch_snaps:
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
+            if on_batch_ready:
+                on_batch_ready(batch_snaps)
+
         if self.use_real_data and self.data_client:
             # Sort by catalyst score (highest first) so the most
             # promising symbols are fetched in the earliest batches.
             sorted_universe = sorted(universe_str, key=lambda s: catalyst_scores.get(s, 0), reverse=True)
-            snapshots = self.data_client.get_premarket_snapshots(sorted_universe)
+            snapshots = self.data_client.get_premarket_snapshots(
+                sorted_universe,
+                on_batch_ready=_annotate_and_notify if on_batch_ready else None,
+            )
+            # If callback mode was used, catalyst scores are already set
+            if not on_batch_ready:
+                for snap in snapshots:
+                    snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
         elif session_type == "morning":
             snapshots = [s for s in get_premarket_snapshots() if s.symbol in universe_set]
+            for snap in snapshots:
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
         else:
             snapshots = [s for s in get_midday_snapshots() if s.symbol in universe_set]
-        for snap in snapshots:
-            snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
+            for snap in snapshots:
+                snap.catalyst_score = catalyst_scores.get(snap.symbol, 30.0)
         return snapshots
 
     def _get_night_research_picks(
@@ -1303,7 +1328,55 @@ class SessionRunner:
 
         stricter = session_type in ["midday", "close"]
         session_tag = session_type  # "morning", "midday", or "close"
-        snapshots = self._fetch_snapshots(session_type, universe_str, catalyst_scores)
+
+        # ── Progressive execution: process first batch immediately ────
+        # When execution is enabled (IBKR), the first batch (highest-
+        # catalyst symbols) is piped through scanner→ranker→build_cards
+        # while later batches are still being fetched.  This cuts
+        # time-to-first-trade from ~5 min to ~30 s.
+        # The full alert pipeline runs afterward on ALL snapshots;
+        # Supabase dedup prevents double-alerting early-executed cards.
+        first_batch_done = False
+
+        def _on_first_batch(batch_snaps: list) -> None:
+            nonlocal first_batch_done
+            if first_batch_done:
+                return
+            first_batch_done = True
+            logging.info(
+                f"[EARLY_EXEC] First batch ready ({len(batch_snaps)} symbols) "
+                f"— running immediate pipeline"
+            )
+            try:
+                scan = self.scanner.run(batch_snaps)
+                if not scan.candidates:
+                    logging.info("[EARLY_EXEC] No candidates passed scanner filters")
+                    return
+                ranked = (self.midday_ranker if stricter else self.ranker).run(
+                    scan.candidates
+                )
+                vol_spike = (
+                    self.volume_spike_midday if stricter
+                    else self.volume_spike_morning
+                )
+                early_cards = self._build_cards(
+                    ranked=ranked,
+                    session_tag=session_tag,
+                    volume_spike=vol_spike,
+                )
+                if early_cards:
+                    logging.info(
+                        f"[EARLY_EXEC] {len(early_cards)} cards built & executed "
+                        f"from first batch"
+                    )
+            except Exception as exc:
+                logging.error(f"[EARLY_EXEC] Pipeline failed: {exc}")
+
+        use_progressive = bool(self.execution_mgr)
+        snapshots = self._fetch_snapshots(
+            session_type, universe_str, catalyst_scores,
+            on_batch_ready=_on_first_batch if use_progressive else None,
+        )
         self._alerts_sent_count = 0
         results = self._run_three_option_session(snapshots, catalyst_scores, session_tag, stricter)
         return results, self._alerts_sent_count

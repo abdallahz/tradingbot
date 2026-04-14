@@ -117,6 +117,65 @@ class ExecutionManager:
             "reason": "",
         }
 
+        # ── 0. Fresh-quote validation ─────────────────────────────────
+        # Scan prices can be 5+ min old (IBKR per-symbol fetch).
+        # Fetch a live quote, check drift, and revalidate R:R before
+        # committing capital.
+        MAX_DRIFT_PCT = 2.0
+        MIN_RR = 1.5
+        try:
+            quote = self._client.get_fresh_quote(symbol)
+            fresh = quote.get("last") or 0.0
+            if fresh <= 0:
+                bid, ask = quote.get("bid", 0), quote.get("ask", 0)
+                fresh = (bid + ask) / 2 if bid > 0 and ask > 0 else 0.0
+
+            if fresh > 0:
+                drift_pct = abs(fresh - entry) / entry * 100
+                if drift_pct > MAX_DRIFT_PCT:
+                    result["reason"] = (
+                        f"stale_price: moved {drift_pct:.1f}% "
+                        f"(${entry:.2f}→${fresh:.2f})"
+                    )
+                    logger.warning(f"[EXEC] {symbol}: SKIPPED — {result['reason']}")
+                    return result
+
+                # Revalidate R:R with the live price
+                risk = fresh - stop
+                if risk <= 0:
+                    result["reason"] = (
+                        f"price_below_stop: fresh=${fresh:.2f} <= stop=${stop:.2f}"
+                    )
+                    logger.warning(f"[EXEC] {symbol}: SKIPPED — {result['reason']}")
+                    return result
+
+                reward = tp1 - fresh
+                rr = reward / risk
+                if rr < MIN_RR:
+                    result["reason"] = (
+                        f"rr_degraded: R:R={rr:.2f}<{MIN_RR} "
+                        f"(fresh=${fresh:.2f})"
+                    )
+                    logger.warning(f"[EXEC] {symbol}: SKIPPED — {result['reason']}")
+                    return result
+
+                # Use fresh price for the order
+                entry = fresh
+                logger.info(
+                    f"[EXEC] {symbol}: fresh quote ${fresh:.2f} "
+                    f"(drift {drift_pct:.1f}%, R:R {rr:.2f})"
+                )
+            else:
+                logger.warning(
+                    f"[EXEC] {symbol}: no fresh quote — "
+                    f"using scan price ${entry:.2f}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"[EXEC] {symbol}: fresh quote failed ({e}) — "
+                f"using scan price ${entry:.2f}"
+            )
+
         # ── 1. Pre-trade check ────────────────────────────────────────
         try:
             allowed, shares, reason = self.allocator.pre_trade_check(
@@ -145,7 +204,8 @@ class ExecutionManager:
         entry_buffer = self._config.get("entry_order_buffer_pct", 0.1)
 
         # Below-VWAP scalp detection: if entry < VWAP → 100% exit at TP1
-        is_scalp = False  # snapshot not available here; conservative default
+        vwap = getattr(card, "vwap", None) or 0.0
+        is_scalp = entry < vwap if vwap > 0 else False
 
         # ── 3. Submit bracket order ───────────────────────────────────
         try:

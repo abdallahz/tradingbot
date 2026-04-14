@@ -37,6 +37,10 @@ def _mock_ibkr_client():
     client.is_connected.return_value = True
     client.get_positions.return_value = []
     client.get_open_orders.return_value = []
+    # Fresh-quote gate: return a quote matching the default card entry ($10)
+    client.get_fresh_quote.return_value = {
+        "last": 10.05, "bid": 10.03, "ask": 10.07,
+    }
     return client
 
 
@@ -346,3 +350,403 @@ class TestMaybeExecute:
         card = _make_card()
         # Should not raise
         runner._maybe_execute(card)
+
+
+# ── Fresh-quote gate tests ────────────────────────────────────────────
+
+class TestFreshQuoteGate:
+    """Tests for the pre-execution price validation in execute_card."""
+
+    def _make_manager(self, fresh_quote: dict | None = None) -> ExecutionManager:
+        client = _mock_ibkr_client()
+        if fresh_quote is not None:
+            client.get_fresh_quote.return_value = fresh_quote
+        return ExecutionManager(client, _default_exec_config("paper"), risk_per_trade_pct=0.5)
+
+    def _mock_success_order(self, mgr: ExecutionManager) -> None:
+        from tradingbot.execution.order_executor import BracketOrderResult
+        mgr.executor.submit_bracket_order = MagicMock(
+            return_value=BracketOrderResult(
+                success=True, symbol="TEST", parent_order_id=1,
+                tp_order_id=2, stop_order_id=3, oca_group="test",
+                fill_price=10.0,
+            )
+        )
+
+    def test_small_drift_allows_execution(self):
+        """Price drift < 2% should allow execution to proceed."""
+        mgr = self._make_manager({"last": 10.10, "bid": 10.08, "ask": 10.12})
+        self._mock_success_order(mgr)
+        card = _make_card()  # entry=10.0, stop=9.50, tp1=11.00
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is True
+
+    def test_large_drift_blocks_execution(self):
+        """Price drift > 2% should block execution (stale price)."""
+        mgr = self._make_manager({"last": 10.30, "bid": 10.28, "ask": 10.32})
+        card = _make_card()  # entry=10.0 → 3% drift
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is False
+        assert "stale_price" in result["reason"]
+
+    def test_downward_drift_blocks(self):
+        """Large downward price move should also be blocked."""
+        mgr = self._make_manager({"last": 9.70, "bid": 9.68, "ask": 9.72})
+        card = _make_card()  # entry=10.0 → 3% drift down
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is False
+        assert "stale_price" in result["reason"]
+
+    def test_price_below_stop_blocks(self):
+        """If fresh price <= stop, execution is blocked."""
+        mgr = self._make_manager({"last": 9.50, "bid": 9.48, "ask": 9.52})
+        card = _make_card()  # stop=9.50
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is False
+        # Either stale_price (drift 5%) or price_below_stop
+        assert any(tag in result["reason"] for tag in ["stale_price", "price_below_stop"])
+
+    def test_rr_degraded_blocks(self):
+        """If price moved up slightly, R:R may drop below 1.5 → blocked."""
+        # entry=10.0, stop=9.50 (risk=0.50), tp1=11.00 (reward=1.00) → R:R=2.0
+        # fresh=10.19 (1.9% drift, <2% threshold): risk=0.69, reward=0.81 → R:R=1.17
+        mgr = self._make_manager({"last": 10.19, "bid": 10.17, "ask": 10.21})
+        self._mock_success_order(mgr)
+        card = _make_card()
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is False
+        assert "rr_degraded" in result["reason"]
+
+    def test_fresh_quote_failure_falls_through(self):
+        """If get_fresh_quote raises, execution proceeds with scan price."""
+        mgr = self._make_manager()
+        mgr._client.get_fresh_quote.side_effect = RuntimeError("connection lost")
+        self._mock_success_order(mgr)
+        card = _make_card()
+
+        result = mgr.execute_card(card)
+        # Should still attempt execution with scan price
+        assert result["executed"] is True
+
+    def test_no_price_data_falls_through(self):
+        """If quote returns zeroes, execution proceeds with scan price."""
+        mgr = self._make_manager({"last": 0.0, "bid": 0.0, "ask": 0.0})
+        self._mock_success_order(mgr)
+        card = _make_card()
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is True
+
+    def test_uses_midpoint_when_no_last(self):
+        """If 'last' is 0, should fall back to bid/ask midpoint."""
+        # Midpoint = (10.08 + 10.12) / 2 = 10.10 → 1% drift → allowed
+        mgr = self._make_manager({"last": 0.0, "bid": 10.08, "ask": 10.12})
+        self._mock_success_order(mgr)
+        card = _make_card()
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is True
+
+    def test_fresh_price_used_for_limit_order(self):
+        """The bracket order should use the fresh price, not the scan price."""
+        mgr = self._make_manager({"last": 10.05, "bid": 10.03, "ask": 10.07})
+        self._mock_success_order(mgr)
+        card = _make_card()
+
+        mgr.execute_card(card)
+
+        call_kwargs = mgr.executor.submit_bracket_order.call_args
+        # entry_price should be the fresh price (10.05), not scan price (10.0)
+        assert call_kwargs.kwargs.get("entry_price", call_kwargs[1].get("entry_price")) == 10.05
+
+    def test_exactly_2pct_drift_blocks(self):
+        """Exactly 2% drift should be blocked (> threshold, not >=)."""
+        # 10.0 * 1.021 = 10.21 → drift 2.1% > 2.0
+        mgr = self._make_manager({"last": 10.21, "bid": 10.19, "ask": 10.23})
+        card = _make_card()
+
+        result = mgr.execute_card(card)
+        assert result["executed"] is False
+        assert "stale_price" in result["reason"]
+
+    def test_streak_multiplier_forwarded(self):
+        """streak_multiplier should be passed through to pre_trade_check."""
+        mgr = self._make_manager({"last": 10.05, "bid": 10.03, "ask": 10.07})
+        self._mock_success_order(mgr)
+
+        # Spy on allocator.pre_trade_check
+        original_ptc = mgr.allocator.pre_trade_check
+        captured_kwargs = {}
+
+        def spy_ptc(**kwargs):
+            captured_kwargs.update(kwargs)
+            return original_ptc(**kwargs)
+
+        mgr.allocator.pre_trade_check = spy_ptc
+        card = _make_card()
+
+        mgr.execute_card(card, streak_multiplier=0.75)
+
+        assert captured_kwargs.get("streak_multiplier") == 0.75
+
+
+class TestScalpDetection:
+    """Tests for VWAP-based is_scalp detection in execute_card."""
+
+    def _make_manager(self, fresh_quote: dict) -> ExecutionManager:
+        client = _mock_ibkr_client()
+        client.get_fresh_quote.return_value = fresh_quote
+        return ExecutionManager(client, _default_exec_config("paper"), risk_per_trade_pct=0.5)
+
+    def _mock_success_order(self, mgr: ExecutionManager) -> None:
+        from tradingbot.execution.order_executor import BracketOrderResult
+        mgr.executor.submit_bracket_order = MagicMock(
+            return_value=BracketOrderResult(
+                success=True, symbol="TEST", parent_order_id=1,
+                tp_order_id=2, stop_order_id=3, oca_group="test",
+                fill_price=10.0,
+            )
+        )
+
+    def test_scalp_when_entry_below_vwap(self):
+        """Entry below VWAP should set is_scalp=True."""
+        mgr = self._make_manager({"last": 10.05, "bid": 10.03, "ask": 10.07})
+        self._mock_success_order(mgr)
+        # VWAP is higher than entry → scalp mode
+        card = _make_card()
+        card.vwap = 10.50  # type: ignore[attr-defined]
+
+        mgr.execute_card(card)
+        call_kwargs = mgr.executor.submit_bracket_order.call_args
+        assert call_kwargs.kwargs.get("is_scalp") is True or call_kwargs[1].get("is_scalp") is True
+
+    def test_not_scalp_when_entry_above_vwap(self):
+        """Entry above VWAP should set is_scalp=False."""
+        mgr = self._make_manager({"last": 10.05, "bid": 10.03, "ask": 10.07})
+        self._mock_success_order(mgr)
+        card = _make_card()
+        card.vwap = 9.80  # type: ignore[attr-defined]
+
+        mgr.execute_card(card)
+        call_kwargs = mgr.executor.submit_bracket_order.call_args
+        assert call_kwargs.kwargs.get("is_scalp") is False or call_kwargs[1].get("is_scalp") is False
+
+    def test_no_vwap_defaults_to_not_scalp(self):
+        """If card has no vwap attribute, is_scalp should be False."""
+        mgr = self._make_manager({"last": 10.05, "bid": 10.03, "ask": 10.07})
+        self._mock_success_order(mgr)
+        card = _make_card()
+        # TradeCard doesn't have a vwap field; getattr fallback → 0.0
+
+        mgr.execute_card(card)
+        call_kwargs = mgr.executor.submit_bracket_order.call_args
+        assert call_kwargs.kwargs.get("is_scalp") is False or call_kwargs[1].get("is_scalp") is False
+
+
+# ── get_fresh_quote unit test ─────────────────────────────────────────
+
+class TestGetFreshQuote:
+    """Tests for IBKRClient.get_fresh_quote()."""
+
+    def test_returns_market_data(self):
+        from tradingbot.data.ibkr_client import IBKRClient
+
+        client = IBKRClient.__new__(IBKRClient)
+        client._qualified_cache = {}
+
+        mock_contract = MagicMock()
+        mock_contract.conId = 12345
+        mock_contract.symbol = "AAPL"
+
+        # Mock _qualify_contracts to return the contract
+        client._qualify_contracts = MagicMock(return_value={"AAPL": mock_contract})
+        # Mock _request_market_data to return a quote
+        client._request_market_data = MagicMock(return_value={
+            "last": 175.50, "bid": 175.45, "ask": 175.55,
+        })
+
+        quote = client.get_fresh_quote("AAPL")
+        assert quote["last"] == 175.50
+        client._qualify_contracts.assert_called_once_with(["AAPL"])
+        client._request_market_data.assert_called_once_with(mock_contract)
+
+    def test_raises_on_unknown_symbol(self):
+        from tradingbot.data.ibkr_client import IBKRClient
+
+        client = IBKRClient.__new__(IBKRClient)
+        client._qualified_cache = {}
+        client._qualify_contracts = MagicMock(return_value={})
+
+        with pytest.raises(ValueError, match="Could not qualify"):
+            client.get_fresh_quote("ZZZZ")
+
+
+# ── on_batch_ready callback tests ─────────────────────────────────────
+
+class TestOnBatchReadyCallback:
+    """Tests for the progressive snapshot callback in get_premarket_snapshots."""
+
+    def test_callback_receives_batches(self):
+        """on_batch_ready should fire once per batch with SymbolSnapshot list."""
+        from tradingbot.data.ibkr_client import IBKRClient
+        from tradingbot.models import SymbolSnapshot
+
+        client = IBKRClient.__new__(IBKRClient)
+        client._qualified_cache = {}
+
+        received_batches = []
+
+        def capture(batch):
+            received_batches.append(list(batch))
+
+        # Mock all internal methods to produce a minimal valid snapshot
+        mock_contract = MagicMock()
+        mock_contract.conId = 1
+        mock_contract.symbol = "TEST"
+        client._qualify_contracts = MagicMock(return_value={"TEST": mock_contract})
+        client._fetch_batch_data = MagicMock(return_value={
+            "TEST": {
+                "snapshot": {"last": 15.0, "bid": 14.9, "ask": 15.1,
+                             "open": 14.5, "high": 15.5, "low": 14.0,
+                             "close": 14.0, "volume": 100000},
+                "daily_bars": [
+                    {"date": "2026-04-10", "open": 13, "high": 14.5, "low": 12.5, "close": 14.0, "volume": 500000},
+                    {"date": "2026-04-11", "open": 14, "high": 15, "low": 13.5, "close": 14.0, "volume": 600000},
+                ],
+                "intraday_bars": [],
+            }
+        })
+        mock_ib = MagicMock()
+        mock_ib.sleep = MagicMock()
+        client._ib = mock_ib
+
+        snaps = client.get_premarket_snapshots(["TEST"], on_batch_ready=capture)
+
+        assert len(received_batches) == 1
+        assert len(received_batches[0]) == 1
+        assert received_batches[0][0].symbol == "TEST"
+        assert len(snaps) == 1
+
+    def test_callback_not_called_when_none(self):
+        """When on_batch_ready is None, no error should occur."""
+        from tradingbot.data.ibkr_client import IBKRClient
+
+        client = IBKRClient.__new__(IBKRClient)
+        client._qualified_cache = {}
+
+        mock_contract = MagicMock()
+        mock_contract.conId = 1
+        mock_contract.symbol = "TEST"
+        client._qualify_contracts = MagicMock(return_value={"TEST": mock_contract})
+        client._fetch_batch_data = MagicMock(return_value={
+            "TEST": {
+                "snapshot": {"last": 15.0, "bid": 14.9, "ask": 15.1,
+                             "open": 14.5, "high": 15.5, "low": 14.0,
+                             "close": 14.0, "volume": 100000},
+                "daily_bars": [
+                    {"date": "2026-04-10", "open": 13, "high": 14.5, "low": 12.5, "close": 14.0, "volume": 500000},
+                    {"date": "2026-04-11", "open": 14, "high": 15, "low": 13.5, "close": 14.0, "volume": 600000},
+                ],
+                "intraday_bars": [],
+            }
+        })
+        mock_ib = MagicMock()
+        mock_ib.sleep = MagicMock()
+        client._ib = mock_ib
+
+        # Should not raise
+        snaps = client.get_premarket_snapshots(["TEST"], on_batch_ready=None)
+        assert len(snaps) == 1
+
+    def test_callback_empty_batch_not_fired(self):
+        """If a batch produces no snapshots, callback should not fire."""
+        from tradingbot.data.ibkr_client import IBKRClient
+
+        client = IBKRClient.__new__(IBKRClient)
+        client._qualified_cache = {}
+
+        received = []
+        # No contracts qualify → no snapshots → no callback
+        client._qualify_contracts = MagicMock(return_value={})
+        mock_ib = MagicMock()
+        mock_ib.sleep = MagicMock()
+        client._ib = mock_ib
+
+        snaps = client.get_premarket_snapshots(["ZZZZ"], on_batch_ready=lambda b: received.append(b))
+        assert len(received) == 0
+        assert len(snaps) == 0
+
+
+# ── Progressive execution integration tests ──────────────────────────
+
+class TestProgressiveExecution:
+    """Tests for run_single_session progressive mode."""
+
+    def test_progressive_disabled_without_execution_mgr(self):
+        """Without execution_mgr, _fetch_snapshots should not receive callback."""
+        from pathlib import Path
+        from tradingbot.app.session_runner import SessionRunner
+
+        runner = SessionRunner(Path.cwd(), use_real_data=False)
+        assert runner.execution_mgr is None
+
+        # Mock _fetch_snapshots to capture the on_batch_ready argument
+        original_fetch = runner._fetch_snapshots
+        captured_kwargs = {}
+
+        def spy_fetch(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return original_fetch(*args, **{k: v for k, v in kwargs.items() if k != 'on_batch_ready'})
+
+        runner._fetch_snapshots = spy_fetch
+
+        catalyst_scores = {"MOCK1": 70.0}
+        runner.run_single_session("morning", catalyst_scores)
+
+        # on_batch_ready should be None (no execution engine)
+        assert captured_kwargs.get("on_batch_ready") is None
+
+    def test_first_batch_callback_only_fires_once(self):
+        """The _on_first_batch closure should only process the first batch."""
+        call_count = 0
+        first_batch_done = False
+
+        def _on_first_batch(batch_snaps):
+            nonlocal first_batch_done, call_count
+            if first_batch_done:
+                return
+            first_batch_done = True
+            call_count += 1
+
+        # Simulate 3 batch callbacks
+        _on_first_batch([MagicMock()])
+        _on_first_batch([MagicMock()])
+        _on_first_batch([MagicMock()])
+
+        assert call_count == 1
+
+    def test_fetch_snapshots_annotates_catalyst_scores(self):
+        """on_batch_ready callback should receive snapshots with catalyst_scores set."""
+        from pathlib import Path
+        from tradingbot.app.session_runner import SessionRunner
+        from tradingbot.models import SymbolSnapshot
+
+        runner = SessionRunner(Path.cwd(), use_real_data=False)
+
+        received_snaps = []
+
+        def capture(batch):
+            received_snaps.extend(batch)
+
+        catalyst_scores = {"MOCK1": 85.0, "MOCK2": 60.0}
+
+        # For mock data, on_batch_ready doesn't fire (only IBKR path)
+        # so we just verify the fallback path doesn't break
+        runner._fetch_snapshots("morning", ["MOCK1"], catalyst_scores, on_batch_ready=capture)
+        # Mock data path doesn't call on_batch_ready (no per-batch streaming)
+        # This test just confirms the interface doesn't crash

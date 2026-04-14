@@ -165,6 +165,22 @@ class IBKRClient:
 
     # ── Market data fetchers ───────────────────────────────────────────
 
+    def get_fresh_quote(self, symbol: str) -> dict:
+        """Fetch a real-time quote for a single symbol.
+
+        Used by the execution engine to validate price freshness before
+        placing orders.  Contract qualification hits the per-session cache
+        so this adds only ~2-3 s of streaming latency.
+
+        Returns dict with 'last', 'bid', 'ask', 'volume', etc.
+        Raises ValueError if the symbol cannot be qualified.
+        """
+        contracts = self._qualify_contracts([symbol])
+        contract = contracts.get(symbol)
+        if not contract:
+            raise ValueError(f"Could not qualify contract for {symbol}")
+        return self._request_market_data(contract)
+
     def _request_market_data(self, contract) -> dict:
         """Request market data for a single contract via streaming mode.
 
@@ -434,10 +450,20 @@ class IBKRClient:
 
     # ── Core scanning interface ────────────────────────────────────────
 
-    def get_premarket_snapshots(self, universe: list[str]) -> list[SymbolSnapshot]:
+    def get_premarket_snapshots(
+        self,
+        universe: list[str],
+        on_batch_ready: "callable | None" = None,
+    ) -> list[SymbolSnapshot]:
         """Fetch snapshot data for candidate symbols from IB Gateway.
 
         Drop-in replacement for AlpacaClient.get_premarket_snapshots().
+
+        If *on_batch_ready* is provided, it is called after each batch of
+        snapshots is built, with the list of new ``SymbolSnapshot`` objects
+        for that batch.  This enables progressive execution: the session
+        runner can start processing/executing high-priority candidates
+        while later batches are still being fetched.
         """
         snapshots: list[SymbolSnapshot] = []
         BATCH_SIZE = 25  # Tuned for performance vs EId pool headroom
@@ -463,6 +489,7 @@ class IBKRClient:
                 continue
 
             drop_counts: dict[str, int] = {}
+            batch_snapshots: list[SymbolSnapshot] = []
 
             for symbol, data in batch_data.items():
                 try:
@@ -620,8 +647,7 @@ class IBKRClient:
                         above = [r for r in resistance_candidates if r > current_price]
                         key_resistance = min(above) if above else current_price + atr_val
 
-                    snapshots.append(
-                        SymbolSnapshot(
+                    snapshot = SymbolSnapshot(
                             symbol=symbol,
                             price=current_price,
                             gap_pct=gap_pct,
@@ -648,7 +674,8 @@ class IBKRClient:
                             raw_bars=symbol_bars,
                             tech_indicators=tech,
                         )
-                    )
+                    snapshots.append(snapshot)
+                    batch_snapshots.append(snapshot)
 
                 except Exception as e:
                     logger.warning(f"Error processing {symbol}: {type(e).__name__}: {e}")
@@ -657,6 +684,10 @@ class IBKRClient:
 
             if drop_counts:
                 logger.debug(f"Batch {batch_idx + 1} drops: {drop_counts}")
+
+            # Notify caller about this batch's snapshots (progressive execution)
+            if on_batch_ready and batch_snapshots:
+                on_batch_ready(batch_snapshots)
 
         logger.info(f"{len(snapshots)} snapshots ready (IBKR)")
         return snapshots
