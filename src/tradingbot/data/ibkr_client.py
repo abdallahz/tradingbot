@@ -377,60 +377,25 @@ class IBKRClient:
         """Fetch snapshot + historical data for a batch of contracts.
 
         Returns {symbol: {snapshot: {...}, daily_bars: [...], intraday_bars: [...]}}
-
-        Optimisation: daily and intraday historical bar requests are
-        submitted concurrently via ``reqHistoricalDataAsync``.  Both
-        futures are fired before either is awaited, so IBKR processes
-        them in parallel — roughly halving per-symbol historical wait.
         """
         batch_data: dict[str, dict] = {}
 
         for symbol, contract in contracts.items():
             try:
-                # Snapshot (current prices) — must be sequential (streaming)
+                # Snapshot (current prices)
                 snapshot = self._request_market_data(contract)
 
-                # Fire both historical requests concurrently (non-blocking).
-                # reqHistoricalDataAsync returns asyncio.Future objects.
-                daily_fut = self.ib.reqHistoricalDataAsync(
-                    contract,
-                    endDateTime="",
-                    durationStr="10 D",
-                    barSizeSetting="1 day",
-                    whatToShow="TRADES",
-                    useRTH=True,
-                    formatDate=1,
-                )
-                intraday_fut = self.ib.reqHistoricalDataAsync(
-                    contract,
-                    endDateTime="",
-                    durationStr="2 D",
-                    barSizeSetting="15 mins",
-                    whatToShow="TRADES",
-                    useRTH=False,
-                    formatDate=1,
+                # Daily bars (10 days for prev close, volume, ATR)
+                daily_bars = self._request_historical_bars(
+                    contract, duration="10 D", bar_size="1 day",
+                    what_to_show="TRADES", use_rth=True,
                 )
 
-                # Poll until both futures resolve (ib.sleep pumps the
-                # event loop, allowing IBKR to fulfil both in parallel).
-                for _ in range(60):  # up to 30s safety timeout
-                    self.ib.sleep(0.5)
-                    if daily_fut.done() and intraday_fut.done():
-                        break
-
-                daily_result = daily_fut.result() if daily_fut.done() else []
-                intraday_result = intraday_fut.result() if intraday_fut.done() else []
-
-                daily_bars = [
-                    {"date": b.date, "open": b.open, "high": b.high,
-                     "low": b.low, "close": b.close, "volume": int(b.volume)}
-                    for b in (daily_result or [])
-                ]
-                intraday_bars = [
-                    {"date": b.date, "open": b.open, "high": b.high,
-                     "low": b.low, "close": b.close, "volume": int(b.volume)}
-                    for b in (intraday_result or [])
-                ]
+                # Intraday 15-min bars (2 days for EMA, VWAP, patterns)
+                intraday_bars = self._request_historical_bars(
+                    contract, duration="2 D", bar_size="15 mins",
+                    what_to_show="TRADES", use_rth=False,
+                )
 
                 batch_data[symbol] = {
                     "snapshot": snapshot,
