@@ -118,9 +118,14 @@ def main() -> None:
             f"O3={len(results.strict_filter_cards)} cards"
         )
         print(f">> Pipeline: {pipeline_info}")
-        if _notifier._enabled:
+        # On VPS (IBKR), skip the "no qualifying" summary — Render already
+        # sends one, so a duplicate adds no value.  Only send when we have cards.
+        _is_vps = os.getenv("DATA_PROVIDER", "alpaca").lower() == "ibkr"
+        if _notifier._enabled and not (_is_vps and card_count == 0):
             _ok = _notifier.send_session_summary("Pre-Market", card_count, pipeline_info, night_picks=results.night_research_picks)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
+        elif _is_vps and card_count == 0:
+            print(">> Telegram: SKIPPED (VPS 0-card summary suppressed, Render sends it)")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
         print(f"\n{mode_str} Morning Pre-Market Scan Complete")
@@ -140,9 +145,12 @@ def main() -> None:
             f"O3={len(results.strict_filter_cards)} cards"
         )
         print(f">> Pipeline: {pipeline_info}")
-        if _notifier._enabled:
+        _is_vps = os.getenv("DATA_PROVIDER", "alpaca").lower() == "ibkr"
+        if _notifier._enabled and not (_is_vps and card_count == 0):
             _ok = _notifier.send_session_summary("Midday", card_count, pipeline_info, night_picks=results.night_research_picks)
             print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
+        elif _is_vps and card_count == 0:
+            print(">> Telegram: SKIPPED (VPS 0-card summary suppressed, Render sends it)")
         else:
             print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
         print(f"\n{mode_str} Midday Scan Complete")
