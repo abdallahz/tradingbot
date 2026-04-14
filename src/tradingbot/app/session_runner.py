@@ -1039,6 +1039,17 @@ class SessionRunner:
                     f"(score={confluence_result.composite_score:.0f})")
                 continue
 
+            # Block Grade-C setups in ALL modes (composite 40-54)
+            # Data shows Grade C picks are consistently risky — big gap +
+            # weak confluence = chase into exhaustion.  Only A/B should fire.
+            if confluence_result.grade == "C":
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"grade_C:{confluence_result.composite_score:.0f}"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: Grade C confluence "
+                    f"(score={confluence_result.composite_score:.0f}) — only A/B fire")
+                continue
+
             # ── Strict-only vetoes (market crash, ATR exhaustion, thin fade) ──
             # These can be overridden by strong catalysts in relaxed mode.
             if not relaxed and confluence_result.vetoed:
