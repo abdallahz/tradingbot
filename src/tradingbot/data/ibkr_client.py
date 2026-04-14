@@ -650,7 +650,7 @@ class IBKRClient:
         "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
         "AVGO", "AMD", "INTC", "MU", "SMCI", "ARM", "PLTR", "CRWD",
         # Financials
-        "JPM", "GS", "V", "MA", "PYPL", "SQ", "COIN",
+        "JPM", "GS", "V", "MA", "PYPL", "XYZ", "COIN",
         # Healthcare
         "LLY", "UNH", "MRNA", "BNTX",
         # Consumer / EV

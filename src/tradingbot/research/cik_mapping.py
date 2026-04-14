@@ -25,7 +25,7 @@ SYMBOL_TO_CIK = {
     "ADBE": "0000796343",
     "NFLX": "0001065280",
     "PYPL": "0001633917",
-    "SQ": "0001512673",
+    "XYZ": "0001512673",  # formerly SQ (Block Inc.)
     
     # Finance
     "JPM": "0000047867",

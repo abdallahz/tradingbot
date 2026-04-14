@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # within the same session.  Format: {symbol: (timestamp, data_dict)}
 _float_cache: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL = 3600  # 1 hour — float doesn't change intra-day
+_fmp_disabled = False  # set True on 403 to skip further calls this session
 
 
 @dataclass
@@ -74,6 +75,9 @@ def _fetch_fmp_float(symbol: str) -> dict | None:
       /api/v3/key-metrics/{symbol}?limit=1
       /api/v3/profile/{symbol}
     """
+    global _fmp_disabled
+    if _fmp_disabled:
+        return None
     api_key = os.getenv("FMP_API_KEY", "").strip()
     if not api_key:
         return None
@@ -88,6 +92,10 @@ def _fetch_fmp_float(symbol: str) -> dict | None:
         # 1. Company profile — floatShares, mktCap, sharesOutstanding
         profile_url = f"{base}/profile/{symbol}?apikey={api_key}"
         resp = requests.get(profile_url, headers=headers, timeout=timeout)
+        if resp.status_code == 403:
+            logger.warning("[fmp] 403 Forbidden — disabling FMP calls for this session")
+            _fmp_disabled = True
+            return None
         resp.raise_for_status()
         profile_list = resp.json()
         if not profile_list:

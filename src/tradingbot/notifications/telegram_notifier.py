@@ -160,11 +160,14 @@ class TelegramNotifier:
         """Send top catalyst symbols from news research."""
         if not self._enabled:
             return False
+        import os
+        _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
         top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:10]
         if not top:
-            text = f"📰 *{session} research complete* — no catalyst symbols found."
+            text = f"📰 *{session} research complete* — no catalyst symbols found. [{_src}]"
         else:
-            lines = [f"📰 *{session} Research Complete*", ""]
+            lines = [f"📰 *{session} Research Complete* [{_src}]", ""]
             lines.append(f"Top {len(top)} catalyst symbols:")
             for sym, score in top:
                 bar = "🟢" if score >= 75 else "🟡" if score >= 60 else "⚪"
@@ -181,15 +184,19 @@ class TelegramNotifier:
         if not self._enabled:
             return False
 
+        import os
+        _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+
         if not picks:
             text = (
-                "🌙 *Close Scan — Overnight Holds*\n\n"
+                f"🌙 *Close Scan — Overnight Holds* [{_src}]\n\n"
                 "No qualifying setups found for tonight."
             )
             return self._send_message(text)
 
         lines = [
-            "🌙 *Close Scan — Overnight Holds*",
+            f"🌙 *Close Scan — Overnight Holds* [{_src}]",
             f"Top {len(picks)} pick(s) to buy now, hold for tomorrow's open:",
             "",
         ]
@@ -229,11 +236,15 @@ class TelegramNotifier:
         if not self._enabled:
             return False
 
+        import os
+        _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+
         total = stats.get("total", 0)
 
         if total == 0:
             text = (
-                "📊 *Daily Recap — Market Close*\n\n"
+                f"📊 *Daily Recap — Market Close* [{_src}]\n\n"
                 "No trade alerts fired today.\n"
                 f"Scans completed: {scan_count}"
             )
@@ -252,7 +263,7 @@ class TelegramNotifier:
         wr_emoji = "🔥" if win_rate >= 60 else "✅" if win_rate >= 40 else "⚠️"
 
         lines = [
-            "📊 *Daily Recap — Market Close*",
+            f"📊 *Daily Recap — Market Close* [{_src}]",
             "",
             f"Alerts: *{total}* | Scans: {scan_count}",
             f"Wins: *{wins}* | Losses: *{losses}* | BE: {breakeven} | Expired: {expired}",
@@ -313,8 +324,12 @@ class TelegramNotifier:
         if not analytics:
             return False
 
+        import os
+        _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+
         lines = [
-            "📋 *Nightly Performance Digest*",
+            f"📋 *Nightly Performance Digest* [{_src}]",
             "",
         ]
 

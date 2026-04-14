@@ -79,7 +79,14 @@ class SessionRunner:
 
         # Initialize data sources
         if use_real_data:
-            self.data_client: DataClient | None = create_data_client(broker_config)
+            try:
+                self.data_client: DataClient | None = create_data_client(broker_config)
+            except Exception as _exc:
+                logging.getLogger(__name__).warning(
+                    f"[session] Data client init failed ({_exc}); "
+                    "continuing without market data (news research still works)"
+                )
+                self.data_client = None
             news_cfg = broker_config["news"]
             news_agg = NewsAggregator(
                 sec_enabled=news_cfg["sec_filings"],
@@ -1137,9 +1144,19 @@ class SessionRunner:
         Returns:
             dict[str, float]: Catalyst scores for each symbol
         """
-        if self.use_real_data and self.data_client and self.catalyst_scorer:
-            # Real news sources
-            universe = self.data_client.get_tradable_universe()
+        if self.use_real_data and self.catalyst_scorer:
+            # Real news sources (SEC EDGAR, RSS, social proxy).
+            # If data_client is available use its full universe;
+            # otherwise fall back to the static core watchlist so
+            # news research still runs when IB Gateway is down.
+            if self.data_client:
+                universe = self.data_client.get_tradable_universe()
+            else:
+                universe = list(AlpacaClient._CORE_WATCHLIST)
+                logging.getLogger(__name__).info(
+                    "[news] data_client unavailable — using %d core symbols",
+                    len(universe),
+                )
             catalyst_scores = self.catalyst_scorer.score_symbols(universe)
 
             # Persist latest social proxy signals (if available)
