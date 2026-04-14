@@ -749,6 +749,18 @@ class IBKRClient:
         )
 
         logger.info(f"IBKR scanner returned {len(symbols)} unique symbols")
+
+        # ── Alpaca screener fallback ──────────────────────────────────
+        # If all TWS scanners failed (e.g. desktop TWS open on another
+        # IP → Error 162), use Alpaca's free screener API to discover
+        # today's dynamic movers so we're not limited to core watchlist.
+        if not symbols:
+            logger.warning(
+                "All IBKR scanners returned 0 symbols — "
+                "falling back to Alpaca screener"
+            )
+            symbols = set(self._alpaca_screener_fallback())
+
         return list(symbols)
 
     def get_screener_symbols(self) -> list[str]:
@@ -767,6 +779,55 @@ class IBKRClient:
         return universe
 
     # ── Quote helpers (used by trade tracker and position monitor) ─────
+
+    @staticmethod
+    def _alpaca_screener_fallback() -> list[str]:
+        """Use Alpaca's free screener API to discover today's movers.
+
+        This runs only when all IBKR TWS scanners fail (e.g. desktop
+        TWS connected from a different IP).  Reads credentials from
+        broker.yaml (same file used by AlpacaClient on Render).
+        """
+        try:
+            from tradingbot.config import ConfigLoader
+            from pathlib import Path
+
+            cfg = ConfigLoader(Path.cwd()).broker()
+            alpaca_cfg = cfg.get("alpaca", {})
+            api_key = alpaca_cfg.get("api_key", "")
+            api_secret = alpaca_cfg.get("api_secret", "")
+            if not api_key or not api_secret:
+                logger.warning("[alpaca-fallback] No Alpaca credentials in broker.yaml")
+                return []
+
+            from alpaca.data.requests import MostActivesRequest, MarketMoversRequest
+            from alpaca.data.historical import ScreenerClient
+
+            screener = ScreenerClient(api_key=api_key, secret_key=api_secret)
+            symbols: set[str] = set()
+
+            try:
+                actives = screener.get_most_actives(MostActivesRequest(top=50, by="volume"))
+                for a in actives.most_actives:
+                    symbols.add(a.symbol)
+            except Exception as exc:
+                logger.warning(f"[alpaca-fallback] most-actives failed: {exc}")
+
+            try:
+                movers = screener.get_market_movers(MarketMoversRequest(top=50))
+                for m in movers.gainers:
+                    symbols.add(m.symbol)
+            except Exception as exc:
+                logger.warning(f"[alpaca-fallback] market-movers failed: {exc}")
+
+            # Strip junk
+            cleaned = {s for s in symbols if not _JUNK_SUFFIX.search(s) and "." not in s}
+            logger.info(f"[alpaca-fallback] screener returned {len(cleaned)} symbols")
+            return list(cleaned)
+
+        except Exception as exc:
+            logger.warning(f"[alpaca-fallback] failed: {exc}")
+            return []
 
     def get_latest_price(self, symbol: str) -> float:
         """Get the latest trade price for a single symbol."""
