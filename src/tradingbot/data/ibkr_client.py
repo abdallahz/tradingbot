@@ -58,6 +58,7 @@ class IBKRClient:
         self.timeout = timeout
         self.readonly = readonly
         self._ib = None
+        self._qualified_cache: dict[str, Any] = {}  # symbol → Contract
 
     # ── Connection management ──────────────────────────────────────────
 
@@ -134,15 +135,32 @@ class IBKRClient:
         """Qualify a batch of stock contracts with IBKR.
 
         Returns {symbol: Contract} for successfully qualified contracts.
+        Uses an in-process cache so repeated symbols (e.g. core watchlist)
+        skip the IBKR round-trip on subsequent batches.
         """
         from ib_insync import Stock
-        contracts = [Stock(s, "SMART", "USD") for s in symbols]
-        qualified = self.ib.qualifyContracts(*contracts)
+
         result = {}
-        for c in qualified:
-            if c.conId:  # successfully qualified
-                result[c.symbol] = c
-        logger.debug(f"Qualified {len(result)}/{len(symbols)} contracts")
+        need_qualify: list = []
+
+        for s in symbols:
+            if s in self._qualified_cache:
+                result[s] = self._qualified_cache[s]
+            else:
+                need_qualify.append(Stock(s, "SMART", "USD"))
+
+        if need_qualify:
+            qualified = self.ib.qualifyContracts(*need_qualify)
+            for c in qualified:
+                if c.conId:  # successfully qualified
+                    result[c.symbol] = c
+                    self._qualified_cache[c.symbol] = c
+
+        cached = len(symbols) - len(need_qualify)
+        logger.debug(
+            f"Qualified {len(result)}/{len(symbols)} contracts "
+            f"({cached} cached, {len(need_qualify)} new)"
+        )
         return result
 
     # ── Market data fetchers ───────────────────────────────────────────
@@ -172,8 +190,8 @@ class IBKRClient:
 
         # Use streaming mode directly — snapshot=True fails with delayed data
         ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
-        for _ in range(6):
-            self.ib.sleep(0.5)
+        for _ in range(10):
+            self.ib.sleep(0.3)
             if _has_price(ticker):
                 break
 
@@ -189,7 +207,7 @@ class IBKRClient:
         }
 
         self.ib.cancelMktData(contract)
-        self.ib.sleep(0.3)  # Let EId recycle before next request
+        self.ib.sleep(0.15)  # Let EId recycle before next request
         return result
 
     def _request_historical_bars(
@@ -359,25 +377,60 @@ class IBKRClient:
         """Fetch snapshot + historical data for a batch of contracts.
 
         Returns {symbol: {snapshot: {...}, daily_bars: [...], intraday_bars: [...]}}
+
+        Optimisation: daily and intraday historical bar requests are
+        submitted concurrently via ``reqHistoricalDataAsync``.  Both
+        futures are fired before either is awaited, so IBKR processes
+        them in parallel — roughly halving per-symbol historical wait.
         """
         batch_data: dict[str, dict] = {}
 
         for symbol, contract in contracts.items():
             try:
-                # Snapshot (current prices)
+                # Snapshot (current prices) — must be sequential (streaming)
                 snapshot = self._request_market_data(contract)
 
-                # Daily bars (5 days for prev close, volume, ATR)
-                daily_bars = self._request_historical_bars(
-                    contract, duration="10 D", bar_size="1 day",
-                    what_to_show="TRADES", use_rth=True,
+                # Fire both historical requests concurrently (non-blocking).
+                # reqHistoricalDataAsync returns asyncio.Future objects.
+                daily_fut = self.ib.reqHistoricalDataAsync(
+                    contract,
+                    endDateTime="",
+                    durationStr="10 D",
+                    barSizeSetting="1 day",
+                    whatToShow="TRADES",
+                    useRTH=True,
+                    formatDate=1,
+                )
+                intraday_fut = self.ib.reqHistoricalDataAsync(
+                    contract,
+                    endDateTime="",
+                    durationStr="2 D",
+                    barSizeSetting="15 mins",
+                    whatToShow="TRADES",
+                    useRTH=False,
+                    formatDate=1,
                 )
 
-                # Intraday 15-min bars (2 days for EMA, VWAP, patterns)
-                intraday_bars = self._request_historical_bars(
-                    contract, duration="2 D", bar_size="15 mins",
-                    what_to_show="TRADES", use_rth=False,
-                )
+                # Poll until both futures resolve (ib.sleep pumps the
+                # event loop, allowing IBKR to fulfil both in parallel).
+                for _ in range(60):  # up to 30s safety timeout
+                    self.ib.sleep(0.5)
+                    if daily_fut.done() and intraday_fut.done():
+                        break
+
+                daily_result = daily_fut.result() if daily_fut.done() else []
+                intraday_result = intraday_fut.result() if intraday_fut.done() else []
+
+                daily_bars = [
+                    {"date": b.date, "open": b.open, "high": b.high,
+                     "low": b.low, "close": b.close, "volume": int(b.volume)}
+                    for b in (daily_result or [])
+                ]
+                intraday_bars = [
+                    {"date": b.date, "open": b.open, "high": b.high,
+                     "low": b.low, "close": b.close, "volume": int(b.volume)}
+                    for b in (intraday_result or [])
+                ]
 
                 batch_data[symbol] = {
                     "snapshot": snapshot,
@@ -385,8 +438,8 @@ class IBKRClient:
                     "intraday_bars": intraday_bars,
                 }
 
-                # Rate limiting: give IBKR time to recycle EIds between symbols
-                self.ib.sleep(0.5)
+                # Brief pause between symbols for EId recycling
+                self.ib.sleep(0.2)
 
             except Exception as e:
                 logger.warning(f"Error fetching data for {symbol}: {e}")
@@ -422,12 +475,12 @@ class IBKRClient:
         Drop-in replacement for AlpacaClient.get_premarket_snapshots().
         """
         snapshots: list[SymbolSnapshot] = []
-        BATCH_SIZE = 15  # Conservative to avoid EId exhaustion on IBKR socket
+        BATCH_SIZE = 25  # Tuned for performance vs EId pool headroom
 
         batches = [universe[i:i + BATCH_SIZE] for i in range(0, len(universe), BATCH_SIZE)]
         for batch_idx, batch in enumerate(batches):
             if batch_idx > 0:
-                self.ib.sleep(2)  # Pause between batches for EId pool recovery
+                self.ib.sleep(1)  # Pause between batches for EId pool recovery
             logger.info(f"Batch {batch_idx + 1}/{len(batches)}: {len(batch)} symbols")
             try:
                 # Qualify contracts first (validates symbols exist on IBKR)
