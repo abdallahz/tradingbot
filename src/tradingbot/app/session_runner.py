@@ -1012,20 +1012,39 @@ class SessionRunner:
             card.confluence_score = confluence_result.composite_score
             card.false_positive_flags = list(confluence_result.false_positive_flags)
 
-            # In strict mode, veto low-grade setups for high win-rate
-            if not relaxed and confluence_result.vetoed:
+            # ── Universal blocks (all modes) ──
+            # Distribution and Grade-F have zero edge regardless of catalyst.
+            # Smart money selling into a gap = trap; composite < 40 = too many
+            # factors against.  These MUST block even in relaxed/O2 mode.
+
+            # Block distribution volume profile in ALL modes
+            _vol_class = getattr(card, "volume_classification", None) or ""
+            if not _vol_class:
+                # Volume classification isn't set yet; peek from confluence
+                _vol_factors = [f for f in confluence_result.factors if f.name == "Volume Profile"]
+                if _vol_factors and not _vol_factors[0].passed:
+                    _vol_class = "distribution"  # veto was triggered
+            if _vol_class == "distribution":
                 if dropped is not None:
-                    dropped.append((symbol.symbol, f"confluence_veto:{confluence_result.veto_reason}"))
-                logging.info(f"[DROP] {symbol.symbol}: {confluence_result.veto_reason}")
+                    dropped.append((symbol.symbol, "distribution_block"))
+                logging.info(f"[DROP] {symbol.symbol}: Distribution volume — smart money selling")
                 continue
 
-            # In strict mode, block Grade-F setups (composite < 40)
-            if not relaxed and confluence_result.grade == "F":
+            # Block Grade-F setups in ALL modes (composite < 40)
+            if confluence_result.grade == "F":
                 if dropped is not None:
                     dropped.append((symbol.symbol, f"grade_F:{confluence_result.composite_score:.0f}"))
                 logging.info(
                     f"[DROP] {symbol.symbol}: Grade F confluence "
                     f"(score={confluence_result.composite_score:.0f})")
+                continue
+
+            # ── Strict-only vetoes (market crash, ATR exhaustion, thin fade) ──
+            # These can be overridden by strong catalysts in relaxed mode.
+            if not relaxed and confluence_result.vetoed:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"confluence_veto:{confluence_result.veto_reason}"))
+                logging.info(f"[DROP] {symbol.symbol}: {confluence_result.veto_reason}")
                 continue
 
             # Blend confluence engine composite into the ranker score.
