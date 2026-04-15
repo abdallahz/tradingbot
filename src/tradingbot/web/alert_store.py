@@ -628,6 +628,7 @@ def update_outcome(
     hit_at: str | None = None,
     session: str | None = None,
     closed_at: str | None = None,
+    tp1_hit_at: str | None = None,
 ) -> None:
     """Update a trade outcome row with new status and P&L."""
     sb = _get_supabase()
@@ -645,9 +646,59 @@ def update_outcome(
             updates["session"] = session
         if closed_at:
             updates["closed_at"] = closed_at
+        if tp1_hit_at:
+            updates["tp1_hit_at"] = tp1_hit_at
         sb.table("trade_outcomes").update(updates).eq("id", outcome_id).execute()
     except Exception as exc:
         log.warning(f"[alert_store] update_outcome failed: {exc}")
+
+
+def update_outcome_by_symbol(
+    symbol: str,
+    status: str,
+    exit_price: float | None = None,
+    pnl_pct: float | None = None,
+    hit_at: str | None = None,
+    closed_at: str | None = None,
+    tp1_hit_at: str | None = None,
+) -> bool:
+    """Look up today's open outcome for *symbol* and update it.
+
+    Used by :class:`ExecutionTracker` which knows the symbol but not the
+    Supabase outcome row ID.  Returns True if a row was found and updated.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return False
+    try:
+        today_str = _today_et().isoformat()
+        resp = (
+            sb.table("trade_outcomes")
+            .select("id")
+            .eq("trade_date", today_str)
+            .eq("symbol", symbol)
+            .in_("status", ["open", "tp1_hit"])
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            log.warning(f"[alert_store] update_outcome_by_symbol: no open row for {symbol}")
+            return False
+        outcome_id = rows[0]["id"]
+        update_outcome(
+            outcome_id=outcome_id,
+            status=status,
+            exit_price=exit_price,
+            pnl_pct=pnl_pct,
+            hit_at=hit_at,
+            closed_at=closed_at,
+            tp1_hit_at=tp1_hit_at,
+        )
+        return True
+    except Exception as exc:
+        log.warning(f"[alert_store] update_outcome_by_symbol failed: {exc}")
+        return False
 
 
 def load_outcomes_for_date(trade_date: str | None = None) -> list[dict[str, Any]]:
@@ -717,6 +768,11 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     worst = round(min(pnls), 2) if pnls else 0.0
 
     # Portfolio-level return (account simulation)
+    portfolio_pnl = avg_pnl
+    portfolio_dollar = 0.0
+    starting_capital = 80_000.0
+    capital_used_pct = 0.0
+    max_concurrent = 0
     try:
         from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
         from tradingbot.config import Config
@@ -725,9 +781,11 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
         risk_pct = float(risk_cfg.get("risk_per_trade_pct", 0.5))
         port = calculate_portfolio_return(outcomes, starting_capital, risk_pct)
         portfolio_pnl = port["portfolio_pnl_pct"]
+        portfolio_dollar = port["portfolio_pnl_dollar"]
+        capital_used_pct = port["capital_used_pct"]
+        max_concurrent = port["max_concurrent"]
     except Exception as exc:
         log.warning(f"[alert_store] portfolio calc fallback: {exc}")
-        portfolio_pnl = avg_pnl  # fallback to average
 
     return {
         "total": total,
@@ -741,6 +799,10 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
         "best": best,
         "worst": worst,
         "portfolio_pnl_pct": portfolio_pnl,
+        "portfolio_pnl_dollar": portfolio_dollar,
+        "starting_capital": starting_capital,
+        "capital_used_pct": capital_used_pct,
+        "max_concurrent": max_concurrent,
     }
 
 
@@ -757,7 +819,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
     try:
         resp = (
             sb.table("trade_outcomes")
-            .select("trade_date, status, pnl_pct")
+            .select("trade_date, symbol, status, pnl_pct, entry_price, stop_price, tp1_price, tp2_price, exit_price, alerted_at, closed_at, hit_at, tp1_hit_at, side")
             .not_.is_("status", "null")
             .order("trade_date")
             .limit(5000)
@@ -774,6 +836,19 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
             if d:
                 by_date[d].append(r)
 
+        # Portfolio calculator for per-day returns
+        try:
+            from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+            from tradingbot.config import Config
+            risk_cfg = Config().risk()
+            starting_capital = float(risk_cfg.get("execution", {}).get("max_notional_per_trade", 10_000)) * int(risk_cfg.get("max_trades_per_day", 8))
+            risk_pct = float(risk_cfg.get("risk_per_trade_pct", 0.5))
+            _use_portfolio = True
+        except Exception:
+            starting_capital = 80_000.0
+            risk_pct = 0.5
+            _use_portfolio = False
+
         # Process each date
         history: list[dict[str, Any]] = []
         cum_pnl = 0.0
@@ -782,12 +857,22 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
             wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"))
             losses = sum(1 for r in rows if r.get("status") == "stopped")
             expired = sum(1 for r in rows if r.get("status") == "expired")
-            be = sum(1 for r in rows if r.get("status") == "breakeven")
             total = len(rows)
             decided = wins + losses
             pnls = [float(r.get("pnl_pct") or 0) for r in rows
                     if r.get("status") not in ("open",)]
-            day_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0.0
+            avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0.0
+
+            # Use portfolio calculator for accurate day P&L
+            if _use_portfolio:
+                try:
+                    port = calculate_portfolio_return(rows, starting_capital, risk_pct)
+                    day_pnl = port["portfolio_pnl_pct"]
+                except Exception:
+                    day_pnl = avg_pnl
+            else:
+                day_pnl = avg_pnl
+
             cum_pnl += day_pnl
             history.append({
                 "date": d,
@@ -797,7 +882,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
                 "losses": losses,
                 "expired": expired,
                 "win_rate": round((wins / decided * 100) if decided > 0 else 0.0, 1),
-                "avg_pnl": round(day_pnl / len(pnls), 2) if pnls else 0.0,
+                "avg_pnl": avg_pnl,
                 "day_pnl": round(day_pnl, 2),
                 "cum_pnl": round(cum_pnl, 2),
             })

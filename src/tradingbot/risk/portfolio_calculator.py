@@ -17,13 +17,18 @@ concurrent capital splits), this module reconstructs the capital timeline:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 log = logging.getLogger(__name__)
 
 # Statuses where the position is fully closed
 _TERMINAL = {"tp2_hit", "stopped", "breakeven", "trailed_out", "tp1_locked", "expired"}
+
+# Terminal statuses that definitively went through TP1 first.
+# tp2_hit:    TP1 → TP2 (runner hit second target)
+# tp1_locked: TP1 → stop trailed to TP1 → stopped (runner locked in TP1)
+_TP1_FIRST = {"tp2_hit", "tp1_locked"}
 
 
 def calculate_portfolio_return(
@@ -182,24 +187,39 @@ def _build_event_timeline(
 
         events.append((open_ts, "open", o))
 
-        # Partial close for trades that hit TP1 then continued
-        # (tp2_hit, tp1_locked, trailed_out after tp1)
-        # For tp1_hit (still live), the partial happened at hit_at
+        # ── Partial close for trades that went through TP1 ──────────
+        # Day-trade rule: sell 50 % at TP1, let runner ride.
+        # We need a partial_close event for every status where TP1
+        # was hit before the final exit.
+
         if status == "tp1_hit":
+            # Still-live runner — TP1 just hit, no full close yet.
             hit_raw = o.get("hit_at")
             if hit_raw:
                 hit_ts = _parse_ts(hit_raw)
                 if hit_ts and hit_ts > open_ts:
                     events.append((hit_ts, "partial_close", o))
 
+        elif status in _TP1_FIRST:
+            # Terminal statuses that definitively went through TP1.
+            # Use tp1_hit_at if recorded, else estimate timing.
+            tp1_ts = _infer_tp1_time(o, open_ts, closed_raw)
+            if tp1_ts and tp1_ts > open_ts:
+                events.append((tp1_ts, "partial_close", o))
+
+        elif status == "expired":
+            # Expired trades may or may not have been tp1_hit.
+            # Only add partial if tp1_hit_at is explicitly recorded.
+            tp1_hit_raw = o.get("tp1_hit_at")
+            if tp1_hit_raw:
+                tp1_ts = _parse_ts(tp1_hit_raw)
+                if tp1_ts and tp1_ts > open_ts:
+                    events.append((tp1_ts, "partial_close", o))
+
         # Full close
         if status in _TERMINAL and closed_raw:
             close_ts = _parse_ts(closed_raw)
             if close_ts and close_ts > open_ts:
-                # If this was a TP2/tp1_locked/trailed_out, tp1 was hit
-                # first.  We don't have the exact tp1 time for these, so
-                # the full position is freed at close.  Future improvement:
-                # track tp1_hit_at separately for precise partial timing.
                 events.append((close_ts, "close", o))
 
     if usable == 0:
@@ -210,6 +230,34 @@ def _build_event_timeline(
     priority = {"close": 0, "partial_close": 1, "open": 2}
     events.sort(key=lambda e: (e[0], priority.get(e[1], 9)))
     return events
+
+
+def _infer_tp1_time(
+    outcome: dict[str, Any],
+    open_ts: datetime,
+    closed_raw: str | None,
+) -> datetime | None:
+    """Return the best-available timestamp for when TP1 was hit.
+
+    Priority:
+      1. ``tp1_hit_at`` (explicit column, set once when TP1 fires).
+      2. Estimate: 1/3 of the way between alert and close.
+         TP1 typically fires early in the trade's life.
+    """
+    tp1_raw = outcome.get("tp1_hit_at")
+    if tp1_raw:
+        ts = _parse_ts(tp1_raw)
+        if ts and ts > open_ts:
+            return ts
+
+    # Fallback: estimate from open/close bracket
+    if closed_raw:
+        close_ts = _parse_ts(closed_raw)
+        if close_ts and close_ts > open_ts:
+            duration = (close_ts - open_ts).total_seconds()
+            return open_ts + timedelta(seconds=duration / 3)
+
+    return None
 
 
 def _parse_ts(raw: str | None) -> datetime | None:

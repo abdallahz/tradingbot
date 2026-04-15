@@ -362,6 +362,7 @@ class TradeTracker:
                     pnl_pct=pnl,
                     hit_at=now_str,
                     closed_at=now_str if new_status in _terminal else None,
+                    tp1_hit_at=now_str if new_status == "tp1_hit" else None,
                 )
                 updates += 1
                 bar_tag = " (bar-detected)" if exit_price != price else ""
