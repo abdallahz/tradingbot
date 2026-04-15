@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS trade_outcomes (
     exit_price  NUMERIC(12,4),
     pnl_pct     NUMERIC(8,2),
     hit_at      TIMESTAMPTZ,
+    closed_at   TIMESTAMPTZ,                -- when the position was fully exited (sold)
     alerted_at  TIMESTAMPTZ,               -- when the alert was created (for bar-time filtering)
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );

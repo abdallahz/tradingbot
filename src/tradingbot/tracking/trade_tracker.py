@@ -338,6 +338,8 @@ class TradeTracker:
         # Step 4: Check each open trade against its levels
         updates = 0
         now_str = datetime.now(timezone.utc).isoformat()
+        # Terminal statuses = position fully closed (sold)
+        _terminal = {"tp2_hit", "stopped", "breakeven", "trailed_out", "tp1_locked"}
         for trade in open_trades:
             sym = trade["symbol"]
             price = prices.get(sym)
@@ -359,6 +361,7 @@ class TradeTracker:
                     exit_price=exit_price,
                     pnl_pct=pnl,
                     hit_at=now_str,
+                    closed_at=now_str if new_status in _terminal else None,
                 )
                 updates += 1
                 bar_tag = " (bar-detected)" if exit_price != price else ""
@@ -711,6 +714,7 @@ class TradeTracker:
                     exit_price=exit_price,
                     pnl_pct=pnl,
                     hit_at=now_str,
+                    closed_at=now_str,
                 )
                 count += 1
                 print(
@@ -728,6 +732,7 @@ class TradeTracker:
                 pnl_pct=pnl,
                 hit_at=now_str,
                 session="close",
+                closed_at=now_str,
             )
             count += 1
             print(f"[tracker-expire] {sym} expired @ ${price:.2f} (PnL: {pnl:+.2f}%)")

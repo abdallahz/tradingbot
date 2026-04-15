@@ -351,12 +351,13 @@ class TestFillSync:
             "pnl_pct": 3.0,
         }
         tracker._record_fill_to_supabase(fill)
-        mock_update.assert_called_once_with(
-            symbol="AAPL",
-            status="tp1_hit",
-            exit_price=105.0,
-            pnl_pct=3.0,
-        )
+        mock_update.assert_called_once()
+        call_kw = mock_update.call_args[1]
+        assert call_kw["symbol"] == "AAPL"
+        assert call_kw["status"] == "tp1_hit"
+        assert call_kw["exit_price"] == 105.0
+        assert call_kw["pnl_pct"] == 3.0
+        assert call_kw["closed_at"]  # should be a non-empty timestamp
 
     @patch("tradingbot.web.alert_store.update_outcome_by_symbol")
     def test_record_fill_maps_stopped_status(self, mock_update):
@@ -365,12 +366,13 @@ class TestFillSync:
         tracker = ExecutionTracker(mgr)
         fill = {"symbol": "TSLA", "outcome": "stopped", "exit_price": 97.0, "pnl_pct": -3.0}
         tracker._record_fill_to_supabase(fill)
-        mock_update.assert_called_once_with(
-            symbol="TSLA",
-            status="stopped",
-            exit_price=97.0,
-            pnl_pct=-3.0,
-        )
+        mock_update.assert_called_once()
+        call_kw = mock_update.call_args[1]
+        assert call_kw["symbol"] == "TSLA"
+        assert call_kw["status"] == "stopped"
+        assert call_kw["exit_price"] == 97.0
+        assert call_kw["pnl_pct"] == -3.0
+        assert call_kw["closed_at"]  # should be a non-empty timestamp
 
     def test_record_fill_swallows_import_error(self):
         """If Supabase isn't configured, don't crash."""
@@ -430,6 +432,7 @@ class TestUpdateOutcomeBySymbol:
             exit_price=105.0,
             pnl_pct=3.0,
             hit_at=None,
+            closed_at=None,
         )
 
     @patch("tradingbot.web.alert_store._get_supabase")

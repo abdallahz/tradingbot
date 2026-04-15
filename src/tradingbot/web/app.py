@@ -220,10 +220,25 @@ def dashboard():
         for o in outcomes:
             aid = o.get("alert_id")
             if aid:
+                # Convert closed_at UTC → ET for display
+                closed_et = ""
+                raw_closed = o.get("closed_at")
+                if raw_closed:
+                    try:
+                        from datetime import datetime, timezone
+                        import pytz
+                        _et = pytz.timezone("America/New_York")
+                        dt = datetime.fromisoformat(str(raw_closed).replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        closed_et = dt.astimezone(_et).strftime("%I:%M %p ET").lstrip("0")
+                    except Exception:
+                        closed_et = str(raw_closed)[:16]
                 outcome_map[aid] = {
                     "status": o.get("status", "open"),
                     "pnl_pct": round(float(o.get("pnl_pct") or 0.0), 2),
                     "exit_price": o.get("exit_price"),
+                    "closed_at": closed_et,
                 }
     except Exception:
         pass

@@ -177,6 +177,7 @@ class ExecutionTracker:
         Supabase outcome tracking so the dashboard shows real results.
         """
         try:
+            from datetime import datetime, timezone
             from tradingbot.web.alert_store import update_outcome_by_symbol
             status_map = {
                 "tp1_hit": "tp1_hit",
@@ -184,11 +185,14 @@ class ExecutionTracker:
                 "trailed_out": "trailed_out",
             }
             status = status_map.get(fill["outcome"], fill["outcome"])
+            now_str = datetime.now(timezone.utc).isoformat()
             update_outcome_by_symbol(
                 symbol=fill["symbol"],
                 status=status,
                 exit_price=fill["exit_price"],
                 pnl_pct=fill["pnl_pct"],
+                hit_at=now_str,
+                closed_at=now_str,
             )
         except Exception as exc:
             logger.warning(f"[exec-tracker] Supabase fill sync failed: {exc}")
