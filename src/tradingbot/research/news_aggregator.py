@@ -260,55 +260,68 @@ class NewsAggregator:
         return max(0.0, min(100.0, relevance))  # Clamp between 0-100
 
     def _fetch_earnings_calendar(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
-        """Fetch upcoming/recent earnings from Yahoo Finance calendar API."""
+        """Fetch upcoming/recent earnings from Nasdaq earnings calendar API.
+
+        Builds a 14-day forward calendar from Nasdaq (free, no auth, works
+        from datacenter IPs) and matches against our symbol list.
+        """
         import json as _json
+        import urllib.request as _urlreq
+        from datetime import date
+
         news: dict[str, list[NewsItem]] = {symbol: [] for symbol in symbols}
+        symbol_set = set(symbols)
 
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/json",
         }
 
-        for symbol in symbols:
+        # Build earnings map: symbol -> date string
+        earnings_map: dict[str, str] = {}
+        today = date.today()
+
+        for i in range(15):  # today + 14 days
+            d = today + timedelta(days=i)
+            url = f"https://api.nasdaq.com/api/calendar/earnings?date={d.isoformat()}"
             try:
-                url = (
-                    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
-                    f"?modules=calendarEvents"
-                )
-                import urllib.request as _urlreq
                 req = _urlreq.Request(url, headers=headers)
                 with _urlreq.urlopen(req, timeout=8) as resp:
                     data = _json.loads(resp.read())
-
-                result = data.get("quoteSummary", {}).get("result") or []
-                if not result:
-                    continue
-
-                calendar = result[0].get("calendarEvents", {})
-                earnings = calendar.get("earnings", {})
-                earnings_date_list = earnings.get("earningsDate", [])
-
-                for ed in earnings_date_list[:1]:  # next earnings date only
-                    ts = ed.get("raw")
-                    if not ts:
-                        continue
-                    earnings_dt = datetime.utcfromtimestamp(ts)
-                    days_away = (earnings_dt - datetime.utcnow()).days
-                    if -1 <= days_away <= 14:  # within 2 weeks
-                        label = "📅 Earnings today" if days_away == 0 else f"📅 Earnings in {days_away}d"
-                        relevance = 90.0 if days_away <= 1 else 75.0 if days_away <= 5 else 65.0
-                        news[symbol].append(NewsItem(
-                            symbol=symbol,
-                            headline=label,
-                            source="Yahoo Finance Earnings",
-                            published_at=datetime.utcnow(),
-                            relevance_score=relevance,
-                        ))
-                        logger.info(f"Earnings alert for {symbol}: {label}")
+                    rows = data.get("data", {}).get("rows") or []
+                    for r in rows:
+                        sym = r.get("symbol", "")
+                        if sym in symbol_set and sym not in earnings_map:
+                            earnings_map[sym] = d.isoformat()
             except Exception as e:
-                logger.debug(f"Earnings calendar fetch failed for {symbol}: {e}")
+                logger.debug(f"Nasdaq earnings calendar fetch failed for {d}: {e}")
                 continue
 
+        # Convert matches to NewsItems
+        for symbol, date_str in earnings_map.items():
+            try:
+                earnings_dt = datetime.strptime(date_str, "%Y-%m-%d")
+                days_away = (earnings_dt.date() - today).days
+                if days_away == 0:
+                    label = "📅 Earnings today"
+                elif days_away == 1:
+                    label = "📅 Earnings tomorrow"
+                else:
+                    label = f"📅 Earnings in {days_away}d"
+                relevance = 90.0 if days_away <= 1 else 75.0 if days_away <= 5 else 65.0
+                news[symbol].append(NewsItem(
+                    symbol=symbol,
+                    headline=label,
+                    source="Nasdaq Earnings Calendar",
+                    published_at=datetime.utcnow(),
+                    relevance_score=relevance,
+                ))
+                logger.info(f"Earnings alert for {symbol}: {label}")
+            except Exception as e:
+                logger.debug(f"Error processing earnings for {symbol}: {e}")
+                continue
+
+        logger.info(f"Nasdaq earnings calendar: {len(earnings_map)} symbols matched from {len(symbol_set)} universe")
         return news
 
     def _fetch_press_releases(self, symbols: list[str]) -> dict[str, list[NewsItem]]:
