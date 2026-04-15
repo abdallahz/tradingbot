@@ -822,7 +822,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
     try:
         resp = (
             sb.table("trade_outcomes")
-            .select("trade_date, symbol, status, pnl_pct, entry_price, stop_price, tp1_price, tp2_price, exit_price, alerted_at, closed_at, hit_at, side")
+            .select("trade_date, symbol, status, pnl_pct, entry_price, stop_price, tp1_price, tp2_price, exit_price, alerted_at, closed_at, hit_at, tp1_hit_at, side")
             .not_.is_("status", "null")
             .order("trade_date")
             .limit(5000)
