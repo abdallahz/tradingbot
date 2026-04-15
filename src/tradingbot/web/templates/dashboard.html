@@ -2001,6 +2001,19 @@
                 <div class="pnl-stat-label">Portfolio</div>
             </div>
             <div class="pnl-stat">
+                <div class="pnl-stat-value {% if trade_stats.portfolio_pnl_dollar >= 0 %}green{% else %}{% endif %}"
+                    style="{% if trade_stats.portfolio_pnl_dollar < 0 %}color:var(--red){% endif %}">{{
+                    "%+,.0f"|format(trade_stats.portfolio_pnl_dollar) }}</div>
+                <div class="pnl-stat-label">P&amp;L $</div>
+            </div>
+            <div class="pnl-stat">
+                <div class="pnl-stat-value {% if trade_stats.avg_pnl >= 0 %}green{% else %}{% endif %}"
+                    style="{% if trade_stats.avg_pnl < 0 %}color:var(--red){% endif %}">{{
+                    "%+.2f"|format(trade_stats.avg_pnl) }}%</div>
+                <div class="pnl-stat-label">Avg Trade</div>
+            </div>
+            <div class="pnl-divider"></div>
+            <div class="pnl-stat">
                 <div class="pnl-stat-value green">{{ "%+.2f"|format(trade_stats.best) }}%</div>
                 <div class="pnl-stat-label">Best</div>
             </div>
@@ -2008,6 +2021,19 @@
                 <div class="pnl-stat-value" style="color:var(--red)">{{ "%+.2f"|format(trade_stats.worst) }}%</div>
                 <div class="pnl-stat-label">Worst</div>
             </div>
+            {% if trade_stats.max_concurrent > 0 %}
+            <div class="pnl-stat">
+                <div class="pnl-stat-value blue">{{ trade_stats.max_concurrent }}</div>
+                <div class="pnl-stat-label">Peak Pos</div>
+            </div>
+            {% endif %}
+            {% if trade_stats.capital_used_pct > 0 %}
+            <div class="pnl-stat">
+                <div class="pnl-stat-value" style="color:var(--purple)">{{ "%.0f"|format(trade_stats.capital_used_pct)
+                    }}%</div>
+                <div class="pnl-stat-label">Capital Used</div>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -2027,7 +2053,7 @@
             </div>
             <div class="perf-body">
                 <!-- Daily P&L bar chart -->
-                <div style="font-size:11px; color:var(--sub); padding:12px 0 4px;">Daily P&L %</div>
+                <div style="font-size:11px; color:var(--sub); padding:12px 0 4px;">Daily Portfolio Return %</div>
                 {% set max_pnl = [] %}
                 {% for d in perf_history %}
                 {% if d.day_pnl|abs > (max_pnl[0] if max_pnl else 0) %}
@@ -2082,7 +2108,7 @@
                         <div class="perf-alltime-val {% if last.cum_pnl >= 0 %}green{% endif %}"
                             style="{% if last.cum_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(last.cum_pnl)
                             }}%</div>
-                        <div class="perf-alltime-lbl">Cumulative P&amp;L</div>
+                        <div class="perf-alltime-lbl">Cumulative Portfolio</div>
                     </div>
                     {% endif %}
                 </div>
@@ -2096,8 +2122,9 @@
                             <th class="num">W</th>
                             <th class="num">L</th>
                             <th class="num">Win %</th>
-                            <th class="num">Day P&L</th>
-                            <th class="num">Cum P&L</th>
+                            <th class="num">Avg Trade</th>
+                            <th class="num">Portfolio</th>
+                            <th class="num">Cumulative</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2108,6 +2135,9 @@
                             <td class="num" style="color:var(--green)">{{ d.wins }}</td>
                             <td class="num" style="color:var(--red)">{{ d.losses }}</td>
                             <td class="num">{{ d.win_rate }}%</td>
+                            <td class="num"
+                                style="color:{% if d.avg_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{
+                                "%+.2f"|format(d.avg_pnl) }}%</td>
                             <td class="num"
                                 style="color:{% if d.day_pnl >= 0 %}var(--green){% else %}var(--red){% endif %}">{{
                                 "%+.2f"|format(d.day_pnl) }}%</td>
@@ -2448,8 +2478,8 @@
                     </span>
                     <span>
                         {% if a.outcome.status == 'tp1_hit' %}TP1 Hit
-                        {% elif a.outcome.status == 'tp2_hit' %}TP2 Hit
-                        {% elif a.outcome.status == 'tp1_locked' %}TP1 Locked
+                        {% elif a.outcome.status == 'tp2_hit' %}TP1 → TP2
+                        {% elif a.outcome.status == 'tp1_locked' %}TP1 → Locked
                         {% elif a.outcome.status == 'trailed_out' %}Trailed Out
                         {% elif a.outcome.status == 'breakeven' %}Breakeven
                         {% elif a.outcome.status == 'stopped' %}Stopped Out

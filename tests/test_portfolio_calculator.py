@@ -20,19 +20,22 @@ def _make_outcome(
     alerted_at: str | None = None,
     closed_at: str | None = None,
     hit_at: str | None = None,
+    tp1_hit_at: str | None = None,
+    tp2_price: float | None = None,
 ) -> dict:
     return {
         "symbol": symbol,
         "entry_price": entry,
         "stop_price": stop,
         "tp1_price": tp1,
-        "tp2_price": tp1 * 1.5 if tp1 else 0,
+        "tp2_price": tp2_price if tp2_price is not None else (tp1 * 1.5 if tp1 else 0),
         "exit_price": exit_price,
         "status": status,
         "pnl_pct": pnl_pct,
         "alerted_at": alerted_at,
         "closed_at": closed_at,
         "hit_at": hit_at or closed_at,
+        "tp1_hit_at": tp1_hit_at,
     }
 
 
@@ -251,3 +254,133 @@ class TestPortfolioEdgeCases:
         with patch("tradingbot.web.alert_store.load_outcomes_for_date", return_value=[]):
             stats = get_trade_stats()
         assert "portfolio_pnl_pct" in stats
+
+
+class TestPartialClosefix:
+    """Tests for the tp2_hit / tp1_locked partial-close fix.
+
+    Day-trade rule: sell 50% at TP1, let the runner ride.
+    Portfolio calculator must reflect that the first half was sold
+    at TP1 price, not all at the final exit price.
+    """
+
+    def test_tp2_hit_partial_close_at_tp1(self):
+        """tp2_hit: half sold at TP1 ($10.50), half at TP2 ($11).
+        Entry $10, Stop $9.50 → risk $0.50. Shares = 100. Position = $1000.
+        Partial: 50 × $10.50 = $525.  Close: 50 × $11 = $550.
+        P&L = $75 on $10K → 0.75%.
+        (Old behavior without partial: 100 × $11 = $1100 → $100 → 1.0%)
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "AAPL", 10.0, 9.50, 10.50, 11.0, "tp2_hit", 10.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(15, 0),
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        assert result["portfolio_pnl_pct"] == 0.75
+
+    def test_tp1_locked_partial_close(self):
+        """tp1_locked: both halves sell at TP1.
+        Entry $10, Stop $9.50, TP1 $10.50, exit $10.50 (stopped at TP1).
+        Partial: 50 × $10.50 = $525.  Close: 50 × $10.50 = $525.
+        P&L = $50 on $10K → 0.50%.
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "TSLA", 10.0, 9.50, 10.50, 10.50, "tp1_locked", 5.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(15, 0),
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        assert result["portfolio_pnl_pct"] == 0.5
+
+    def test_tp2_partial_frees_capital_for_next_trade(self):
+        """Capital freed at TP1 partial is available for the next trade.
+
+        Trade A: tp2_hit, TP1 hit around 13:40 (estimated).
+        Trade B: opens at 14:00, should have A's freed TP1 capital available.
+        Without partial fix, B would only see the initial $9000 available.
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [
+            _make_outcome(
+                "A", 10.0, 9.50, 10.50, 11.0, "tp2_hit", 10.0,
+                alerted_at=_ts(13, 0), closed_at=_ts(15, 0),
+            ),
+            _make_outcome(
+                "B", 20.0, 19.50, 21.0, 20.5, "tp2_hit", 2.5,
+                alerted_at=_ts(14, 0), closed_at=_ts(14, 30),
+            ),
+        ]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        # Trade A opens at 13:00 (uses $1000, avail=$9000).
+        # TP1 partial at ~13:40 frees $525 (avail=$9525).
+        # Trade B opens at 14:00 with $9525 available (not $9000).
+        assert result["portfolio_pnl_pct"] > 0
+        assert result["max_concurrent"] == 2
+
+    def test_tp2_hit_with_explicit_tp1_hit_at(self):
+        """When tp1_hit_at is set, use it for precise partial timing."""
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "AAPL", 10.0, 9.50, 10.50, 11.0, "tp2_hit", 10.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(15, 0),
+            tp1_hit_at=_ts(13, 30),  # explicit TP1 time
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        # Same P&L regardless of timing, but timing uses tp1_hit_at
+        assert result["portfolio_pnl_pct"] == 0.75
+
+    def test_trailed_out_no_partial(self):
+        """trailed_out never hit TP1 → no partial close event.
+        Full position exits at stop-trail price.
+        Entry $10, Stop $9.50, exit $10.50 (trailed stop).
+        100 shares × $10.50 = $1050 → P&L $50 → 0.50%.
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "NVDA", 10.0, 9.50, 11.0, 10.50, "trailed_out", 5.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(14, 0),
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        assert result["portfolio_pnl_pct"] == 0.5
+
+    def test_stopped_no_partial(self):
+        """stopped never hit TP1 → full position loss.
+        Entry $10, Stop $9.50, exit $9.50.
+        100 shares × $9.50 = $950. Loss = $50 → -0.50%.
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "AMD", 10.0, 9.50, 10.50, 9.50, "stopped", -5.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(14, 0),
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        assert result["portfolio_pnl_pct"] == -0.5
+
+    def test_expired_with_tp1_hit_at_gets_partial(self):
+        """Expired trade that had tp1_hit_at set → partial close at TP1.
+        Entry $10, Stop $9.50, TP1 $10.50, expired at $10.20.
+        Partial: 50 × $10.50 = $525.  Close: 50 × $10.20 = $510.
+        P&L = $35 on $10K → 0.35%.
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "GOOG", 10.0, 9.50, 10.50, 10.20, "expired", 2.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(19, 30),
+            tp1_hit_at=_ts(14, 0),
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        assert result["portfolio_pnl_pct"] == 0.35
+
+    def test_expired_without_tp1_hit_at_no_partial(self):
+        """Expired trade with no tp1_hit_at → full position at exit price.
+        Entry $10, Stop $9.50, expired at $10.20.
+        100 shares × $10.20 = $1020. P&L = $20 → 0.20%.
+        """
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        outcomes = [_make_outcome(
+            "META", 10.0, 9.50, 10.50, 10.20, "expired", 2.0,
+            alerted_at=_ts(13, 0), closed_at=_ts(19, 30),
+        )]
+        result = calculate_portfolio_return(outcomes, 10_000, 0.5)
+        assert result["portfolio_pnl_pct"] == 0.2

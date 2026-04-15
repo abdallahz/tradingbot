@@ -260,6 +260,9 @@ class TelegramNotifier:
         worst = stats.get("worst", 0.0)
 
         portfolio_pnl = stats.get("portfolio_pnl_pct", avg_pnl)
+        portfolio_dollar = stats.get("portfolio_pnl_dollar", 0.0)
+        capital_used_pct = stats.get("capital_used_pct", 0.0)
+        max_concurrent = stats.get("max_concurrent", 0)
         pnl_emoji = "🟢" if portfolio_pnl >= 0 else "🔴"
         wr_emoji = "🔥" if win_rate >= 60 else "✅" if win_rate >= 40 else "⚠️"
 
@@ -269,8 +272,9 @@ class TelegramNotifier:
             f"Alerts: *{total}* | Scans: {scan_count}",
             f"Wins: *{wins}* | Losses: *{losses}* | BE: {breakeven} | Expired: {expired}",
             f"Win Rate: {wr_emoji} *{win_rate:.0f}%*",
-            f"Portfolio: {pnl_emoji} *{portfolio_pnl:+.2f}%* (avg {avg_pnl:+.2f}%)",
-            f"Best: *{best:+.2f}%* | Worst: *{worst:+.2f}%*",
+            f"Portfolio: {pnl_emoji} *{portfolio_pnl:+.2f}%* (${portfolio_dollar:+,.0f})",
+            f"Avg Trade: *{avg_pnl:+.2f}%* | Best: *{best:+.2f}%* | Worst: *{worst:+.2f}%*",
+            f"Peak Positions: {max_concurrent} | Capital Used: {capital_used_pct:.0f}%",
         ]
 
         # Per-trade breakdown
@@ -290,7 +294,8 @@ class TelegramNotifier:
 
                 status_map = {
                     "tp1_hit": "🎯 TP1",
-                    "tp2_hit": "🎯🎯 TP2",
+                    "tp2_hit": "� TP1→TP2",
+                    "tp1_locked": "🔒 TP1→Lock",
                     "trailed_out": "📈 Trailed",
                     "stopped": "🛑 Stop",
                     "breakeven": "⚖️ BE",

@@ -433,6 +433,7 @@ class TestUpdateOutcomeBySymbol:
             pnl_pct=3.0,
             hit_at=None,
             closed_at=None,
+            tp1_hit_at=None,
         )
 
     @patch("tradingbot.web.alert_store._get_supabase")
