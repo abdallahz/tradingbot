@@ -300,9 +300,24 @@ class TelegramNotifier:
                 side_arrow = "↗" if side == "long" else "↘"
                 pnl_str = f"{pnl:+.2f}%" if pnl != 0 else "—"
 
+                # Format exit time in ET
+                closed_str = ""
+                raw_closed = o.get("closed_at")
+                if raw_closed:
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        import pytz as _ptz
+                        _et_tz = _ptz.timezone("America/New_York")
+                        _cdt = _dt.fromisoformat(str(raw_closed).replace("Z", "+00:00"))
+                        if _cdt.tzinfo is None:
+                            _cdt = _cdt.replace(tzinfo=_tz.utc)
+                        closed_str = f" 🕐{_cdt.astimezone(_et_tz).strftime('%I:%M %p').lstrip('0')}"
+                    except Exception:
+                        pass
+
                 lines.append(
                     f"  {side_arrow} `{sym}` {status_label} | "
-                    f"${entry:.2f}→${exit_p:.2f} | {pnl_str}"
+                    f"${entry:.2f}→${exit_p:.2f} | {pnl_str}{closed_str}"
                 )
 
         text = "\n".join(lines)
@@ -553,6 +568,14 @@ class TelegramNotifier:
             lines.append("  Take the quick profit, skip TP2.")
 
         return "\n".join(lines)
+
+    # ── Public messaging API ───────────────────────────────────────────────
+
+    def send_message(self, text: str, parse_mode: str = "Markdown") -> bool:
+        """Send a plain text message (public entry-point for execution alerts)."""
+        if not self._enabled:
+            return False
+        return self._send_message(text, parse_mode=parse_mode)
 
     # ── Low-level HTTP helpers ─────────────────────────────────────────────
 

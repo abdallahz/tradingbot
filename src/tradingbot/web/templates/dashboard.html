@@ -2461,6 +2461,9 @@
                     <span class="outcome-pnl {% if a.outcome.pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
                         {{ "%+.2f"|format(a.outcome.pnl_pct) }}%
                     </span>
+                    {% if a.outcome.closed_at %}
+                    <span class="outcome-exit" title="Closed at (ET)">🕐 {{ a.outcome.closed_at }}</span>
+                    {% endif %}
                     {% endif %}
                 </div>
                 {% endif %}
