@@ -107,7 +107,8 @@ class SECFilingsFetcher:
 
                 # Filter by time and convert to standard format
                 for filing in symbol_filings:
-                    filed_dt = datetime.fromisoformat(filing["filed_date"])
+                    filed_str = filing["filed_date"].replace("Z", "")
+                    filed_dt = datetime.fromisoformat(filed_str)
                     if filed_dt >= cutoff_time:
                         filings.append(filing)
 
