@@ -716,6 +716,19 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     best = round(max(pnls), 2) if pnls else 0.0
     worst = round(min(pnls), 2) if pnls else 0.0
 
+    # Portfolio-level return (account simulation)
+    try:
+        from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
+        from tradingbot.config import Config
+        risk_cfg = Config().risk()
+        starting_capital = float(risk_cfg.get("execution", {}).get("max_notional_per_trade", 10_000)) * int(risk_cfg.get("max_trades_per_day", 8))
+        risk_pct = float(risk_cfg.get("risk_per_trade_pct", 0.5))
+        port = calculate_portfolio_return(outcomes, starting_capital, risk_pct)
+        portfolio_pnl = port["portfolio_pnl_pct"]
+    except Exception as exc:
+        log.warning(f"[alert_store] portfolio calc fallback: {exc}")
+        portfolio_pnl = avg_pnl  # fallback to average
+
     return {
         "total": total,
         "wins": wins,
@@ -727,6 +740,7 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
         "avg_pnl": avg_pnl,
         "best": best,
         "worst": worst,
+        "portfolio_pnl_pct": portfolio_pnl,
     }
 
 
@@ -773,7 +787,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
             decided = wins + losses
             pnls = [float(r.get("pnl_pct") or 0) for r in rows
                     if r.get("status") not in ("open",)]
-            day_pnl = sum(pnls)
+            day_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0.0
             cum_pnl += day_pnl
             history.append({
                 "date": d,
