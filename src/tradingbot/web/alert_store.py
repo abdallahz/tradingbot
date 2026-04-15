@@ -732,7 +732,9 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
         return {
             "total": 0, "wins": 0, "losses": 0, "open": 0,
             "expired": 0, "breakeven": 0, "win_rate": 0.0, "avg_pnl": 0.0,
-            "best": 0.0, "worst": 0.0,
+            "best": 0.0, "worst": 0.0, "portfolio_pnl_pct": 0.0,
+            "portfolio_pnl_dollar": 0.0, "starting_capital": 0.0,
+            "capital_used_pct": 0.0, "max_concurrent": 0,
         }
 
     wins = 0
@@ -819,7 +821,7 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
     try:
         resp = (
             sb.table("trade_outcomes")
-            .select("trade_date, symbol, status, pnl_pct, entry_price, stop_price, tp1_price, tp2_price, exit_price, alerted_at, closed_at, hit_at, tp1_hit_at, side")
+            .select("trade_date, symbol, status, pnl_pct, entry_price, stop_price, tp1_price, tp2_price, exit_price, alerted_at, closed_at, hit_at, side")
             .not_.is_("status", "null")
             .order("trade_date")
             .limit(5000)
