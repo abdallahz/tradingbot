@@ -61,8 +61,9 @@ class TradeTracker:
             # Fallback: read from broker.yaml via Config system
             if not key or not secret:
                 try:
-                    from tradingbot.config import Config
-                    cfg = Config().broker().get("alpaca", {})
+                    from tradingbot.config import ConfigLoader
+                    from pathlib import Path
+                    cfg = ConfigLoader(Path(__file__).resolve().parents[2]).broker().get("alpaca", {})
                     key = key or cfg.get("api_key", "")
                     secret = secret or cfg.get("api_secret", "")
                 except Exception:

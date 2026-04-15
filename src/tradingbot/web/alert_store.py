@@ -777,8 +777,9 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     max_concurrent = 0
     try:
         from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
-        from tradingbot.config import Config
-        risk_cfg = Config().risk()
+        from tradingbot.config import ConfigLoader
+        _root = Path(__file__).resolve().parents[3]
+        risk_cfg = ConfigLoader(_root).risk()
         starting_capital = float(risk_cfg.get("execution", {}).get("max_notional_per_trade", 10_000)) * int(risk_cfg.get("max_trades_per_day", 8))
         risk_pct = float(risk_cfg.get("risk_per_trade_pct", 0.5))
         port = calculate_portfolio_return(outcomes, starting_capital, risk_pct)
@@ -841,8 +842,9 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
         # Portfolio calculator for per-day returns
         try:
             from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
-            from tradingbot.config import Config
-            risk_cfg = Config().risk()
+            from tradingbot.config import ConfigLoader
+            _root = Path(__file__).resolve().parents[3]
+            risk_cfg = ConfigLoader(_root).risk()
             starting_capital = float(risk_cfg.get("execution", {}).get("max_notional_per_trade", 10_000)) * int(risk_cfg.get("max_trades_per_day", 8))
             risk_pct = float(risk_cfg.get("risk_per_trade_pct", 0.5))
             _use_portfolio = True
