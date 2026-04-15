@@ -202,15 +202,17 @@ class TestPortfolioCalculator:
 class TestPortfolioEdgeCases:
     """Edge cases and error handling."""
 
-    def test_zero_stop_distance_skipped(self):
-        """Trade with stop == entry should be skipped (div by zero)."""
+    def test_zero_stop_distance_uses_fallback_sizing(self):
+        """Trade with stop == entry should use fallback notional sizing."""
         from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
         outcomes = [_make_outcome(
             "BAD", 10.0, 10.0, 11.0, 10.5, "tp2_hit", 5.0,
             alerted_at=_ts(13, 0), closed_at=_ts(14, 0),
         )]
         result = calculate_portfolio_return(outcomes, 10_000, 0.5)
-        assert result["portfolio_pnl_pct"] == 0.0
+        # Should allocate capital and produce positive P&L (exit > entry)
+        assert result["portfolio_pnl_pct"] > 0.0
+        assert result["max_concurrent"] == 1
 
     def test_missing_entry_price_skipped(self):
         from tradingbot.risk.portfolio_calculator import calculate_portfolio_return
@@ -219,6 +221,18 @@ class TestPortfolioEdgeCases:
                      "pnl_pct": -1, "alerted_at": _ts(13, 0), "closed_at": _ts(14, 0)}]
         result = calculate_portfolio_return(outcomes, 10_000, 0.5)
         assert result["portfolio_pnl_pct"] == 0.0
+
+    def test_parse_ts_variable_fractional_seconds(self):
+        """_parse_ts should handle 5, 6, 7+ digit fractional seconds."""
+        from tradingbot.risk.portfolio_calculator import _parse_ts
+        # 5 digits (Supabase sometimes returns this)
+        assert _parse_ts("2026-04-13T13:45:52.43732+00:00") is not None
+        # 6 digits (standard microseconds)
+        assert _parse_ts("2026-04-13T15:37:45.925907+00:00") is not None
+        # No fractional seconds
+        assert _parse_ts("2026-04-13T15:37:45+00:00") is not None
+        # With Z suffix
+        assert _parse_ts("2026-04-13T15:37:45.123456Z") is not None
 
     def test_partial_close_tp1_hit(self):
         """tp1_hit status: 50% sold at tp1, rest still allocated."""

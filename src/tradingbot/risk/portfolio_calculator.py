@@ -79,16 +79,19 @@ def calculate_portfolio_return(
             entry = float(trade.get("entry_price") or 0)
             stop = float(trade.get("stop_price") or 0)
 
-            if entry <= 0 or stop <= 0:
+            if entry <= 0:
                 continue
 
             stop_distance = abs(entry - stop)
-            if stop_distance <= 0:
-                continue
-
-            # Risk-based position sizing
-            ideal_shares = risk_amount / stop_distance
-            ideal_value = ideal_shares * entry
+            if stop_distance > 0:
+                # Risk-based position sizing
+                ideal_shares = risk_amount / stop_distance
+                ideal_value = ideal_shares * entry
+            else:
+                # Fallback: entry == stop (e.g. scanner didn't set stop)
+                # Use a fixed notional cap (same as max_notional_per_trade)
+                ideal_value = min(risk_amount / (0.025 * entry) * entry, 10_000.0)
+                ideal_shares = ideal_value / entry if entry > 0 else 0
 
             # Cap at available capital
             actual_value = min(ideal_value, available)
@@ -261,11 +264,22 @@ def _infer_tp1_time(
 
 
 def _parse_ts(raw: str | None) -> datetime | None:
-    """Parse an ISO timestamp string to a timezone-aware datetime."""
+    """Parse an ISO timestamp string to a timezone-aware datetime.
+
+    Handles variable-length fractional seconds (5, 6, 7+ digits)
+    which ``datetime.fromisoformat()`` on Python <3.11 cannot parse.
+    """
     if not raw:
         return None
     try:
+        import re as _re
         s = str(raw).replace("Z", "+00:00")
+        # Normalise fractional seconds to exactly 6 digits (microseconds)
+        s = _re.sub(
+            r"(\d{2}:\d{2}:\d{2})\.(\d+)",
+            lambda m: f"{m.group(1)}.{m.group(2)[:6].ljust(6, '0')}",
+            s,
+        )
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
