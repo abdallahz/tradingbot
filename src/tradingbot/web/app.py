@@ -208,8 +208,10 @@ def dashboard():
 
     # Load trade outcome data for P&L summary and per-card badges
     trade_stats = {"total": 0, "wins": 0, "losses": 0, "open": 0,
-                   "expired": 0, "win_rate": 0.0, "avg_pnl": 0.0,
-                   "best": 0.0, "worst": 0.0}
+                   "expired": 0, "breakeven": 0, "win_rate": 0.0, "avg_pnl": 0.0,
+                   "best": 0.0, "worst": 0.0, "portfolio_pnl_pct": 0.0,
+                   "portfolio_pnl_dollar": 0.0, "starting_capital": 0.0,
+                   "capital_used_pct": 0.0, "max_concurrent": 0}
     outcome_map = {}  # alert_id → {status, pnl_pct, exit_price}
     perf_history = []  # daily performance for chart
     try:
