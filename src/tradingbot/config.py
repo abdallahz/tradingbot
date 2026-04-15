@@ -67,7 +67,7 @@ class ConfigLoader:
         news.setdefault("sec_filings", True)
         news.setdefault("use_real_sec", True)
         news.setdefault("rss_feeds", True)
-        news.setdefault("rss_sources", ["yahoo_finance", "marketwatch", "benzinga"])
+        news.setdefault("rss_sources", ["bloomberg", "marketwatch", "cnbc", "investing", "prnewswire"])
         news.setdefault("earnings_calendar", True)
         news.setdefault("press_releases", True)
         news.setdefault("twitter_enabled", False)

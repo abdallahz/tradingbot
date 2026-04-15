@@ -2,10 +2,11 @@
 RSS Feed Fetcher - Real-time financial news from public sources
 
 Fetches news from free RSS feeds:
-- Yahoo Finance News
-- SeekingAlpha 
+- Bloomberg Markets
 - MarketWatch
-- Benzinga
+- CNBC
+- Investing.com
+- PR Newswire (Financial Services)
 
 No authentication required.
 """
@@ -28,9 +29,11 @@ class RSSFeedFetcher:
     """Fetch financial news from free RSS feeds."""
     
     FEEDS = {
-        "yahoo_finance": "https://feeds.bloomberg.com/markets/news.rss",
+        "bloomberg": "https://feeds.bloomberg.com/markets/news.rss",
         "marketwatch": "https://feeds.marketwatch.com/marketwatch/topstories/",
-        "benzinga": "https://feeds.benzinga.com/feed",
+        "cnbc": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
+        "investing": "https://www.investing.com/rss/news.rss",
+        "prnewswire": "https://www.prnewswire.com/rss/financial-services-latest-news/financial-services-latest-news-list.rss",
     }
     
     # Keywords indicating bullish sentiment
@@ -79,7 +82,7 @@ class RSSFeedFetcher:
                 - title: Article headline
                 - link: URL to article
                 - published: ISO datetime string
-                - source: Feed name (yahoo_finance, marketwatch, benzinga)
+                - source: Feed name (bloomberg, marketwatch, cnbc, investing, prnewswire)
                 - symbols: List of stock symbols mentioned
                 - sentiment: "bullish", "bearish", or "neutral"
                 - confidence: Sentiment confidence (0-1)
