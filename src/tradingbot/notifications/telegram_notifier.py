@@ -259,7 +259,8 @@ class TelegramNotifier:
         best = stats.get("best", 0.0)
         worst = stats.get("worst", 0.0)
 
-        pnl_emoji = "🟢" if avg_pnl >= 0 else "🔴"
+        portfolio_pnl = stats.get("portfolio_pnl_pct", avg_pnl)
+        pnl_emoji = "🟢" if portfolio_pnl >= 0 else "🔴"
         wr_emoji = "🔥" if win_rate >= 60 else "✅" if win_rate >= 40 else "⚠️"
 
         lines = [
@@ -268,7 +269,7 @@ class TelegramNotifier:
             f"Alerts: *{total}* | Scans: {scan_count}",
             f"Wins: *{wins}* | Losses: *{losses}* | BE: {breakeven} | Expired: {expired}",
             f"Win Rate: {wr_emoji} *{win_rate:.0f}%*",
-            f"Avg P&L: {pnl_emoji} *{avg_pnl:+.2f}%*",
+            f"Portfolio: {pnl_emoji} *{portfolio_pnl:+.2f}%* (avg {avg_pnl:+.2f}%)",
             f"Best: *{best:+.2f}%* | Worst: *{worst:+.2f}%*",
         ]
 

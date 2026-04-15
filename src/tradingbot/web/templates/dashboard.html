@@ -1995,10 +1995,10 @@
                 <div class="pnl-stat-label">Win Rate</div>
             </div>
             <div class="pnl-stat">
-                <div class="pnl-stat-value {% if trade_stats.avg_pnl >= 0 %}green{% else %}{% endif %}"
-                    style="{% if trade_stats.avg_pnl < 0 %}color:var(--red){% endif %}">{{
-                    "%+.2f"|format(trade_stats.avg_pnl) }}%</div>
-                <div class="pnl-stat-label">Avg P&amp;L</div>
+                <div class="pnl-stat-value {% if trade_stats.portfolio_pnl_pct >= 0 %}green{% else %}{% endif %}"
+                    style="{% if trade_stats.portfolio_pnl_pct < 0 %}color:var(--red){% endif %}">{{
+                    "%+.2f"|format(trade_stats.portfolio_pnl_pct) }}%</div>
+                <div class="pnl-stat-label">Portfolio</div>
             </div>
             <div class="pnl-stat">
                 <div class="pnl-stat-value green">{{ "%+.2f"|format(trade_stats.best) }}%</div>
@@ -2362,9 +2362,11 @@
                 <div class="card-top">
                     <div class="card-symbol">{{ a.symbol }}
                         {% if a.source == 'vps-ibkr' %}
-                        <span style="font-size:0.55em; background:#1e90ff; color:#fff; padding:1px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;">VPS</span>
+                        <span
+                            style="font-size:0.55em; background:#1e90ff; color:#fff; padding:1px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;">VPS</span>
                         {% elif a.source == 'render-alpaca' %}
-                        <span style="font-size:0.55em; background:#6c757d; color:#fff; padding:1px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;">RENDER</span>
+                        <span
+                            style="font-size:0.55em; background:#6c757d; color:#fff; padding:1px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;">RENDER</span>
                         {% endif %}
                     </div>
                 </div>
