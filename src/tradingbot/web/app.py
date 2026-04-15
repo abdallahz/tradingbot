@@ -430,8 +430,8 @@ def api_diag_tracker():
     result["alpaca_key_source"] = "env" if key else "none"
     if not key or not secret:
         try:
-            from tradingbot.config import Config
-            cfg = Config().broker().get("alpaca", {})
+            from tradingbot.config import ConfigLoader
+            cfg = ConfigLoader(_find_root()).broker().get("alpaca", {})
             key = key or cfg.get("api_key", "")
             secret = secret or cfg.get("api_secret", "")
             if key:
