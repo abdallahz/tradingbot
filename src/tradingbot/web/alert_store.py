@@ -748,23 +748,23 @@ def get_trade_stats(trade_date: str | None = None) -> dict[str, Any]:
     for o in outcomes:
         st = o.get("status", "open")
         pnl = float(o.get("pnl_pct") or 0.0)
-        if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
-            wins += 1
-            pnls.append(pnl)
-        elif st == "stopped":
-            losses += 1
-            pnls.append(pnl)
-        elif st == "breakeven":
-            breakeven += 1
-            pnls.append(0.0)  # scratch trade
-        elif st == "expired":
-            expired += 1
-            pnls.append(pnl)
-        else:
+        if st == "open":
             open_count += 1
+            continue
+        # Track mechanical status separately
+        if st == "expired":
+            expired += 1
+        # Classify by actual PnL: positive = win, negative = loss
+        pnls.append(pnl)
+        if pnl > 0:
+            wins += 1
+        elif pnl < 0:
+            losses += 1
+        else:
+            breakeven += 1
 
     total = len(outcomes)
-    decided = wins + losses  # exclude open, expired, breakeven from win rate
+    decided = wins + losses
     win_rate = round((wins / decided * 100) if decided > 0 else 0.0, 1)
     avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0.0
     best = round(max(pnls), 2) if pnls else 0.0
@@ -859,9 +859,10 @@ def get_performance_history(days: int = 30) -> list[dict[str, Any]]:
         cum_pnl = 0.0
         for d in sorted(by_date.keys())[-days:]:
             rows = by_date[d]
-            wins = sum(1 for r in rows if r.get("status") in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"))
-            losses = sum(1 for r in rows if r.get("status") == "stopped")
-            expired = sum(1 for r in rows if r.get("status") == "expired")
+            closed = [r for r in rows if r.get("status") not in ("open", None)]
+            expired = sum(1 for r in closed if r.get("status") == "expired")
+            wins = sum(1 for r in closed if float(r.get("pnl_pct") or 0) > 0)
+            losses = sum(1 for r in closed if float(r.get("pnl_pct") or 0) < 0)
             total = len(rows)
             decided = wins + losses
             pnls = [float(r.get("pnl_pct") or 0) for r in rows
@@ -959,36 +960,33 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             rr_planned = float(alert.get("risk_reward") or 0)
             cat_score = float(alert.get("catalyst_score") or 0)
 
-            # Overall
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
-                wins += 1
-                win_pnls.append(pnl)
-                all_pnls.append(pnl)
-                # streak
-                if streak_type == "win":
-                    streak_current += 1
-                else:
-                    streak_type = "win"
-                    streak_current = 1
-                max_win_streak = max(max_win_streak, streak_current)
-            elif st == "stopped":
-                losses += 1
-                loss_pnls.append(pnl)
-                all_pnls.append(pnl)
-                if streak_type == "loss":
-                    streak_current += 1
-                else:
-                    streak_type = "loss"
-                    streak_current = 1
-                max_loss_streak = max(max_loss_streak, streak_current)
-            elif st == "breakeven":
-                breakeven += 1
-                all_pnls.append(0.0)
-            elif st == "expired":
-                expired += 1
-                all_pnls.append(pnl)
-            else:
+            # Overall — classify by actual PnL
+            if st == "open":
                 open_ct += 1
+            else:
+                all_pnls.append(pnl)
+                if st == "expired":
+                    expired += 1
+                if pnl > 0:
+                    wins += 1
+                    win_pnls.append(pnl)
+                    if streak_type == "win":
+                        streak_current += 1
+                    else:
+                        streak_type = "win"
+                        streak_current = 1
+                    max_win_streak = max(max_win_streak, streak_current)
+                elif pnl < 0:
+                    losses += 1
+                    loss_pnls.append(pnl)
+                    if streak_type == "loss":
+                        streak_current += 1
+                    else:
+                        streak_type = "loss"
+                        streak_current = 1
+                    max_loss_streak = max(max_loss_streak, streak_current)
+                else:
+                    breakeven += 1
 
             # Best/worst
             if st not in ("open",) and pnl > best_pnl:
@@ -1019,11 +1017,11 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
             # By session
             s_stats = by_session.setdefault(session, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
             s_stats["total"] += 1
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
-                s_stats["wins"] += 1
-            elif st == "stopped":
-                s_stats["losses"] += 1
-            if st not in ("open",):
+            if st != "open":
+                if pnl > 0:
+                    s_stats["wins"] += 1
+                elif pnl < 0:
+                    s_stats["losses"] += 1
                 s_stats["pnl"] += pnl
 
             # By pattern
@@ -1031,33 +1029,33 @@ def get_detailed_analytics(days: int = 30) -> dict[str, Any]:
                 for p in patterns:
                     p_stats = by_pattern.setdefault(p, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
                     p_stats["total"] += 1
-                    if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
-                        p_stats["wins"] += 1
-                    elif st == "stopped":
-                        p_stats["losses"] += 1
-                    if st not in ("open",):
+                    if st != "open":
+                        if pnl > 0:
+                            p_stats["wins"] += 1
+                        elif pnl < 0:
+                            p_stats["losses"] += 1
                         p_stats["pnl"] += pnl
 
             # By confluence grade
             grade = alert.get("confluence_grade") or "N/A"
             g_stats = by_grade.setdefault(grade, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
             g_stats["total"] += 1
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
-                g_stats["wins"] += 1
-            elif st == "stopped":
-                g_stats["losses"] += 1
-            if st not in ("open",):
+            if st != "open":
+                if pnl > 0:
+                    g_stats["wins"] += 1
+                elif pnl < 0:
+                    g_stats["losses"] += 1
                 g_stats["pnl"] += pnl
 
             # By volume classification
             vol_cls = alert.get("volume_classification") or "N/A"
             v_stats = by_volume_class.setdefault(vol_cls, {"wins": 0, "losses": 0, "total": 0, "pnl": 0.0})
             v_stats["total"] += 1
-            if st in ("tp1_hit", "tp2_hit", "tp1_locked", "trailed_out"):
-                v_stats["wins"] += 1
-            elif st == "stopped":
-                v_stats["losses"] += 1
-            if st not in ("open",):
+            if st != "open":
+                if pnl > 0:
+                    v_stats["wins"] += 1
+                elif pnl < 0:
+                    v_stats["losses"] += 1
                 v_stats["pnl"] += pnl
 
         total = len(rows)
