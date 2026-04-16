@@ -40,6 +40,11 @@ KNOWN_ETFS: set[str] = {
     "XOP", "OIH",                   # Oil & gas
     "KRE", "DPST",                  # Regional banks
     "ARKK", "ARKW", "ARKG",        # ARK Innovation
+    # iShares sector ETFs
+    "IYM", "IYW", "IYH", "IYF", "IYJ", "IYE", "IYC", "IYZ", "IYK", "IYG", "IYR",
+    # Other sector / thematic ETFs
+    "VNQ", "HACK", "TAN", "LIT", "JETS", "BUZZ", "MSOS", "YOLO", "WEED",
+    "DFEN", "DUSL", "FAS", "FAZ", "ERX", "ERY", "CURE", "NAIL", "DRN", "DRV",
     # Commodities / rates
     "GLD", "SLV", "IAU",           # Gold, Silver
     "USO", "UCO", "SCO",           # Oil
