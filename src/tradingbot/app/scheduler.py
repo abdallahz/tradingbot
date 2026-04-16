@@ -54,7 +54,7 @@ class Scheduler:
     
     def run_news_only(self) -> dict[str, float]:
         """Run night/morning news research, save to Supabase + local file."""
-        runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+        runner = SessionRunner(self.root, use_real_data=self.use_real_data, skip_market_data=True)
         catalyst_scores = runner.run_news_research()
         
         # Save to Supabase (persists across dyno restarts)

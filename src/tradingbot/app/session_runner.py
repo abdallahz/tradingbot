@@ -63,7 +63,7 @@ MAX_INTRADAY_CHANGE_PCT_DEFAULT = 6.0
 
 
 class SessionRunner:
-    def __init__(self, root: Path, use_real_data: bool = False) -> None:
+    def __init__(self, root: Path, use_real_data: bool = False, skip_market_data: bool = False) -> None:
         self.root = root
         self.use_real_data = use_real_data
         self.config = ConfigLoader(root)
@@ -79,14 +79,19 @@ class SessionRunner:
 
         # Initialize data sources
         if use_real_data:
-            try:
-                self.data_client: DataClient | None = create_data_client(broker_config)
-            except Exception as _exc:
-                logging.getLogger(__name__).warning(
-                    f"[session] Data client init failed ({_exc}); "
-                    "continuing without market data (news research still works)"
-                )
-                self.data_client = None
+            # Skip IBKR/Alpaca connection for news-only sessions (no market
+            # data needed — catalyst scoring uses RSS/SEC/social only).
+            if skip_market_data:
+                self.data_client: DataClient | None = None
+            else:
+                try:
+                    self.data_client = create_data_client(broker_config)
+                except Exception as _exc:
+                    logging.getLogger(__name__).warning(
+                        f"[session] Data client init failed ({_exc}); "
+                        "continuing without market data (news research still works)"
+                    )
+                    self.data_client = None
             news_cfg = broker_config["news"]
             news_agg = NewsAggregator(
                 sec_enabled=news_cfg["sec_filings"],
