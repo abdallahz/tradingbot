@@ -729,6 +729,7 @@ class IBKRClient:
         """
         import asyncio
         from ib_insync import ScannerSubscription, TagValue
+        from ib_insync.util import getLoop
 
         found: set[str] = set()
         try:
@@ -748,7 +749,7 @@ class IBKRClient:
 
             # Use async version with timeout to prevent indefinite hangs
             # when IBKR gateway doesn't respond to scanner requests.
-            loop = self.ib.client._loop
+            loop = getLoop()
             coro = asyncio.wait_for(
                 self.ib.reqScannerDataAsync(sub, scannerSubscriptionFilterOptions=tag_values),
                 timeout=timeout,
