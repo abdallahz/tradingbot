@@ -5,6 +5,11 @@
 #   label: optional label for news sessions
 
 set -uo pipefail
+
+# Capture any early errors to a crash log (cron discards output when no MTA)
+CRASH_LOG="/opt/tradingbot/logs/cron_crash_$(date +%Y%m%d).log"
+exec 2>>"$CRASH_LOG"
+
 cd /opt/tradingbot
 
 # Load environment variables (Telegram, Supabase, etc.)
