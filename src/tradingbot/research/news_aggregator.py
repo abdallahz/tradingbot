@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from tradingbot.research.sec_filings import SECFilingsFetcher
@@ -127,7 +127,7 @@ class NewsAggregator:
                         symbol=symbol,
                         headline=f"8-K Filing: Material Event Disclosure",
                         source="SEC",
-                        published_at=datetime.utcnow() - timedelta(hours=12),
+                        published_at=datetime.now(tz=timezone.utc) - timedelta(hours=12),
                         relevance_score=85.0,
                     )
                 )
@@ -163,11 +163,12 @@ class NewsAggregator:
                     published_str = article.get("published", "")
                     try:
                         published_dt = datetime.fromisoformat(published_str.replace("Z", "+00:00"))
-                        # Remove timezone info for consistency
-                        published_dt = published_dt.replace(tzinfo=None)
+                        # Ensure tz-aware
+                        if published_dt.tzinfo is None:
+                            published_dt = published_dt.replace(tzinfo=timezone.utc)
                     except (ValueError, AttributeError):
                         # Fallback to current time if parsing fails
-                        published_dt = datetime.utcnow()
+                        published_dt = datetime.now(tz=timezone.utc)
                     
                     news[symbol].append(
                         NewsItem(
@@ -192,7 +193,7 @@ class NewsAggregator:
                         symbol=symbol,
                         headline=f"Market Analysis: {symbol} Trading Opportunity",
                         source="RSS (Mock)",
-                        published_at=datetime.utcnow() - timedelta(hours=6),
+                        published_at=datetime.now(tz=timezone.utc) - timedelta(hours=6),
                         relevance_score=70.0,
                     )
                 )
@@ -230,7 +231,7 @@ class NewsAggregator:
                         symbol=symbol,
                         headline=headline,
                         source="Social Proxy",
-                        published_at=datetime.utcnow(),
+                        published_at=datetime.now(tz=timezone.utc),
                         relevance_score=social_score,
                     )
                 )
@@ -313,7 +314,7 @@ class NewsAggregator:
                     symbol=symbol,
                     headline=label,
                     source="Nasdaq Earnings Calendar",
-                    published_at=datetime.utcnow(),
+                    published_at=datetime.now(tz=timezone.utc),
                     relevance_score=relevance,
                 ))
                 logger.info(f"Earnings alert for {symbol}: {label}")
@@ -331,7 +332,7 @@ class NewsAggregator:
         import urllib.parse as _urlparse
         news: dict[str, list[NewsItem]] = {symbol: [] for symbol in symbols}
 
-        cutoff_str = (datetime.utcnow() - timedelta(hours=self.max_age_hours)).strftime("%Y-%m-%d")
+        cutoff_str = (datetime.now(tz=timezone.utc) - timedelta(hours=self.max_age_hours)).strftime("%Y-%m-%d")
 
         for symbol in symbols:
             try:
@@ -353,9 +354,9 @@ class NewsAggregator:
                     description = src.get("display_names", [{}])
                     headline = src.get("form_type", "8-K") + ": " + (description[0].get("name", symbol) if description else symbol)
                     try:
-                        published_dt = datetime.strptime(filed, "%Y-%m-%d")
+                        published_dt = datetime.strptime(filed, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                     except Exception:
-                        published_dt = datetime.utcnow()
+                        published_dt = datetime.now(tz=timezone.utc)
                     news[symbol].append(NewsItem(
                         symbol=symbol,
                         headline=headline,
@@ -417,7 +418,7 @@ class CatalystScorerV2:
                 if any(keyword in headline_lower for keyword in self.negative_keywords):
                     base_score *= 0.5
                 # Weight by recency
-                hours_old = (datetime.utcnow() - item.published_at).total_seconds() / 3600
+                hours_old = (datetime.now(tz=timezone.utc) - item.published_at).total_seconds() / 3600
                 recency_weight = max(0.5, 1.0 - (hours_old / self.news_aggregator.max_age_hours))
                 item_scores.append(base_score * recency_weight)
             
@@ -477,7 +478,7 @@ class CatalystScorerV2:
                 
                 # Weight by recency (use first headline's timestamp)
                 if news_items:
-                    hours_old = (datetime.utcnow() - news_items[0].published_at).total_seconds() / 3600
+                    hours_old = (datetime.now(tz=timezone.utc) - news_items[0].published_at).total_seconds() / 3600
                     recency_weight = max(0.5, 1.0 - (hours_old / self.news_aggregator.max_age_hours))
                     base_score *= recency_weight
                 
