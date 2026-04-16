@@ -83,7 +83,7 @@ class AlpacaClient:
 
         return quotes, snapshot_data, bars, intraday_bars
 
-    def get_premarket_snapshots(self, universe: list[str]) -> list[SymbolSnapshot]:
+    def get_premarket_snapshots(self, universe: list[str], **kwargs) -> list[SymbolSnapshot]:
         """Fetch premarket data for candidate symbols, batched in groups of 50."""
         snapshots: list[SymbolSnapshot] = []
         BATCH_SIZE = 50
