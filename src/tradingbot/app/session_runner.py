@@ -940,6 +940,20 @@ class SessionRunner:
                     dropped.append((symbol.symbol, "rr_below_floor"))
                 logging.info(f"[DROP] {symbol.symbol}: rr_below_floor (support={symbol.key_support:.2f}, resistance={symbol.key_resistance:.2f}, price={symbol.price:.2f})")
                 continue
+
+            # ── Midday high-risk block ──────────────────────────────
+            # Apr 13-15 data: midday losers were 2/3 high-risk (LWLG,
+            # BEX — both stopped -2.5%). Winners were low/medium.
+            # By midday the easy momentum is gone; high-risk names
+            # (cheap, wide-spread, volatile) lack the follow-through.
+            if session_tag == "midday" and card.risk_level == "high":
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"midday_high_risk:{card.risk_level}"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: high-risk blocked at midday "
+                    f"(risk_level={card.risk_level}, price=${symbol.price:.2f})")
+                continue
+
             card.patterns = list(symbol.patterns)
             card.catalyst_score = symbol.catalyst_score
             confluence = score_confluence(card.patterns)
@@ -1060,6 +1074,24 @@ class SessionRunner:
                     f"[DROP] {symbol.symbol}: Grade C confluence "
                     f"(score={confluence_result.composite_score:.0f}) — only A/B fire")
                 continue
+
+            # ── Midday ATR exhaustion hard block ──────────────────
+            # Apr 13-15 data: SNAP lost -2.49% with ATR 178% consumed.
+            # By midday the daily range is often spent.  If the confluence
+            # engine flagged ATR exhaustion, hard-block at midday — there
+            # is not enough range left for a profitable move.
+            if session_tag == "midday":
+                _atr_exhausted = any(
+                    f.startswith("MOVE EXHAUSTED")
+                    for f in confluence_result.false_positive_flags
+                )
+                if _atr_exhausted:
+                    if dropped is not None:
+                        dropped.append((symbol.symbol, "midday_atr_exhausted"))
+                    logging.info(
+                        f"[DROP] {symbol.symbol}: ATR exhausted at midday — "
+                        f"{[f for f in confluence_result.false_positive_flags if f.startswith('MOVE EXHAUSTED')][0]}")
+                    continue
 
             # ── Strict-only vetoes (market crash, ATR exhaustion, thin fade) ──
             # These can be overridden by strong catalysts in relaxed mode.
