@@ -15,7 +15,14 @@ if [ -f .env ]; then
 fi
 
 source venv/bin/activate
-export DATA_PROVIDER=ibkr
+
+# Data provider: use IBKR if IBKR_DATA_READY=true (set in .env when market
+# data subscription is active).  Fall back to Alpaca otherwise.
+if [ "${IBKR_DATA_READY:-false}" = "true" ]; then
+    export DATA_PROVIDER=ibkr
+else
+    export DATA_PROVIDER=alpaca
+fi
 
 SESSION="${1:?Usage: vps_scan.sh <session> [label]}"
 LABEL="${2:-}"
