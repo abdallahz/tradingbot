@@ -946,19 +946,6 @@ class SessionRunner:
                 logging.info(f"[DROP] {symbol.symbol}: rr_below_floor (support={symbol.key_support:.2f}, resistance={symbol.key_resistance:.2f}, price={symbol.price:.2f})")
                 continue
 
-            # ── Midday high-risk block ──────────────────────────────
-            # Apr 13-15 data: midday losers were 2/3 high-risk (LWLG,
-            # BEX — both stopped -2.5%). Winners were low/medium.
-            # By midday the easy momentum is gone; high-risk names
-            # (cheap, wide-spread, volatile) lack the follow-through.
-            if session_tag == "midday" and card.risk_level == "high":
-                if dropped is not None:
-                    dropped.append((symbol.symbol, f"midday_high_risk:{card.risk_level}"))
-                logging.info(
-                    f"[DROP] {symbol.symbol}: high-risk blocked at midday "
-                    f"(risk_level={card.risk_level}, price=${symbol.price:.2f})")
-                continue
-
             card.patterns = list(symbol.patterns)
             card.catalyst_score = symbol.catalyst_score
             confluence = score_confluence(card.patterns)
@@ -1041,6 +1028,17 @@ class SessionRunner:
             card.confluence_grade = confluence_result.grade
             card.confluence_score = confluence_result.composite_score
             card.false_positive_flags = list(confluence_result.false_positive_flags)
+
+            # ── High-risk block (Grade B and below) ───────────────
+            # Apr 13-16 data: high-risk trades 20% WR (1/5).
+            # Grade A exempted — strong confluence may redeem risk.
+            if card.risk_level == "high" and confluence_result.grade != "A":
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"high_risk_grade_{confluence_result.grade}"))
+                logging.info(
+                    f"[DROP] {symbol.symbol}: high-risk blocked "
+                    f"(risk={card.risk_level}, grade={confluence_result.grade}, price=${symbol.price:.2f})")
+                continue
 
             # ── Universal blocks (all modes) ──
             # Distribution and Grade-F have zero edge regardless of catalyst.
