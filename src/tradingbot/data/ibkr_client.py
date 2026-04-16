@@ -102,6 +102,9 @@ class IBKRClient:
         # This prevents Error 10089 from blocking all data when live
         # subscription hasn't propagated yet.
         self._ib.reqMarketDataType(4)
+        # Global request timeout: fail any IB request that takes >30s
+        # instead of blocking indefinitely.
+        self._ib.RequestTimeout = 30
         logger.info(
             f"Connected to IBKR Gateway at {self.host}:{self.port} "
             f"(clientId={self.client_id}, marketDataType=delayed-frozen-fallback)"
@@ -717,12 +720,14 @@ class IBKRClient:
         above_price: float = 0.0,
         above_volume: int = 0,
         location: str = "STK.US.MAJOR",
+        timeout: float = 15.0,
     ) -> set[str]:
         """Run one TWS scanner and return matched symbols.
 
-        Wraps ``reqScannerData`` with common filtering (junk suffix,
-        dot symbols) and error handling.
+        Wraps ``reqScannerData`` with a per-scan timeout so a hung
+        gateway doesn't block the entire pipeline.
         """
+        import asyncio
         from ib_insync import ScannerSubscription, TagValue
 
         found: set[str] = set()
@@ -741,12 +746,21 @@ class IBKRClient:
             if above_volume > 0:
                 tag_values.append(TagValue("volumeAbove", str(above_volume)))
 
-            results = self.ib.reqScannerData(sub, scannerSubscriptionFilterOptions=tag_values)
+            # Use async version with timeout to prevent indefinite hangs
+            # when IBKR gateway doesn't respond to scanner requests.
+            loop = self.ib.client._loop
+            coro = asyncio.wait_for(
+                self.ib.reqScannerDataAsync(sub, scannerSubscriptionFilterOptions=tag_values),
+                timeout=timeout,
+            )
+            results = loop.run_until_complete(coro)
             for item in results:
                 sym = item.contractDetails.contract.symbol
                 if not _JUNK_SUFFIX.search(sym) and "." not in sym:
                     found.add(sym)
             self.ib.sleep(0.5)
+        except asyncio.TimeoutError:
+            logger.warning(f"IBKR scanner {scan_code} timed out after {timeout}s")
         except Exception as e:
             logger.warning(f"IBKR scanner {scan_code} failed: {e}")
 
