@@ -207,12 +207,15 @@ class IBKRClient:
             )
             return p is not None and not math.isnan(p)
 
-        # Use streaming mode directly — snapshot=True fails with delayed data
+        # Use streaming mode directly — snapshot=True fails with delayed data.
+        # Cap total wait at 5s to prevent hanging on dead data farm.
         ticker = self.ib.reqMktData(contract, genericTickList="", snapshot=False)
         for _ in range(10):
             self.ib.sleep(0.3)
             if _has_price(ticker):
                 break
+        else:
+            logger.debug(f"Market data timeout for {contract.symbol} after 3s")
 
         result = {
             "last": _safe(ticker.last),
@@ -236,6 +239,7 @@ class IBKRClient:
         bar_size: str = "1 day",
         what_to_show: str = "TRADES",
         use_rth: bool = True,
+        timeout: float = 25.0,
     ) -> list[dict]:
         """Fetch historical bars for a contract.
 
@@ -245,18 +249,27 @@ class IBKRClient:
             bar_size: Bar granularity (e.g. "1 day", "15 mins", "1 hour")
             what_to_show: "TRADES", "MIDPOINT", "BID", "ASK"
             use_rth: True = regular trading hours only
+            timeout: Max seconds to wait for IBKR response
 
         Returns list of dicts with: date, open, high, low, close, volume
         """
-        bars = self.ib.reqHistoricalData(
-            contract,
-            endDateTime="",
-            durationStr=duration,
-            barSizeSetting=bar_size,
-            whatToShow=what_to_show,
-            useRTH=use_rth,
-            formatDate=1,
+        import asyncio
+        from ib_insync.util import getLoop
+
+        loop = getLoop()
+        coro = asyncio.wait_for(
+            self.ib.reqHistoricalDataAsync(
+                contract,
+                endDateTime="",
+                durationStr=duration,
+                barSizeSetting=bar_size,
+                whatToShow=what_to_show,
+                useRTH=use_rth,
+                formatDate=1,
+            ),
+            timeout=timeout,
         )
+        bars = loop.run_until_complete(coro)
         result = []
         for bar in bars:
             result.append({
