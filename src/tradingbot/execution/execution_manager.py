@@ -20,6 +20,7 @@ import os
 from typing import Any, Literal
 
 from tradingbot.models import TradeCard
+from tradingbot.risk.swap_evaluator import SwapEvaluator, SwapRecommendation
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,25 @@ class ExecutionManager:
 
         self.executor = OrderExecutor(ibkr_client)
         self.monitor = PositionMonitor(ibkr_client, self.executor, self.allocator)
+
+        # Swap evaluator
+        swap_cfg = execution_config.get("swap", {})
+        self._swap_enabled = swap_cfg.get("enabled", False)
+        self._swap_mode = swap_cfg.get("mode", "shadow")
+        self.swap_evaluator: SwapEvaluator | None = None
+        if self._swap_enabled:
+            from tradingbot.risk.position_scorer import PositionScorer
+            scorer = PositionScorer(
+                stalling_range_pct=swap_cfg.get("stalling_range_pct", 0.3),
+                stalling_lookback_bars=swap_cfg.get("stalling_lookback_bars", 4),
+                stalling_min_minutes=swap_cfg.get("stalling_min_minutes", 20),
+                stalling_penalty=swap_cfg.get("stalling_penalty", 20.0),
+            )
+            self.swap_evaluator = SwapEvaluator(
+                swap_threshold=swap_cfg.get("threshold", 20.0),
+                min_hold_minutes=swap_cfg.get("min_hold_minutes", 15),
+                scorer=scorer,
+            )
 
         # Pre-load account balances so position sizing works on first card
         self._sync_account()
@@ -262,6 +282,119 @@ class ExecutionManager:
             f"| entry ~${entry:.2f} | stop ${stop:.2f} | TP1 ${tp1:.2f}"
         )
         return result
+
+    # ── Swap evaluation ────────────────────────────────────────────────
+
+    def evaluate_swap(
+        self,
+        card: TradeCard,
+    ) -> SwapRecommendation | None:
+        """Evaluate whether swapping out the weakest open position for
+        *card* is warranted.  Returns a recommendation or None."""
+        if not self.swap_evaluator:
+            return None
+
+        positions = self._build_position_states()
+        if not positions:
+            return None
+
+        return self.swap_evaluator.evaluate(card, positions)
+
+    def execute_swap(
+        self,
+        recommendation: SwapRecommendation,
+        card: TradeCard,
+        streak_multiplier: float = 1.0,
+    ) -> dict[str, Any]:
+        """Execute a swap: market-sell the weak position, enter the new card.
+
+        Only called when swap mode is 'auto'.
+        """
+        close_sym = recommendation.close_symbol
+        result: dict[str, Any] = {
+            "executed": False,
+            "swap": True,
+            "closed_symbol": close_sym,
+            "symbol": card.symbol,
+            "shares": 0,
+            "reason": "",
+        }
+
+        # 1. Market-sell the weak position
+        managed = self.executor.managed_trades.get(close_sym)
+        if not managed:
+            result["reason"] = f"managed trade for {close_sym} not found"
+            return result
+
+        sell_action = self.executor._market_sell(
+            close_sym, managed.quantity, f"swap_for_{card.symbol}"
+        )
+        self.allocator.close_position(close_sym)
+        logger.info(f"[SWAP] Closed {close_sym}: {sell_action}")
+
+        # 2. Record day trade (same-day buy+sell)
+        from datetime import datetime
+        self.allocator.record_day_trade(
+            close_sym,
+            buy_time=managed.entry_time,
+            sell_time=datetime.utcnow().isoformat(),
+        )
+
+        # 3. Refresh account after sell
+        self._sync_account()
+
+        # 4. Execute the new card
+        exec_result = self.execute_card(card, streak_multiplier)
+        result["executed"] = exec_result["executed"]
+        result["shares"] = exec_result["shares"]
+        result["reason"] = exec_result["reason"]
+        if exec_result.get("order_result"):
+            result["order_result"] = exec_result["order_result"]
+
+        return result
+
+    def _build_position_states(self) -> list:
+        """Build PositionState objects from managed trades + live prices."""
+        from tradingbot.risk.position_scorer import PositionState
+
+        managed = self.executor.managed_trades
+        if not managed:
+            return []
+
+        # Fetch current prices for all open positions
+        open_symbols = [s for s, t in managed.items() if not t.closed]
+        if not open_symbols:
+            return []
+
+        try:
+            prices = self._client.get_latest_prices(open_symbols)
+        except Exception as e:
+            logger.error(f"[SWAP] Failed to fetch prices: {e}")
+            return []
+
+        states = []
+        for symbol in open_symbols:
+            trade = managed[symbol]
+            current_price = prices.get(symbol, 0.0)
+            if current_price <= 0:
+                continue
+
+            states.append(
+                PositionState(
+                    symbol=symbol,
+                    entry_price=trade.entry_price,
+                    current_price=current_price,
+                    stop_price=trade.stop_price,
+                    tp1_price=trade.tp1_price,
+                    tp2_price=trade.tp2_price,
+                    entry_time=trade.entry_time,
+                    trail_stage=trade.trail_stage,
+                    tp1_hit=trade.tp1_hit,
+                    quantity=trade.quantity,
+                )
+            )
+
+        return states
 
     # ── Trailing ───────────────────────────────────────────────────────
 

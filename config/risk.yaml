@@ -26,3 +26,14 @@ execution:
   pdt_threshold: 25000          # PDT rule applies below this equity
   kill_switch_enabled: true     # enable Telegram /killall command
   max_notional_per_trade: 10000 # hard cap per trade ($10K)
+
+  # ── Swap evaluator (opportunity cost engine) ──────────────────────
+  swap:
+    enabled: true               # master switch
+    mode: auto                  # shadow = log + Telegram only, auto = execute swaps
+    threshold: 20               # new_score - weakest_hold_score must exceed this
+    min_hold_minutes: 15        # don't consider swapping positions < 15 min old
+    stalling_range_pct: 0.3     # price range (%) that counts as "stalling"
+    stalling_lookback_bars: 4   # recent bars to check for consolidation
+    stalling_min_minutes: 20    # minimum age before stalling detection kicks in
+    stalling_penalty: 20        # points deducted from hold score when stalling

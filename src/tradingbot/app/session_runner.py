@@ -1129,9 +1129,13 @@ class SessionRunner:
     def _maybe_execute(self, card: TradeCard) -> None:
         """Submit a bracket order for *card* if execution is enabled.
 
+        If execution fails because all position slots are full, the swap
+        evaluator compares the new card against open positions.  In shadow
+        mode it sends a Telegram recommendation; in auto mode it executes
+        the swap (close weakest, enter new).
+
         Errors are caught and logged — a failed order never blocks the
-        scan loop.  The result is logged and (in a future iteration)
-        sent as a Telegram confirmation.
+        scan loop.
         """
         if not self.execution_mgr:
             return
@@ -1142,12 +1146,56 @@ class SessionRunner:
                 logging.info(
                     f"[EXEC] {card.symbol}: {result['shares']} shares submitted"
                 )
-            else:
-                logging.info(
-                    f"[EXEC] {card.symbol}: not executed — {result['reason']}"
-                )
+                return
+
+            logging.info(
+                f"[EXEC] {card.symbol}: not executed — {result['reason']}"
+            )
+
+            # If blocked by slot/capital, evaluate swap
+            reason = result.get("reason", "")
+            if "No slot" in reason or "Insufficient buying power" in reason:
+                self._try_swap(card)
+
         except Exception as exc:
             logging.error(f"[EXEC] {card.symbol}: unexpected error — {exc}")
+
+    def _try_swap(self, card: TradeCard) -> None:
+        """Evaluate and optionally execute a position swap."""
+        if not self.execution_mgr or not self.execution_mgr.swap_evaluator:
+            return
+
+        try:
+            recommendation = self.execution_mgr.evaluate_swap(card)
+            if not recommendation:
+                return
+
+            # Shadow mode: just send Telegram recommendation
+            if self.execution_mgr._swap_mode == "shadow":
+                msg = recommendation.summary()
+                logging.info(f"[SWAP] Shadow signal:\n{msg}")
+                self.notifier.send_text(msg)
+                return
+
+            # Auto mode: execute the swap
+            swap_result = self.execution_mgr.execute_swap(recommendation, card)
+            if swap_result["executed"]:
+                msg = (
+                    f"🔄 *SWAP EXECUTED*\n"
+                    f"Closed `{recommendation.close_symbol}` → "
+                    f"Entered `{card.symbol}` "
+                    f"({swap_result['shares']} shares)"
+                )
+                logging.info(f"[SWAP] {msg}")
+                self.notifier.send_text(msg)
+            else:
+                logging.info(
+                    f"[SWAP] Swap failed for {card.symbol}: "
+                    f"{swap_result['reason']}"
+                )
+
+        except Exception as exc:
+            logging.error(f"[SWAP] {card.symbol}: unexpected error — {exc}")
 
     def _write_outputs(self, morning: list[TradeCard], midday: list[TradeCard]) -> None:
         output_dir = self.root / "outputs"
