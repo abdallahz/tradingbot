@@ -156,14 +156,14 @@ def build_trade_card(
     # for any trade to be mathematically possible.
     if effective_atr > 0:
         if session_tag == "morning":
-            max_tp_dist = min(effective_atr * 2.5, entry * 0.05)
+            max_tp_dist = min(effective_atr * 2.5, entry * 0.04)
         elif session_tag == "midday":
-            max_tp_dist = min(effective_atr * 1.5, entry * 0.04)
+            max_tp_dist = min(effective_atr * 2.0, entry * 0.04)
         else:  # close
-            max_tp_dist = min(effective_atr * 1.0, entry * 0.04)
+            max_tp_dist = min(effective_atr * 1.5, entry * 0.04)
     else:
         if session_tag == "morning":
-            max_tp_dist = entry * 0.05
+            max_tp_dist = entry * 0.04
         elif session_tag == "midday":
             max_tp_dist = entry * 0.04
         else:
