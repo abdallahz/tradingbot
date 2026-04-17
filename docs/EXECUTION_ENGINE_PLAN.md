@@ -48,7 +48,7 @@ VPS (Ubuntu 22.04)
 │   ├── cron: run-morning  (08:45 ET)
 │   ├── cron: run-midday   (12:00 ET)
 │   ├── cron: run-close    (15:30 ET)
-│   └── cron: trade-tracker (every 5 min, 9:30–4:00 ET)
+│   └── cron: trade-tracker (every 2 min, 9:00–4:00 ET)
 ├── Flask dashboard (optional, or keep on Heroku)
 └── Supabase (unchanged — remote persistence)
 ```
@@ -142,7 +142,7 @@ Same logic as the current simulated tracker, but executed as real IBKR order mod
 | Price drops below trailed stop | Stop order fills automatically on IBKR |
 | Expire (3:30 PM ET) | Cancel all pending orders, market sell remaining shares |
 
-Checked every 5 minutes by the existing tracker cron job. IBKR order modifications use `ib.placeOrder()` with the same `orderId` to replace the existing stop.
+Checked every 2 minutes by the tracker cron job. IBKR order modifications use `ib.placeOrder()` with the same `orderId` to replace the existing stop.
 
 ### 5b. Below-VWAP Scalp Mode
 
@@ -306,7 +306,7 @@ Alert fires
 | Cron | Time (ET) | Action |
 |---|---|---|
 | Morning scan | 8:45 AM | Generate alerts, execute top 1–2 |
-| Tracker | Every 5 min, 9:30–4:00 | Check prices, modify stops, trail |
+| Tracker | Every 2 min, 9:00–4:00 | Check prices, modify stops, trail, circuit breaker |
 | Morning deadline | 10:30 AM | Sell losers/flat, trail winners to breakeven |
 | Midday scan | Every 30 min, 10:00–2:30 | Generate alerts, execute if slots available |
 | Close/expire | 3:30 PM | Cancel all pending orders, market sell remaining |

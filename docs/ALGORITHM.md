@@ -1,6 +1,6 @@
 # Trading Algorithm — Full Pipeline
 
-> **Last updated:** April 10, 2026
+> **Last updated:** April 17, 2026
 > Consolidated from: ALGORITHM.md, SCORING_METHODOLOGY.md, SMART_MONEY_TRACKING.md, AI_INTEGRATION.md
 
 ## Overview
@@ -336,15 +336,23 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 - Fixed stop fallback: 2.5% from entry (`config/risk.yaml`)
 
 ### Target Placement
-- `max_tp_dist = min(2.5 × ATR, 5% of entry)`
+- Session-adaptive TP caps:
+  - Morning: `max_tp_dist = min(2.5 × ATR, 4% of entry)`
+  - Midday: `max_tp_dist = min(2.0 × ATR, 4% of entry)`
+  - Close: `max_tp_dist = min(1.5 × ATR, 4% of entry)`
+- **VWAP anchor**: If price is below VWAP, TP1 = VWAP (natural magnet) instead of key_resistance
 - `TP1 = min(key_resistance, entry + max_tp_dist)`
-- `TP2 = TP1 + 1 × risk_distance`
+- **Structural TP2**: Uses `key_resistance_2` (2nd resistance level) when available, else `TP1 + 1 × risk_distance`
+- **Gap extension fallback**: If no intraday resistance found, uses `premarket_high + 0.5 × ATR`
 - `invalidation = key_support` (below stop — full thesis broken)
+
+**ATR calculation**: Uses **intraday ATR** (average high-low range of last 5 bars) instead of daily ATR for more responsive volatility measurement.
 
 **TP1 cap history:**
 - v1 (pre-Apr 6): `min(3×ATR, 6%)` — too wide, ETF losses
 - v2 (Apr 6–9): `min(2×ATR, 3%)` — **broken**: max R:R = 3%/2.5% = 1.2 < MIN_RR 1.5, zero cards
-- v3 (Apr 10+): `min(2.5×ATR, 5%)` — max R:R = 2.0, sweet spot
+- v3 (Apr 10–16): `min(2.5×ATR, 5%)` — max R:R = 2.0, sweet spot
+- v4 (Apr 17+): Session-adaptive caps (see above) — tighter caps for later sessions
 
 ### R:R Floor
 - Minimum R:R: **1.5:1** — cards below this are rejected (`build_trade_card()` returns `None`)
@@ -354,7 +362,9 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 - Base risk per trade: 0.5% of account
 - Yellow regime: 50% of base (0.25%)
 - Streak scaling: 1 loss → 75%, 2 → 50%, 3 → 35%
-- Combined: `effective_risk = base × regime_multiplier × streak_multiplier`
+- **Volume-scaled sizing**: relvol ≥3× → 1.5× position, relvol ≥2× → 1.25×
+- Combined: `effective_risk = base × regime_multiplier × streak_multiplier × volume_multiplier`
+- Account value configurable via `risk.yaml` `account_value` key or `ACCOUNT_VALUE` env var
 
 **Key file**: `src/tradingbot/strategy/trade_card.py`
 
@@ -437,12 +447,27 @@ Every scan session produces three parallel watchlists:
 | Price drops below trail | Stop triggered |
 | 3:30 PM ET expire | Market sell at current price |
 
+### Portfolio Circuit Breaker
+
+The tracker runs a portfolio-level risk check **before** evaluating individual trades. Three independent triggers (any one fires):
+
+| Trigger | Threshold | Action |
+|---------|-----------|--------|
+| Portfolio drawdown | Combined unrealised loss ≥ 1.5% of account | Close all → `emergency_closed` |
+| Market crash | SPY or QQQ down ≥ 2% intraday | Close all → `emergency_closed` |
+| Correlated red | ≥ 75% of open trades losing (min 3 trades) | Close all → `emergency_closed` |
+
+- Fires once per session (no re-triggering after initial close)
+- Sends Telegram alert with per-trade P&L breakdown
+- Thresholds configurable via `CB_PORTFOLIO_DRAWDOWN_PCT`, `CB_MARKET_CRASH_PCT`, `CB_CORRELATED_RED_RATIO` env vars
+
 ### Outcome Recording
 
 All trades tracked in Supabase `trade_outcomes` table with:
 - Entry price, exit price, PnL percentage
-- Exit reason (stop, TP1, TP2, trail, expire)
+- Exit reason (stop, TP1, TP2, trail, expire, emergency_closed)
 - Duration, session tag, patterns
+- Polling interval: every **2 minutes** during market hours (9 AM–4 PM ET)
 
 **Key files**: `src/tradingbot/tracking/trade_tracker.py`, `src/tradingbot/web/alert_store.py`
 
@@ -506,7 +531,6 @@ Alpaca's free IEX tier occasionally returns stale or incorrect prices. Built-in 
 2. **Midday volume multiplier** (1.3×) is low but has a fallback path via relvol + premarket check.
 3. ~~**No higher-timeframe trend filter**~~ — **Partially addressed** (Apr 8): Daily EMA50 trend filter blocks stocks below daily EMA50. Weekly trend check still in backlog.
 4. **No volume decay detection** — snapshots are point-in-time, no tracking of fading participation.
-5. **IEX data tier** — 15-minute delayed intraday data. Consider paid tier ($9/mo) for real-time quotes.
-6. **Midday scans underperform** — Apr 10 backtest showed 0% WR on midday vs 100% on morning. Gap momentum fades by midday.
+5. **Midday scans underperform** — Apr 10 backtest showed 0% WR on midday vs 100% on morning. Gap momentum fades by midday.
 
 See `docs/IMPROVEMENTS.md` for the full improvement tracker with validation verdicts and priorities.

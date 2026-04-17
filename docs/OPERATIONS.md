@@ -1,29 +1,31 @@
 # Operations & Deployment Guide
 
-> **Last updated:** April 10, 2026
+> **Last updated:** April 17, 2026
 > Consolidated from: CLOUD_DEPLOYMENT.md, TASK_SCHEDULER.md, FILE_PERSISTENCE_GUIDE.md
 
 ## Deployment Architecture
 
 ```
-Render.com (cron jobs)                  Heroku (web only)
-──────────────────────                  ──────────────────
-news-night    (20:00 ET)                Flask dashboard
-news-premarket(08:00 ET)                gunicorn (web dyno)
-morning-scan  (08:45 ET)                └── /api/alerts
-intraday-scan (every 15m)                   /api/health
-tracker       (every 5m)                    /api/status
-close-scan    (15:30 ET)                    POST /scan
-       │
-       └──→ Supabase ←── Heroku web reads alerts
-       └──→ Telegram (primary notification channel)
+VPS (178.156.202.27)                    Supabase (remote DB)
+────────────────────────                    ────────────────────
+news-night    (01:00 ET)                alerts, trade_outcomes,
+news-premarket(08:00 ET)                sessions, close_picks
+morning-scan  (08:45 ET)
+intraday-scan (every 15m)               Telegram (primary alerts)
+tracker       (every 2m)                ────────────────────
+close-scan    (15:30 ET)                Trade cards, summaries,
+Flask dashboard (nginx+gunicorn)        circuit breaker alerts
+IB Gateway (paper/live)
+IBKR Execution Engine
 ```
 
-**Current setup**: Render handles ALL scheduled jobs. Heroku runs web dyno only (worker dyno OFF, gated by `WORKER_ENABLED=false`).
+**Current setup**: VPS handles ALL scheduled jobs + web dashboard + IBKR execution. Render decommissioned as of Apr 15. Heroku dashboard still active but secondary.
 
 ---
 
-## Heroku Configuration
+## Heroku Configuration (Secondary)
+
+Heroku dashboard is still active but secondary. All crons and primary dashboard run on VPS.
 
 ### Procfile
 
@@ -32,7 +34,7 @@ web:    PYTHONPATH=src gunicorn --workers 2 --bind 0.0.0.0:$PORT tradingbot.web.
 worker: PYTHONPATH=src python -m tradingbot.app.worker
 ```
 
-> **Note**: Worker dyno is OFF on Heroku. Render handles scheduling. The `WORKER_ENABLED` env var gates the worker loop — set to `false` on Heroku to prevent duplicate scans.
+> **Note**: Worker dyno is OFF on Heroku. VPS handles scheduling. The `WORKER_ENABLED` env var gates the worker loop — set to `false` on Heroku to prevent duplicate scans.
 
 ### Required Environment Variables
 
@@ -46,7 +48,7 @@ worker: PYTHONPATH=src python -m tradingbot.app.worker
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_KEY` | Supabase anon/service key |
 | `SEC_USER_AGENT` | e.g. `TradingBot/1.0 (you@example.com)` |
-| `WORKER_ENABLED` | `false` on Heroku (Render handles crons) |
+| `WORKER_ENABLED` | `false` on Heroku (VPS handles crons) |
 | `DATA_PROVIDER` | `alpaca` (default) or `ibkr` for VPS |
 
 ### Optional Variables
@@ -74,11 +76,13 @@ git push heroku main
 
 ---
 
-## Render.com Configuration
+## Render.com Configuration (Decommissioned)
 
-### Cron Jobs (`render.yaml`)
+> **Note**: All cron jobs migrated to VPS as of Apr 15, 2026. Render config preserved in `render.yaml` for reference only.
 
-Six cron services defined in `render.yaml`, all UTC:
+### Original Cron Jobs (`render.yaml`)
+
+Six cron services were defined in `render.yaml`, all UTC:
 
 | Job | UTC Schedule | ET Equivalent | CLI Command |
 |-----|-------------|---------------|-------------|
@@ -86,15 +90,51 @@ Six cron services defined in `render.yaml`, all UTC:
 | news-premarket | `0 13 * * 1-5` | ~8 AM ET | `run-news` |
 | morning-scan | `45 13 * * 1-5` | 8:45 AM ET | `run-morning` |
 | intraday-scan | `*/15 13-19 * * 1-5` | 9 AM–3 PM ET (every 15 min) | `run-midday` |
-| tracker | `*/5 13-20 * * 1-5` | 9 AM–4 PM ET | trade tracker |
+| tracker | `*/2 13-20 * * 1-5` | 9 AM–4 PM ET (every 2 min) | trade tracker + circuit breaker |
 | close-scan | `50 19 * * 1-5` | 3:50 PM ET | `run-close` |
 
-### Setup
+### Setup (Historical)
 
 1. Push repo to GitHub
 2. In Render: **New +** → **Blueprint** → select repo with `render.yaml`
 3. Set environment variables for each cron service (same as Heroku list above)
 4. Verify first successful runs produce output files
+
+---
+
+## VPS Configuration (Primary)
+
+### Crontab
+
+All jobs run via `crontab -e` on VPS (`178.156.202.27`), all times UTC:
+
+| Job | UTC Schedule | ET Equivalent | Command |
+|-----|-------------|---------------|----------|
+| news-night | `0 5 * * 1-5` | 1:00 AM ET | `run-news "Night Research"` |
+| news-premarket | `0 12 * * 1-5` | 8:00 AM ET | `run-news "Pre-Market Research"` |
+| morning-scan | `45 12 * * 1-5` | 8:45 AM ET | `run-morning` |
+| intraday-scan | `*/15 13-18 * * 1-5` | 9 AM–2:45 PM ET | `run-midday` |
+| tracker | `*/2 13-20 * * 1-5` | 9 AM–4 PM ET (every 2 min) | `run-tracker` (+ circuit breaker) |
+| close-scan | `30 19 * * 1-5` | 3:30 PM ET | `run-close` |
+| log-cleanup | `0 6 * * *` | Daily | `find logs -mtime +7 -delete` |
+| ibgw-health | `*/5 4-21 * * 1-5` | Every 5 min | IB Gateway health check |
+| scan-watchdog | `*/5 4-21 * * 1-5` | Every 5 min | Kill hung processes >8 min |
+
+### Dashboard
+
+- **nginx** → **gunicorn** on port 5000
+- URL: `http://178.156.202.27`
+- Features: dark theme, trade cards, open positions P&L panel, unrealized P&L %, dollar P&L
+- Restart: `kill -HUP $(pgrep -f gunicorn)`
+
+### Deploy
+
+```bash
+ssh root@178.156.202.27
+cd /opt/tradingbot
+git pull origin feature/ibkr-execution
+kill -HUP $(pgrep -f gunicorn)  # reload dashboard
+```
 
 ---
 
@@ -208,7 +248,7 @@ JSONL fallback (`outputs/alerts.jsonl`) if Supabase is unavailable.
 ### Source Tagging
 
 Each alert is tagged with its source infrastructure:
-- `render-alpaca` — from Render cron jobs using Alpaca data (default)
+- `render-alpaca` — from Render/VPS cron jobs using Alpaca data (default)
 - `vps-ibkr` — from VPS using IBKR data (set `DATA_PROVIDER=ibkr`)
 
 The source tag appears in Telegram messages as `[☁️ Render/Alpaca]` or `[🖥 VPS/IBKR]` and is stored in the Supabase `source` column.
@@ -233,7 +273,23 @@ IBKR Execution Engine                    Alerts only (no execution)
        └──→ Telegram (same channel, [🖥 VPS/IBKR] badge)
 ```
 
-**Status**: All 13 modules implemented, 119 tests passing. Blocked on IBKR Non-Professional market data approval.
+**Status**: All 13 modules implemented, 119 tests passing. Non-Professional market data APPROVED.
+
+---
+
+## Portfolio Circuit Breaker
+
+The trade tracker includes a portfolio-level circuit breaker that fires before per-trade evaluation:
+
+| Trigger | Threshold | Action |
+|---------|-----------|--------|
+| Portfolio drawdown | Combined unrealised loss ≥ 1.5% of account | Close all → `emergency_closed` |
+| Market crash | SPY or QQQ down ≥ 2% intraday | Close all → `emergency_closed` |
+| Correlated red | ≥ 75% of open trades losing (min 3) | Close all → `emergency_closed` |
+
+- Fires once per session, sends Telegram alert with per-trade P&L breakdown
+- Thresholds configurable via env vars: `CB_PORTFOLIO_DRAWDOWN_PCT`, `CB_MARKET_CRASH_PCT`, `CB_CORRELATED_RED_RATIO`
+- Reuses `MarketGuard` for SPY/QQQ data
 
 ---
 
@@ -288,14 +344,17 @@ Alpaca's free IEX tier occasionally returns stale/incorrect prices. Built-in val
 |---------|----------|
 | "No setups found" all options | Normal on quiet days. Run `python diagnostic.py` to inspect raw data |
 | Telegram alerts not arriving | Verify `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` env vars |
-| Duplicate alerts | Ensure only ONE scheduler is active (Heroku worker OFF if using Render) |
+| Duplicate alerts | Ensure only ONE scheduler is active (VPS crontab only) |
 | API errors | Check Alpaca keys, ensure `ALPACA_PAPER=true` |
 | SEC 503 errors | Normal during high traffic; bot continues with other sources |
 | Missing `catalyst_scores.json` | Run `run-news` first before scan commands |
-| Dashboard empty | Web and worker have separate filesystems; check Supabase connection |
+| Dashboard empty | Check Supabase connection; restart gunicorn: `kill -HUP $(pgrep -f gunicorn)` |
+| Circuit breaker false trigger | Adjust thresholds via `CB_*` env vars |
+| VPS dashboard not updating | `ssh root@178.156.202.27 "kill -HUP $(pgrep -f gunicorn)"` |
 
 ### Security
 
 - `config/broker.yaml` is in `.gitignore` — never commit credentials
 - Use `config/broker.example.yaml` as a template
-- All production secrets in Heroku/Render Config Vars
+- All production secrets in VPS env vars (sourced from `.env`)
+- VPS access via SSH key only

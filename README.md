@@ -1,17 +1,18 @@
 # TradingBot
 
-An automated day-trading alert system that scans for high-probability intraday setups, sends real-time Telegram notifications, and exposes a live web dashboard — all running on Heroku with zero manual intervention.
+An automated day-trading alert system that scans for high-probability intraday setups, sends real-time Telegram notifications, and exposes a live web dashboard. Deployed on VPS with optional IBKR execution.
 
 ## What This Tool Does
 
-**Five scheduled jobs run every trading day (all times ET):**
+**Scheduled jobs run every trading day (all times ET):**
 
 | Time | Job | Description |
 |------|-----|-------------|
-| 20:00 | Night Research | Score stocks on news catalysts; send top-10 list to Telegram |
+| 01:00 | Night Research | Score stocks on news catalysts; send top-10 list to Telegram |
 | 08:00 | Morning News | Refresh catalyst scores; send updated list to Telegram |
 | 08:45 | Pre-Market Scan | Find gappers ≥4%; send individual trade-card alerts |
-| 12:00 | Midday Scan | Re-scan with stricter volume/spread filters |
+| Every 15m | Intraday Scan | Re-scan with stricter volume/spread filters |
+| Every 2m | Trade Tracker | Monitor open trades, trailing stops, circuit breaker |
 | 15:30 | Close Scan | Final sweep for late-session setups |
 
 **For every qualifying setup the bot produces a `TradeCard` containing:**
@@ -31,24 +32,25 @@ An automated day-trading alert system that scans for high-probability intraday s
 ## Architecture
 
 ```
-Heroku (web dyno)                 Heroku (worker dyno)
-─────────────────                 ────────────────────
-Flask dashboard  ◄── /api/alerts  worker.py (60 s loop)
-gunicorn                              ├─ 20:00 night_research
-                                      ├─ 08:00 morning_news
-                                      ├─ 08:45 premarket_scan
-                                      ├─ 12:00 midday_scan
-                                      └─ 15:30 close_scan
-                                              │
-                              ┌───────────────┴───────────────┐
-                         Scheduler                      TelegramNotifier
-                              │                               │
-                         SessionRunner               send_trade_alert()
-                         ├─ run_news_research()      send_news_summary()
-                         ├─ run_single_session()     send_session_summary()
-                         ├─ _fetch_snapshots()
-                         ├─ _get_night_research_picks()
-                         └─ _build_cards()
+VPS (178.156.202.27)              Supabase (remote DB)
+────────────────────────              ────────────────────
+nginx → gunicorn (Flask)          alerts, trade_outcomes,
+Cron jobs (6 scan + tracker)      sessions, close_picks
+IB Gateway + Execution Engine
+                │
+    ┌───────────┴─────────────────┐
+ Scheduler                  TelegramNotifier
+    │                           │
+ SessionRunner             send_trade_alert()
+ ├─ run_news_research()     send_news_summary()
+ ├─ run_single_session()    send_session_summary()
+ ├─ _fetch_snapshots()
+ └─ _build_cards() (21-step filter chain)
+
+ TradeTracker (every 2 min)
+ ├─ trailing stops (3 stages)
+ ├─ TP1/TP2 hit detection
+ └─ portfolio circuit breaker
 ```
 
 **Implementation phases (all complete):**
@@ -56,10 +58,12 @@ gunicorn                              ├─ 20:00 night_research
 - **Phase 2**: Alpaca API integration, multi-source news aggregation, catalyst scoring
 - **Phase 3**: 3-option trading system with intelligent market-condition recommendations
 - **Phase 4**: CLI split (5 commands), SEC EDGAR + RSS + social proxy news, smart money tracking
-- **Phase 5**: ~~Render~~ → **Heroku** cloud deployment, persistent worker scheduler
+- **Phase 5**: VPS cloud deployment, cron-based scheduling (Render decommissioned Apr 15)
 - **Phase 6**: Free technical indicators via `ta` library (RSI, MACD, ATR, Bollinger Bands, VWAP, OBV)
 - **Phase 7**: Telegram bot alerts — individual trade cards, news summaries, session summaries, error notifications
 - **Phase 8**: Flask web dashboard (dark theme, alert cards, live scan trigger, auto-refresh)
+- **Phase 9**: Trade tracking with trailing stops, portfolio circuit breaker, P&L dashboard panel
+- **Phase 10**: IBKR execution engine (13 modules, paper/live bracket orders)
 
 ## Quick Start (Local Dev)
 
@@ -117,14 +121,15 @@ pytest tests/ -v
 # Expected: 18 passed
 ```
 
-## Cloud Deployment (Heroku)
+## Cloud Deployment (VPS)
 
-The bot runs on Heroku with **two dynos** — `web` (Flask dashboard) and
-`worker` (persistent 60-second scheduler loop).
+The bot runs on a VPS (`178.156.202.27`) with nginx + gunicorn for the dashboard
+and crontab for all scheduled jobs.
 
-**Live dashboard:** `https://aztradingbot-c8a5462555f3.herokuapp.com`
+**Primary dashboard:** `http://178.156.202.27`  
+**Secondary dashboard:** `https://aztradingbot-c8a5462555f3.herokuapp.com`
 
-### Required env vars (Heroku → Settings → Config Vars)
+### Required env vars
 
 | Variable | Description |
 |---|---|
@@ -133,23 +138,32 @@ The bot runs on Heroku with **two dynos** — `web` (Flask dashboard) and
 | `ALPACA_PAPER` | `true` for paper trading |
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | Your numeric Telegram chat ID |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_KEY` | Supabase anon key |
 | `SEC_USER_AGENT` | e.g. `TradingBot/1.0 (you@example.com)` |
 
-### Procfile
+### Optional env vars
 
-```
-web:    PYTHONPATH=src gunicorn --workers 2 --bind 0.0.0.0:$PORT tradingbot.web.app:app
-worker: PYTHONPATH=src python -m tradingbot.app.worker
-```
+| Variable | Description |
+|---|---|
+| `DATA_PROVIDER` | `ibkr` for IBKR data (VPS only) |
+| `EXECUTION_MODE` | `paper` or `live` (VPS only) |
+| `ACCOUNT_VALUE` | Account size for position sizing (default $25000) |
+| `CB_PORTFOLIO_DRAWDOWN_PCT` | Circuit breaker portfolio threshold (default -1.5%) |
+| `CB_MARKET_CRASH_PCT` | Circuit breaker SPY/QQQ threshold (default -2.0%) |
+| `CB_CORRELATED_RED_RATIO` | Circuit breaker correlated red ratio (default 0.75) |
 
 ### Deploy
 
 ```bash
-git push heroku main   # or trigger via Heroku dashboard → Deploy tab
+ssh root@178.156.202.27
+cd /opt/tradingbot
+git pull origin feature/ibkr-execution
+kill -HUP $(pgrep -f gunicorn)  # reload dashboard
 ```
 
-Heroku runs the **web dyno only**. Render handles all scheduled cron jobs.
-The `WORKER_ENABLED` env var gates the worker loop — set to `false` on Heroku.
+Heroku web dyno is still active but secondary. Worker dyno is OFF on Heroku —
+`WORKER_ENABLED=false` prevents duplicate scans.
 
 ## 3-Option Trading System
 
@@ -192,18 +206,19 @@ The bot sends the following message types to `@aitradingazbot`:
 | Session complete (no trades) | `📭 Midday scan complete — no qualifying setups found.` |
 | Job error | `⚠️ Close scan failed — <exception>` |
 
-Configure in Heroku Config Vars: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`.  
-For local dev, add them to a `.env` file (loaded automatically via `python-dotenv`).
+Configure in VPS env vars (`.env` file). For local dev, add them to a `.env` file (loaded automatically via `python-dotenv`).
 
 ## Web Dashboard
 
-Live at `https://aztradingbot-c8a5462555f3.herokuapp.com`
+**Primary:** `http://178.156.202.27`  
+**Secondary:** `https://aztradingbot-c8a5462555f3.herokuapp.com`
 
 Features:
 - Market status pill (pre-market / market hours / closed)
 - Stats row: total alerts, long count, short count, last scan time
 - **Run Scan Now** button — triggers an on-demand scan in the background
-- Alert cards grid: symbol, LONG/SHORT badge, score bar, entry/stop/TP1/TP2, patterns, timestamp
+- Alert cards grid: symbol, LONG badge, score bar, entry/stop/TP1/TP2, patterns, timestamp
+- **Open Positions panel**: unrealized P&L %, dollar P&L, time held
 - Auto-refreshes every 30 s (every 5 s while a scan is in progress)
 
 API endpoints:
@@ -212,9 +227,8 @@ API endpoints:
 - `GET /api/status` — scanner running state + last scan timestamp
 - `POST /scan` — trigger on-demand scan
 
-> **Note:** The web and worker dynos have separate ephemeral filesystems on Heroku.
-> Alerts from scheduled worker jobs appear in Telegram; alerts from on-demand scans
-> appear on the dashboard. A shared Postgres store is a planned future improvement.
+> **Note:** Supabase is the persistent source of truth for alerts. Both VPS dashboard
+> and Heroku secondary dashboard read from the same Supabase tables.
 
 ## Configuration
 

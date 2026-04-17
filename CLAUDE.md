@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-An automated day-trading **alert system** with optional IBKR execution. Scans stocks for intraday setups, sends Telegram notifications, and serves a Flask web dashboard. Deployed on Heroku (web) + Render (crons) with Supabase persistence. IBKR execution engine on `feature/ibkr-execution` branch.
+An automated day-trading **alert system** with optional IBKR execution. Scans stocks for intraday setups, sends Telegram notifications, and serves a Flask web dashboard. Deployed on VPS (`178.156.202.27`) — all crons, dashboard (nginx + gunicorn), and optional IBKR execution. Supabase for persistence. Branch: `feature/ibkr-execution`.
 
 ## Commands
 
@@ -59,11 +59,12 @@ CLI → `Scheduler` → `SessionRunner` which:
 - `src/tradingbot/research/` — News aggregation (SEC EDGAR, RSS, social proxy), catalyst scoring, insider/institutional/congressional tracking
 - `src/tradingbot/scanner/` — Gap scanner filters, close/hold scanner
 - `src/tradingbot/signals/` — Pullback setup detection (EMA hold, VWAP reclaim, volume confirmation)
-- `src/tradingbot/strategy/trade_card.py` — Trade card construction with entry/stop/target placement (MIN_RR=1.5)
+- `src/tradingbot/strategy/trade_card.py` — Trade card construction with entry/stop/target placement (MIN_RR=1.5), session-adaptive TP caps, VWAP anchor, volume-scaled sizing
 - `src/tradingbot/ranking/ranker.py` — 11-component multi-factor scoring (gap 15%, catalyst 15%, relvol 13%, etc.)
 - `src/tradingbot/risk/risk_manager.py` — Max 8 trades/day, 3 consecutive loss lockout, streak scaling (75%→50%→lockout)
 - `src/tradingbot/data/etf_metadata.py` — ETF family dedup, ALL ETFs blocked (not just inverse/VIX)
-- `src/tradingbot/web/` — Flask dashboard (dark theme), Supabase alert store with trade outcomes
+- `src/tradingbot/tracking/trade_tracker.py` — Trade outcome tracker (every 2 min), trailing stops (3 stages), portfolio circuit breaker
+- `src/tradingbot/web/` — Flask dashboard (dark theme), Supabase alert store with trade outcomes, open positions P&L panel
 - `src/tradingbot/models.py` — Core dataclasses: `SymbolSnapshot`, `TradeCard`, `ThreeOptionWatchlist`, `RiskState`
 
 ### Configuration
@@ -79,10 +80,9 @@ Environment variables override YAML for cloud deployment. See `config/broker.exa
 
 ### Deployment
 
-- **Heroku**: Web dyno only (worker OFF, `WORKER_ENABLED=false`). Flask dashboard + Supabase reads.
-- **Render**: 6 cron jobs handle all scheduling (news, morning, midday every 15min, tracker, close)
+- **VPS** (`178.156.202.27`): All crons (news, morning, midday every 15min, tracker every 2min, close), Flask dashboard via nginx + gunicorn, IB Gateway + IBKR execution
+- **Heroku**: Decommissioned for crons. Dashboard URL still active but secondary.
 - **Supabase**: Tables: alerts (with `source` column), trade_outcomes, sessions, close_picks
-- **VPS** (feature branch): `178.156.202.27` — IB Gateway + IBKR execution (pending Non-Professional approval)
 
 Required env vars: `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `ALPACA_PAPER`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, `SUPABASE_KEY`
 
@@ -98,16 +98,22 @@ Optional: `DATA_PROVIDER=ibkr` (VPS only), `EXECUTION_MODE=paper|live` (VPS only
 - **AI optional**: LLM-based sentiment/validation (OpenAI/Anthropic) is opt-in and not required for core functionality.
 - **ALL ETFs blocked**: All ETFs blocked (not just inverse/VIX) — going long on ETFs has poor edge for gap-and-go.
 - **Secondary price guard**: Hard floor at $5 in `_build_cards` regardless of scanner path.
-- **TP1 cap**: `min(2.5×ATR, 5%)` — max possible R:R = 2.0. Previous 3% cap made R:R mathematically impossible.
+- **Session-adaptive TP caps**: Morning `min(2.5×ATR, 4%)`, Midday `min(2.0×ATR, 4%)`, Close `min(1.5×ATR, 4%)`. Prevents unrealistic targets.
+- **VWAP anchor TP**: For below-VWAP plays, anchors TP1 to VWAP instead of key_resistance.
+- **Intraday ATR**: Uses last 5 bars' high-low range instead of daily ATR — more responsive to real-time volatility.
+- **Volume-scaled sizing**: High relvol (≥3×) → 1.5× position, relvol ≥2× → 1.25×. Rewards high-participation setups.
+- **Structural TP2**: Uses `key_resistance_2` (2nd resistance level) when available, instead of fixed 2× risk distance.
+- **Gap extension fallback**: If no intraday resistance found, uses premarket high + 0.5×ATR.
 - **Session-adaptive VWAP**: Morning 3% max distance, Midday/Close 5% — stocks drift from VWAP as day progresses.
 - **Source tagging**: Each alert tagged `render-alpaca` or `vps-ibkr` in Telegram + Supabase.
 - **Daily EMA50 trend filter**: Blocks stocks gapping up below daily EMA50 (bear rally protection).
+- **Portfolio circuit breaker**: Closes all open trades if portfolio drawdown ≥ 1.5%, SPY/QQQ down ≥ 2%, or ≥ 75% of trades losing. Fires once per session, sends Telegram alert.
 
 ## Live Deployment
 
-- **Heroku dashboard**: `https://aztradingbot-c8a5462555f3.herokuapp.com`
-- **Health check**: `https://aztradingbot-c8a5462555f3.herokuapp.com/api/health`
-- **Render config**: `render.yaml` (6 cron jobs — sole scheduler)
+- **VPS dashboard**: `http://178.156.202.27` (nginx → gunicorn, dark theme, P&L tracking)
+- **Heroku dashboard** (secondary): `https://aztradingbot-c8a5462555f3.herokuapp.com`
+- **VPS crons**: All 6 cron jobs run via crontab on VPS (Render decommissioned as of Apr 15)
 
 ## Local Development
 
@@ -144,6 +150,16 @@ python -m tradingbot.cli run-day
 - **Market data type**: Switched to live (type 1) — auto-falls back to delayed if subscription missing for an exchange
 - **Scanner enhanced**: 5 TWS scanners including gap-specific codes (`TOP_OPEN_PERC_GAIN`, `HIGH_OPEN_GAP`) with server-side `priceAbove` and `volumeAbove` filters
 - **Next**: Subscribe to market data → Paper test on VPS → Dashboard execution badges → Validate → Go live
+
+### Recent Improvements (Apr 17)
+- **Session-adaptive TP caps** — morning 4%, midday 4%, close 4% with ATR multipliers per session
+- **Portfolio circuit breaker** — 3 triggers: portfolio drawdown, market crash (SPY/QQQ), correlated red
+- **Tracker interval** — 5min → 2min for faster TP/stop detection
+- **Dashboard P&L** — unrealized P&L %, dollar P&L, open positions summary panel
+- **Volume-scaled sizing** — high relvol gets bigger positions
+- **Intraday ATR** — uses last 5 bars instead of daily ATR
+- **Structural TP2** — uses key_resistance_2 when available
+- **VWAP anchor** — below-VWAP plays anchor TP1 to VWAP
 
 ### Backlog (biggest potential improvements)
 - **Volume decay detection** — track fading participation across bars.

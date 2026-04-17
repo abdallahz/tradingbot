@@ -1,6 +1,6 @@
 # Algorithm Improvements Tracker
 
-> **Last updated:** April 10, 2026
+> **Last updated:** April 17, 2026
 
 ## Status Key
 - [ ] Not started
@@ -32,6 +32,12 @@
 | 17 | Sector correlation filter | New feature | Backlog |
 | 18 | Volume profile time-of-day | New feature | Backlog |
 | 19 | Entry timing signal | New feature | Backlog |
+| 20 | Session-adaptive TP caps | Quality improvement | **FIXED** (2026-04-17) |
+| 21 | VWAP anchor TP | Quality improvement | **FIXED** (2026-04-17) |
+| 22 | Volume-scaled sizing | Quality improvement | **FIXED** (2026-04-17) |
+| 23 | Intraday ATR | Quality improvement | **FIXED** (2026-04-17) |
+| 24 | Structural TP2 | Quality improvement | **FIXED** (2026-04-17) |
+| 25 | Portfolio circuit breaker | Risk protection | **FIXED** (2026-04-17) |
 
 ### Additional Fixes Applied (2026-04-01 – 2026-04-02)
 
@@ -70,6 +76,21 @@ These fixes were applied based on live performance analysis and are not in the o
 | Session-adaptive VWAP | `dc1e568` | Apr 9 | VWAP distance: 3% morning, 5% midday/close |
 | **TP1 cap 3%→5%** | `82c8b41` | Apr 10 | **CRITICAL**: 3% cap made R:R mathematically impossible (max 1.2 < MIN_RR 1.5). Raised to `min(2.5×ATR, 5%)` → max R:R 2.0 |
 | Source tagging | `bfb25c4` | Apr 10 | Alerts tagged with source: `render-alpaca` or `vps-ibkr` in Telegram + Supabase |
+
+### Fixes Applied (2026-04-17)
+
+| Fix | Commit | Date | Description |
+|-----|--------|------|-------------|
+| Session-adaptive TP caps | `f9037e7` | Apr 17 | Morning min(2.5×ATR, 4%), Midday min(2.0×ATR, 4%), Close min(1.5×ATR, 4%) — replaces flat 5% cap |
+| VWAP anchor TP | `9da3542` | Apr 17 | Below-VWAP plays anchor TP1 to VWAP instead of key_resistance |
+| Gap extension fallback | `9da3542` | Apr 17 | If no intraday resistance, uses premarket_high + 0.5×ATR |
+| Volume-scaled sizing | `9da3542` | Apr 17 | relvol ≥3× → 1.5× position, relvol ≥2× → 1.25× position |
+| Intraday ATR | `9da3542` | Apr 17 | Uses last 5 bars' high-low range instead of daily ATR — more responsive |
+| Structural TP2 | `9da3542` | Apr 17 | Uses key_resistance_2 (2nd resistance level) when available |
+| Dynamic account value | `9da3542` | Apr 17 | Position sizing reads ACCOUNT_VALUE env var (default $25K) |
+| Portfolio circuit breaker | `1f58065` | Apr 17 | 3 triggers: -1.5% portfolio, -2% SPY/QQQ, 75% correlated red → emergency close all |
+| Tracker 5→2 min | `1f58065` | Apr 17 | VPS cron interval changed from */5 to */2 for faster TP/stop detection |
+| Dashboard P&L panel | `6c77663` | Apr 17 | Open positions summary: unrealized P&L %, dollar P&L, time held |
 
 ### TP1 Cap Root-Cause Analysis
 
@@ -245,6 +266,15 @@ Or pass session context into `build_trade_card` and let it decide.
 - #12 — dead code in practice
 - #14 — working as designed
 
+**DONE — Trade Card Quality (Apr 17):**
+- Session-adaptive TP caps (morning/midday/close with ATR multipliers)
+- VWAP anchor for below-VWAP plays
+- Gap extension fallback (premarket high + 0.5×ATR)
+- Volume-scaled sizing (relvol → position multiplier)
+- Intraday ATR (last 5 bars vs daily ATR)
+- Structural TP2 (key_resistance_2)
+- Portfolio circuit breaker (3 triggers → emergency close)
+
 **Backlog (new features, not bugs):**
 - #9 (trend filter) — daily EMA50 done; weekly trend still in backlog
 - #10 (stop timing) — partially solved by fakeout guard fix
@@ -252,4 +282,4 @@ Or pass session context into `build_trade_card` and let it decide.
 - #13 (volume decay detection)
 - #15-19 (gap fill model, 5-min vol, sector correlation, etc.)
 - **Midday entry improvement** — 0% WR in backtest; consider tighter midday-specific filters
-- **TP1/TP2 partial sell** — sell 50% at TP1, trail remainder to TP2
+- **TP1/TP2 partial sell** — sell 50% at TP1, trail remainder to TP2 (trailing stop system partially addresses this)
