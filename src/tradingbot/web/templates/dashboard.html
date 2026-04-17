@@ -2049,13 +2049,26 @@
                 </div>
                 <div class="pnl-stat">
                     <div class="pnl-stat-value {% if open_trades_avg_pnl >= 0 %}green{% endif %}"
-                        style="{% if open_trades_avg_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(open_trades_avg_pnl) }}%</div>
+                        style="{% if open_trades_avg_pnl < 0 %}color:var(--red){% endif %}">{{
+                        "%+.2f"|format(open_trades_avg_pnl) }}%</div>
                     <div class="pnl-stat-label">Avg P&amp;L</div>
                 </div>
                 <div class="pnl-stat">
                     <div class="pnl-stat-value {% if open_trades_total_pnl >= 0 %}green{% endif %}"
-                        style="{% if open_trades_total_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(open_trades_total_pnl) }}%</div>
+                        style="{% if open_trades_total_pnl < 0 %}color:var(--red){% endif %}">{{
+                        "%+.2f"|format(open_trades_total_pnl) }}%</div>
                     <div class="pnl-stat-label">Total P&amp;L</div>
+                </div>
+                <div class="pnl-stat">
+                    <div class="pnl-stat-value {% if open_trades_total_dollar >= 0 %}green{% endif %}"
+                        style="{% if open_trades_total_dollar < 0 %}color:var(--red){% endif %}">${{
+                        "%+,.2f"|format(open_trades_total_dollar) }}</div>
+                    <div class="pnl-stat-label">Total P&amp;L $</div>
+                </div>
+                <div class="pnl-stat">
+                    <div class="pnl-stat-value" style="color:var(--purple)">${{
+                        "{:,.0f}".format(open_trades_total_notional) }}</div>
+                    <div class="pnl-stat-label">Invested</div>
                 </div>
             </div>
             <table style="width:100%; font-size:12px; border-collapse:collapse;">
@@ -2066,6 +2079,9 @@
                         <th style="padding:4px 8px; text-align:right;">Entry</th>
                         <th style="padding:4px 8px; text-align:right;">Current</th>
                         <th style="padding:4px 8px; text-align:right;">P&amp;L</th>
+                        <th style="padding:4px 8px; text-align:right;">P&amp;L $</th>
+                        <th style="padding:4px 8px; text-align:right;">Shares</th>
+                        <th style="padding:4px 8px; text-align:right;">Notional</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2080,10 +2096,18 @@
                             {% endif %}
                         </td>
                         <td style="padding:5px 8px; text-align:right;">${{ "%.2f"|format(t.entry_price) }}</td>
-                        <td style="padding:5px 8px; text-align:right;">{% if t.current_price > 0 %}${{ "%.2f"|format(t.current_price) }}{% else %}-{% endif %}</td>
-                        <td style="padding:5px 8px; text-align:right; font-weight:700; {% if t.pnl_pct >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
+                        <td style="padding:5px 8px; text-align:right;">{% if t.current_price > 0 %}${{
+                            "%.2f"|format(t.current_price) }}{% else %}-{% endif %}</td>
+                        <td
+                            style="padding:5px 8px; text-align:right; font-weight:700; {% if t.pnl_pct >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
                             {{ "%+.2f"|format(t.pnl_pct) }}%
                         </td>
+                        <td
+                            style="padding:5px 8px; text-align:right; font-weight:700; {% if t.pnl_dollar >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
+                            ${{ "%+,.2f"|format(t.pnl_dollar) }}
+                        </td>
+                        <td style="padding:5px 8px; text-align:right;">{{ t.shares }}</td>
+                        <td style="padding:5px 8px; text-align:right;">${{ "{:,.0f}".format(t.notional) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

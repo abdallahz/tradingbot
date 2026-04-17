@@ -259,16 +259,28 @@ def dashboard():
     except Exception:
         pass
 
+    # Build alert_id → position_size map from loaded alerts
+    alert_shares_map = {a.get("id"): a.get("position_size", 0) or 0 for a in all_alerts if a.get("id")}
+
     # Build open-trades summary for dashboard
     open_trades_summary = []
     for o in outcomes:
         if o.get("status") in ("open", "tp1_hit"):
+            entry = float(o.get("entry_price") or 0)
+            current = float(o.get("exit_price") or 0)
+            shares = alert_shares_map.get(o.get("alert_id"), 0)
+            pnl_per_share = (current - entry) if entry > 0 and current > 0 else 0.0
+            pnl_dollar = round(shares * pnl_per_share, 2) if shares else 0.0
+            notional = round(shares * entry, 2) if shares and entry else 0.0
             open_trades_summary.append({
                 "symbol": o.get("symbol", ""),
                 "status": o.get("status"),
-                "entry_price": float(o.get("entry_price") or 0),
-                "current_price": float(o.get("exit_price") or 0),
+                "entry_price": entry,
+                "current_price": current,
                 "pnl_pct": round(float(o.get("pnl_pct") or 0.0), 2),
+                "pnl_dollar": pnl_dollar,
+                "shares": shares,
+                "notional": notional,
             })
     open_trades_summary.sort(key=lambda x: x["pnl_pct"], reverse=True)
     open_trades_avg_pnl = (
@@ -276,6 +288,8 @@ def dashboard():
         if open_trades_summary else 0.0
     )
     open_trades_total_pnl = round(sum(t["pnl_pct"] for t in open_trades_summary), 2)
+    open_trades_total_dollar = round(sum(t["pnl_dollar"] for t in open_trades_summary), 2)
+    open_trades_total_notional = round(sum(t["notional"] for t in open_trades_summary), 2)
 
     # Attach outcome to each alert
     for a in alerts:
@@ -314,6 +328,8 @@ def dashboard():
         open_trades_summary=open_trades_summary,
         open_trades_avg_pnl=open_trades_avg_pnl,
         open_trades_total_pnl=open_trades_total_pnl,
+        open_trades_total_dollar=open_trades_total_dollar,
+        open_trades_total_notional=open_trades_total_notional,
     )
 
 

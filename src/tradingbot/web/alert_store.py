@@ -278,6 +278,7 @@ def load_alerts(limit: int = 100) -> list[dict[str, Any]]:
                 "confluence_grade": r.get("confluence_grade", ""),
                 "volume_classification": r.get("volume_classification", ""),
                 "source":         r.get("source", "render-alpaca"),
+                "position_size":  r.get("position_size", 0) or 0,
                 "timestamp":      _format_ts(r.get("created_at", "")),
                 "timestamp_raw":  r.get("created_at", ""),
             })
@@ -541,7 +542,7 @@ def seed_outcomes_for_today() -> int:
         # Get today's alerts (include created_at for time-filtered tracking)
         alerts_resp = (
             sb.table("alerts")
-            .select("id, symbol, side, entry_price, stop_price, tp1_price, tp2_price, session, trade_date, created_at")
+            .select("id, symbol, side, entry_price, stop_price, tp1_price, tp2_price, session, trade_date, created_at, position_size")
             .eq("trade_date", today_str)
             .execute()
         )
@@ -578,6 +579,7 @@ def seed_outcomes_for_today() -> int:
                 "tp2_price":   alert.get("tp2_price"),
                 "status":      "open",
                 "alerted_at":  alert.get("created_at"),
+                "position_size": alert.get("position_size") or 0,
             }
             sb.table("trade_outcomes").insert(row).execute()
             count += 1
