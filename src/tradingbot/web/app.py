@@ -214,6 +214,7 @@ def dashboard():
                    "capital_used_pct": 0.0, "max_concurrent": 0}
     outcome_map = {}  # alert_id → {status, pnl_pct, exit_price}
     perf_history = []  # daily performance for chart
+    outcomes = []      # raw outcome rows for open-trades summary
     try:
         from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date, get_performance_history
         trade_stats = get_trade_stats(date_filter or None)
@@ -258,6 +259,24 @@ def dashboard():
     except Exception:
         pass
 
+    # Build open-trades summary for dashboard
+    open_trades_summary = []
+    for o in outcomes:
+        if o.get("status") in ("open", "tp1_hit"):
+            open_trades_summary.append({
+                "symbol": o.get("symbol", ""),
+                "status": o.get("status"),
+                "entry_price": float(o.get("entry_price") or 0),
+                "current_price": float(o.get("exit_price") or 0),
+                "pnl_pct": round(float(o.get("pnl_pct") or 0.0), 2),
+            })
+    open_trades_summary.sort(key=lambda x: x["pnl_pct"], reverse=True)
+    open_trades_avg_pnl = (
+        round(sum(t["pnl_pct"] for t in open_trades_summary) / len(open_trades_summary), 2)
+        if open_trades_summary else 0.0
+    )
+    open_trades_total_pnl = round(sum(t["pnl_pct"] for t in open_trades_summary), 2)
+
     # Attach outcome to each alert
     for a in alerts:
         aid = a.get("id")
@@ -292,6 +311,9 @@ def dashboard():
         close_picks=close_picks,
         trade_stats=trade_stats,
         perf_history=perf_history,
+        open_trades_summary=open_trades_summary,
+        open_trades_avg_pnl=open_trades_avg_pnl,
+        open_trades_total_pnl=open_trades_total_pnl,
     )
 
 

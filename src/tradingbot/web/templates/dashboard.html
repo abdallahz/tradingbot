@@ -2037,6 +2037,60 @@
         </div>
         {% endif %}
 
+        <!-- ── Open Trades Summary ──────────────────────────────────────── -->
+        {% if open_trades_summary and open_trades_summary | length > 0 %}
+        <div class="pnl-summary" style="flex-wrap: wrap; gap: 0;">
+            <div style="width: 100%; display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                <div class="pnl-title">📈 Open Positions</div>
+                <div class="pnl-divider"></div>
+                <div class="pnl-stat">
+                    <div class="pnl-stat-value amber">{{ open_trades_summary | length }}</div>
+                    <div class="pnl-stat-label">Open</div>
+                </div>
+                <div class="pnl-stat">
+                    <div class="pnl-stat-value {% if open_trades_avg_pnl >= 0 %}green{% endif %}"
+                        style="{% if open_trades_avg_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(open_trades_avg_pnl) }}%</div>
+                    <div class="pnl-stat-label">Avg P&amp;L</div>
+                </div>
+                <div class="pnl-stat">
+                    <div class="pnl-stat-value {% if open_trades_total_pnl >= 0 %}green{% endif %}"
+                        style="{% if open_trades_total_pnl < 0 %}color:var(--red){% endif %}">{{ "%+.2f"|format(open_trades_total_pnl) }}%</div>
+                    <div class="pnl-stat-label">Total P&amp;L</div>
+                </div>
+            </div>
+            <table style="width:100%; font-size:12px; border-collapse:collapse;">
+                <thead>
+                    <tr style="color:var(--sub); text-align:left; border-bottom:1px solid var(--border);">
+                        <th style="padding:4px 8px;">Symbol</th>
+                        <th style="padding:4px 8px;">Status</th>
+                        <th style="padding:4px 8px; text-align:right;">Entry</th>
+                        <th style="padding:4px 8px; text-align:right;">Current</th>
+                        <th style="padding:4px 8px; text-align:right;">P&amp;L</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in open_trades_summary %}
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:5px 8px; font-weight:600;">{{ t.symbol }}</td>
+                        <td style="padding:5px 8px;">
+                            {% if t.status == 'tp1_hit' %}
+                            <span style="color:var(--green);">🎯 TP1 Hit</span>
+                            {% else %}
+                            <span style="color:var(--blue);">⏳ Tracking</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding:5px 8px; text-align:right;">${{ "%.2f"|format(t.entry_price) }}</td>
+                        <td style="padding:5px 8px; text-align:right;">{% if t.current_price > 0 %}${{ "%.2f"|format(t.current_price) }}{% else %}-{% endif %}</td>
+                        <td style="padding:5px 8px; text-align:right; font-weight:700; {% if t.pnl_pct >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
+                            {{ "%+.2f"|format(t.pnl_pct) }}%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
         <!-- ── Performance History ────────────────────────────────────────── -->
         {% if perf_history and perf_history | length > 0 %}
         <div class="perf-section">
