@@ -39,12 +39,19 @@ import pytz
 log = logging.getLogger(__name__)
 ET = pytz.timezone("America/New_York")
 
+# ── Portfolio Circuit Breaker thresholds ──────────────────────────────
+# These can be overridden via environment variables.
+PORTFOLIO_DRAWDOWN_PCT = float(os.getenv("CB_PORTFOLIO_DRAWDOWN_PCT", "-1.5"))
+MARKET_CRASH_PCT = float(os.getenv("CB_MARKET_CRASH_PCT", "-2.0"))
+CORRELATED_RED_RATIO = float(os.getenv("CB_CORRELATED_RED_RATIO", "0.75"))
+
 
 class TradeTracker:
     """Check live prices against open trade cards and record outcomes."""
 
     def __init__(self) -> None:
         self._alpaca = None
+        self._circuit_breaker_fired = False  # once per day
 
     def _get_feed(self) -> str:
         """Return the configured Alpaca data feed ('iex' or 'sip')."""
@@ -305,6 +312,193 @@ class TradeTracker:
         print(f"[tracker] session bars: {len(result)}/{len(symbols)} symbols with post-alert data")
         return result
 
+    # ── Portfolio circuit breaker ──────────────────────────────────────────
+    def _check_circuit_breaker(
+        self,
+        open_trades: list[dict],
+        prices: dict[str, float],
+    ) -> str | None:
+        """Check portfolio-level risk triggers. Returns trigger name or None.
+
+        Three independent triggers (any one fires the breaker):
+        1. Portfolio drawdown: combined unrealized P&L ≤ threshold % of account
+        2. Market crash: SPY or QQQ down ≥ threshold % intraday
+        3. Correlated red: ≥ threshold ratio of open trades are losing
+        """
+        if self._circuit_breaker_fired:
+            return None  # already fired this session
+
+        if len(open_trades) < 2:
+            return None  # single trade doesn't warrant portfolio-level action
+
+        # ── Trigger 1: Portfolio drawdown ──────────────────────────
+        from tradingbot.config import ConfigLoader
+        from pathlib import Path
+        try:
+            cfg = ConfigLoader(Path(__file__).resolve().parents[2])
+            account_value = float(
+                os.getenv("ACCOUNT_VALUE", "")
+                or cfg.risk().get("risk", {}).get("account_value", 25000)
+            )
+        except Exception:
+            account_value = 25000.0
+
+        total_notional = 0.0
+        total_unrealised = 0.0
+        losing_count = 0
+
+        for trade in open_trades:
+            sym = trade["symbol"]
+            entry = float(trade.get("entry_price") or 0)
+            price = prices.get(sym)
+            if not price or entry <= 0:
+                continue
+
+            shares = float(trade.get("position_size") or 0)
+            if shares <= 0:
+                # Estimate from risk_per_trade if position_size not stored
+                shares = account_value * 0.005 / (entry * 0.025)  # rough estimate
+
+            notional = shares * entry
+            unrealised = shares * (price - entry)
+            total_notional += notional
+            total_unrealised += unrealised
+
+            if price < entry:
+                losing_count += 1
+
+        # Check portfolio drawdown as % of account
+        if account_value > 0 and total_unrealised != 0:
+            drawdown_pct = (total_unrealised / account_value) * 100
+            if drawdown_pct <= PORTFOLIO_DRAWDOWN_PCT:
+                return (
+                    f"portfolio_drawdown: {drawdown_pct:+.2f}% of account "
+                    f"(threshold: {PORTFOLIO_DRAWDOWN_PCT}%)"
+                )
+
+        # ── Trigger 2: Market crash (SPY/QQQ) ─────────────────────
+        try:
+            from tradingbot.analysis.market_guard import MarketGuard
+            guard = MarketGuard()
+            health = guard.check()
+            worst_idx = min(health.spy_change_pct, health.qqq_change_pct)
+            if worst_idx <= MARKET_CRASH_PCT:
+                return (
+                    f"market_crash: SPY {health.spy_change_pct:+.2f}%, "
+                    f"QQQ {health.qqq_change_pct:+.2f}% "
+                    f"(threshold: {MARKET_CRASH_PCT}%)"
+                )
+        except Exception as exc:
+            log.warning(f"[circuit_breaker] market check failed: {exc}")
+
+        # ── Trigger 3: Correlated red ─────────────────────────────
+        trades_with_prices = sum(
+            1 for t in open_trades if prices.get(t["symbol"])
+        )
+        if trades_with_prices >= 3:
+            ratio = losing_count / trades_with_prices
+            if ratio >= CORRELATED_RED_RATIO:
+                return (
+                    f"correlated_red: {losing_count}/{trades_with_prices} "
+                    f"trades losing ({ratio:.0%}, threshold: {CORRELATED_RED_RATIO:.0%})"
+                )
+
+        return None
+
+    def _emergency_close_all(
+        self,
+        open_trades: list[dict],
+        prices: dict[str, float],
+        trigger: str,
+    ) -> int:
+        """Close all open trades with status 'emergency_closed'. Returns count."""
+        from tradingbot.web.alert_store import update_outcome
+
+        self._circuit_breaker_fired = True
+        now_str = datetime.now(timezone.utc).isoformat()
+        closed = 0
+
+        for trade in open_trades:
+            sym = trade["symbol"]
+            entry = float(trade.get("entry_price") or 0)
+            price = prices.get(sym, 0.0)
+            if price <= 0 and entry > 0:
+                price = entry  # fallback to entry → PnL=0
+
+            pnl = 0.0
+            if entry > 0 and price > 0:
+                side = trade.get("side", "long")
+                prev_status = trade.get("status", "open")
+                tp1 = float(trade.get("tp1_price") or 0)
+
+                if side == "long":
+                    pnl_final = ((price - entry) / entry) * 100
+                else:
+                    pnl_final = ((entry - price) / entry) * 100
+
+                # Blend if TP1 was already taken
+                if prev_status == "tp1_hit" and tp1 > 0:
+                    if side == "long":
+                        pnl_tp1 = ((tp1 - entry) / entry) * 100
+                    else:
+                        pnl_tp1 = ((entry - tp1) / entry) * 100
+                    pnl = round((pnl_tp1 + pnl_final) / 2, 2)
+                else:
+                    pnl = round(pnl_final, 2)
+
+            update_outcome(
+                outcome_id=trade["id"],
+                status="emergency_closed",
+                exit_price=round(price, 2) if price > 0 else None,
+                pnl_pct=pnl,
+                hit_at=now_str,
+                closed_at=now_str,
+            )
+            closed += 1
+            log.warning(
+                f"[circuit_breaker] EMERGENCY CLOSE {sym} @ ${price:.2f} "
+                f"(PnL: {pnl:+.2f}%) — {trigger}"
+            )
+
+        # ── Send Telegram alert ────────────────────────────────────
+        self._send_circuit_breaker_alert(open_trades, prices, trigger, closed)
+        return closed
+
+    def _send_circuit_breaker_alert(
+        self,
+        trades: list[dict],
+        prices: dict[str, float],
+        trigger: str,
+        closed_count: int,
+    ) -> None:
+        """Send a Telegram notification about the circuit breaker firing."""
+        try:
+            from tradingbot.notifications.telegram_notifier import TelegramNotifier
+            notifier = TelegramNotifier.from_env()
+            if not notifier._enabled:
+                return
+
+            lines = [
+                "🚨 *CIRCUIT BREAKER TRIGGERED*",
+                f"Trigger: `{trigger}`",
+                f"Closed: {closed_count} position(s)",
+                "",
+            ]
+            for t in trades:
+                sym = t["symbol"]
+                entry = float(t.get("entry_price") or 0)
+                price = prices.get(sym, 0.0)
+                if entry > 0 and price > 0:
+                    pnl = ((price - entry) / entry) * 100
+                    emoji = "🟢" if pnl >= 0 else "🔴"
+                    lines.append(f"{emoji} {sym}: ${entry:.2f} → ${price:.2f} ({pnl:+.2f}%)")
+                else:
+                    lines.append(f"⚪ {sym}: no price data")
+
+            notifier.send_text("\n".join(lines))
+        except Exception as exc:
+            log.warning(f"[circuit_breaker] Telegram alert failed: {exc}")
+
     # ── Main tick: check all open trades ───────────────────────────────────
     def tick(self) -> dict[str, Any]:
         """Run one tracking cycle.  Returns summary stats."""
@@ -333,6 +527,18 @@ class TradeTracker:
             log.info(f"[tracker] No prices returned for {len(symbols)} symbols")
             return {"checked": len(open_trades), "updates": 0, "seeded": seeded}
 
+        # Step 3a: Portfolio circuit breaker — check before per-trade eval
+        cb_trigger = self._check_circuit_breaker(open_trades, prices)
+        if cb_trigger:
+            log.warning(f"[circuit_breaker] TRIGGERED: {cb_trigger}")
+            closed = self._emergency_close_all(open_trades, prices, cb_trigger)
+            return {
+                "checked": len(open_trades),
+                "updates": closed,
+                "seeded": seeded,
+                "circuit_breaker": cb_trigger,
+            }
+
         # Step 3b: Fetch intraday bar highs/lows (post-alert only)
         bar_extremes = self._fetch_session_bars(open_trades)
 
@@ -340,7 +546,7 @@ class TradeTracker:
         updates = 0
         now_str = datetime.now(timezone.utc).isoformat()
         # Terminal statuses = position fully closed (sold)
-        _terminal = {"tp2_hit", "stopped", "breakeven", "trailed_out", "tp1_locked"}
+        _terminal = {"tp2_hit", "stopped", "breakeven", "trailed_out", "tp1_locked", "emergency_closed"}
         for trade in open_trades:
             sym = trade["symbol"]
             price = prices.get(sym)
