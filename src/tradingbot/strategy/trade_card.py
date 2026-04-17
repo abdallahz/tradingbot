@@ -103,24 +103,45 @@ def build_trade_card(
     Entry  = current market price (what you'd actually get filled at).
     Stop   = key support − ATR buffer (long) or key resistance + ATR buffer (short).
     TP1    = key resistance (long) or key support (short) — the nearest real level.
-    TP2    = TP1 + 1R extension.
+    TP2    = next structural resistance above TP1, or TP1 + 1R fallback.
     R:R    = (TP1 − entry) / (entry − stop).  Must be ≥ MIN_RR or the card is dropped.
 
     Position sizing: shares = (account_value × risk_per_trade_pct) / (entry − stop)
     so that each trade risks exactly the configured % of the account.
+    Volume-scaled: high relvol trades get up to 1.5× risk budget.
+
+    Session-adaptive TP caps:
+      Morning: min(2.5×ATR, 5%)  — full momentum
+      Midday:  min(1.0×ATR, 3%)  — reduced move potential
+      Close:   min(0.75×ATR, 2%) — minimal move window
 
     The fixed_stop_pct is kept as a MAXIMUM stop distance — if the level-derived
     stop is wider than this %, we cap it so risk stays bounded.
 
     Risk-tiered stops: if stop_pct_by_risk is provided (e.g. {"low": 1.5, "medium": 2.5,
-    "high": 2.5}), the max stop % is adjusted by the trade's risk level.  Low-risk trades
-    (boring, low volatility) get tighter stops since they lack the momentum to reach targets.
+    "high": 2.5}), the max stop % is adjusted by the trade's risk level.
 
     stop_buffer_multiplier widens the ATR buffer in weak markets (from MarketGuard):
       green=1.0, yellow=1.5, red=2.0 (red halts entries, so effectively 1.0-1.5).
     """
     entry = round(stock.price, 2)
-    atr_buffer = stock.atr * 0.5 * stop_buffer_multiplier if stock.atr > 0 else entry * 0.005
+
+    # ── Intraday ATR (#5): use recent bar ranges if available ──────
+    # Daily ATR can diverge from current intraday volatility.
+    # Compute average range of last 5 bars as an intraday proxy.
+    intraday_atr = 0.0
+    raw_bars = getattr(stock, "raw_bars", None) or []
+    if len(raw_bars) >= 5:
+        try:
+            recent = raw_bars[-5:]
+            ranges = [float(b.high) - float(b.low) for b in recent if hasattr(b, "high") and hasattr(b, "low")]
+            if ranges:
+                intraday_atr = sum(ranges) / len(ranges)
+        except Exception:
+            pass
+    # Use intraday ATR if valid, otherwise fall back to daily ATR
+    effective_atr = intraday_atr if intraday_atr > 0 else stock.atr
+    atr_buffer = effective_atr * 0.5 * stop_buffer_multiplier if effective_atr > 0 else entry * 0.005
 
     # Reject if key levels aren't set — a card with TP1=0 is nonsensical
     if stock.key_resistance <= 0:
@@ -129,22 +150,24 @@ def build_trade_card(
     if stock.key_resistance <= entry:
         return None
 
-    # Maximum realistic TP distance for intraday trades.
-    # Daily S/R levels (5-day range) can be very far from current price,
-    # creating unreachable targets that inflate R:R on paper but never hit.
-    # Cap at the tighter of 2.5× daily ATR or 5% of stock price.
-    #
-    # History:
-    #   v1: 3×ATR / 6% — Apr 6-8 showed 0% WR on capped ETF trades.
-    #   v2: 2×ATR / 3% — too tight: max R:R = 3%/2.5% = 1.2 < MIN_RR(1.5),
-    #       making it mathematically impossible to generate any cards.
-    #   v3 (current): 2.5×ATR / 5% — max R:R = 5%/2.5% = 2.0. ETFs are now
-    #       blocked separately, so the 6% cap's 0% WR was an ETF problem,
-    #       not a target-distance problem.
-    if stock.atr > 0:
-        max_tp_dist = min(stock.atr * 2.5, entry * 0.05)
+    # ── Session-adaptive TP caps (#1) ─────────────────────────────
+    # Morning has full momentum; midday/close progressively less room.
+    # The % cap must exceed fixed_stop_pct (2.5%) × MIN_RR (1.5) = 3.75%
+    # for any trade to be mathematically possible.
+    if effective_atr > 0:
+        if session_tag == "morning":
+            max_tp_dist = min(effective_atr * 2.5, entry * 0.05)
+        elif session_tag == "midday":
+            max_tp_dist = min(effective_atr * 1.5, entry * 0.04)
+        else:  # close
+            max_tp_dist = min(effective_atr * 1.0, entry * 0.04)
     else:
-        max_tp_dist = entry * 0.05
+        if session_tag == "morning":
+            max_tp_dist = entry * 0.05
+        elif session_tag == "midday":
+            max_tp_dist = entry * 0.04
+        else:
+            max_tp_dist = entry * 0.04
 
     # Long-only: stop below support, targets above entry
     level_stop = stock.key_support - atr_buffer
@@ -156,23 +179,36 @@ def build_trade_card(
     if risk <= 0:
         return None
 
-    # ── ATR minimum stop distance ──────────────────────────────────
-    # A stop tighter than 0.5 × ATR will almost certainly be clipped by
-    # normal intraday noise.  Widen the stop if necessary, but re-check
-    # that the fixed_stop_pct cap isn't violated.
-    if stock.atr > 0:
-        min_stop_dist = stock.atr * 0.5
+    # ── Intraday ATR minimum stop distance (#5) ───────────────────
+    # A stop tighter than 0.5× effective ATR will be clipped by noise.
+    if effective_atr > 0:
+        min_stop_dist = effective_atr * 0.5
         if risk < min_stop_dist:
             widened_stop = round(entry - min_stop_dist, 2)
-            # Only widen if it doesn't breach the max-risk cap
             if widened_stop >= max_stop:
                 stop = widened_stop
                 risk = entry - stop
 
-    # TP1 = key resistance, capped at max_tp_dist above entry
+    # ── VWAP as TP1 anchor for pullback plays (#2) ────────────────
+    # When price is below VWAP, VWAP acts as a magnet — stocks commonly
+    # bounce to VWAP and stall. Use it as TP1 ceiling for these setups.
+    vwap = getattr(stock, "vwap", 0.0) or 0.0
     raw_tp1 = stock.key_resistance
+    if vwap > 0 and entry < vwap and vwap < raw_tp1:
+        raw_tp1 = vwap
+
+    # TP1 = target, capped at session-adaptive max distance
     tp1 = round(min(raw_tp1, entry + max_tp_dist), 2)
-    tp2 = round(tp1 + risk, 2)
+
+    # ── Structural TP2 (#6) ────────────────────────────────────────
+    # Use the second resistance level if available and within 2×ATR of TP1.
+    # Otherwise fall back to TP1 + 1R mechanical extension.
+    kr2 = getattr(stock, "key_resistance_2", 0.0) or 0.0
+    if kr2 > tp1 and effective_atr > 0 and (kr2 - tp1) <= effective_atr * 2:
+        tp2 = round(kr2, 2)
+    else:
+        tp2 = round(tp1 + risk, 2)
+
     invalidation = round(stock.pullback_low, 2)
 
     # R:R based on TP1 (the real level), not TP2
@@ -182,23 +218,17 @@ def build_trade_card(
         return None
 
     # ── Risk-tiered stop adjustment ────────────────────────────────
-    # Assess risk level first, then apply tighter stop if configured.
-    # Low-risk trades (low volatility, wide spread, thin liquidity)
-    # historically show 36% WR and +0.08% avg PnL — a tighter stop
-    # (1.5% vs 2.5%) limits loss magnitude without hurting upside.
     risk_level = _assess_risk(stock, rr)
 
     if stop_pct_by_risk:
         tiered_stop_pct = stop_pct_by_risk.get(risk_level, fixed_stop_pct)
         if tiered_stop_pct < fixed_stop_pct:
-            # Recalculate stop with tighter cap
             tiered_max_stop = entry * (1.0 - tiered_stop_pct / 100.0)
             tiered_stop = round(max(level_stop, tiered_max_stop), 2)
 
-            # Apply ATR minimum floor again
             tiered_risk = entry - tiered_stop
-            if stock.atr > 0 and tiered_risk > 0:
-                min_stop_dist = stock.atr * 0.5
+            if effective_atr > 0 and tiered_risk > 0:
+                min_stop_dist = effective_atr * 0.5
                 if tiered_risk < min_stop_dist:
                     widened = round(entry - min_stop_dist, 2)
                     if widened >= tiered_max_stop:
@@ -209,27 +239,37 @@ def build_trade_card(
                 stop = tiered_stop
                 risk = tiered_risk
                 # Recalculate TP2 and R:R with new risk
-                tp2 = round(tp1 + risk, 2)
+                if kr2 > tp1 and effective_atr > 0 and (kr2 - tp1) <= effective_atr * 2:
+                    tp2 = round(kr2, 2)
+                else:
+                    tp2 = round(tp1 + risk, 2)
                 rr = round(reward / risk, 2)
                 if rr < MIN_RR:
                     return None
 
     # ── R:R cap — prevent unrealistic targets ──────────────────────
-    # Apr 6-8 data: avg R:R was 3.1 (all losers).  Mar 30-31 winners
-    # averaged R:R 2.3.  When R:R > 3.0 the stock must move +4-6%
-    # without a -1.5% pullback — nearly impossible intraday.
-    # Cap TP1 so R:R never exceeds MAX_RR.
     if rr > MAX_RR:
         reward = risk * MAX_RR
         tp1 = round(entry + reward, 2)
-        tp2 = round(tp1 + risk, 2)
+        if kr2 > tp1 and effective_atr > 0 and (kr2 - tp1) <= effective_atr * 2:
+            tp2 = round(kr2, 2)
+        else:
+            tp2 = round(tp1 + risk, 2)
         rr = MAX_RR
 
     # ── Position sizing ──────────────────────────────────────────────
-    # Adjust risk budget for leveraged ETFs — a 3x ETF moves 3x as far
-    # so we reduce position size proportionally to keep real exposure equal.
     leverage = abs(get_leverage_factor(stock.symbol))
     adjusted_risk_pct = risk_per_trade_pct / leverage if leverage > 1 else risk_per_trade_pct
+
+    # Volume-scaled confidence (#4): high relvol = higher conviction
+    relvol = getattr(stock, "relative_volume", 1.0) or 1.0
+    if relvol >= 3.0:
+        volume_multiplier = 1.5
+    elif relvol >= 2.0:
+        volume_multiplier = 1.25
+    else:
+        volume_multiplier = 1.0
+    adjusted_risk_pct *= volume_multiplier
 
     # shares = (account_value × risk%) / risk_per_share
     risk_dollars = account_value * (adjusted_risk_pct / 100.0)

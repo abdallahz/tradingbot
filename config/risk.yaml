@@ -1,4 +1,5 @@
 risk:
+  account_value: 25000
   max_trades_per_day: 8
   o2_max_trades_per_day: 2
   daily_loss_lockout_pct: 1.5

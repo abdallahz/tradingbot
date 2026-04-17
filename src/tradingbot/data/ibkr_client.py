@@ -620,16 +620,27 @@ class IBKRClient:
 
                     if is_breakout:
                         key_support = reclaim_level - atr_val * 0.25
+                        key_resistance_2 = 0.0
+                        breakout_res = []
                         if (bar_resistance > 0
                                 and bar_resistance > current_price
                                 and (bar_resistance - current_price) <= max_res_dist):
-                            key_resistance = bar_resistance
-                        elif (prev_day_high > 0
+                            breakout_res.append(bar_resistance)
+                        if (prev_day_high > 0
                                 and prev_day_high > current_price
                                 and (prev_day_high - current_price) <= max_res_dist):
-                            key_resistance = prev_day_high
+                            breakout_res.append(prev_day_high)
+                        breakout_res.sort()
+                        if breakout_res:
+                            key_resistance = breakout_res[0]
+                            if len(breakout_res) >= 2:
+                                key_resistance_2 = breakout_res[1]
                         else:
-                            key_resistance = current_price + atr_val * 2
+                            gap_ext = open_price * 1.02 if open_price > 0 else 0
+                            if gap_ext > current_price:
+                                key_resistance = round(gap_ext, 2)
+                            else:
+                                key_resistance = round(current_price * 1.02, 2)
                     else:
                         support_candidates = [
                             v for v in [
@@ -660,8 +671,17 @@ class IBKRClient:
                                 and bar_resistance > current_price
                                 and (bar_resistance - current_price) <= max_res_dist):
                             resistance_candidates.append(bar_resistance)
-                        above = [r for r in resistance_candidates if r > current_price]
-                        key_resistance = min(above) if above else current_price + atr_val
+                        above = sorted([r for r in resistance_candidates if r > current_price])
+                        if above:
+                            key_resistance = above[0]
+                            key_resistance_2 = above[1] if len(above) >= 2 else 0.0
+                        else:
+                            gap_ext = open_price * 1.02 if open_price > 0 else 0
+                            if gap_ext > current_price:
+                                key_resistance = round(gap_ext, 2)
+                            else:
+                                key_resistance = round(current_price * 1.02, 2)
+                            key_resistance_2 = 0.0
 
                     snapshot = SymbolSnapshot(
                             symbol=symbol,
@@ -682,6 +702,7 @@ class IBKRClient:
                             pullback_high=pullback_high,
                             key_support=key_support,
                             key_resistance=key_resistance,
+                            key_resistance_2=key_resistance_2,
                             atr=atr_val,
                             open_price=open_price,
                             intraday_change_pct=intraday_change_pct,

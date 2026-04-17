@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, time as dt_time
 from pathlib import Path
 from typing import Literal
@@ -161,6 +162,7 @@ class SessionRunner:
         risk_defaults = risk_config["risk"]
         self.fixed_stop_pct = risk_defaults["fixed_stop_pct"]
         self.risk_per_trade_pct = risk_defaults.get("risk_per_trade_pct", 0.5)
+        self.account_value = float(os.environ.get("ACCOUNT_VALUE", risk_defaults.get("account_value", 25_000.0)))
         # Risk-tiered stop caps: low-risk trades get tighter stops
         self.stop_pct_by_risk = {
             "low": risk_defaults.get("stop_pct_low_risk", self.fixed_stop_pct),
@@ -937,6 +939,7 @@ class SessionRunner:
                 fixed_stop_pct=self.fixed_stop_pct,
                 session_tag=session_tag,
                 risk_per_trade_pct=effective_risk_pct,
+                account_value=self.account_value,
                 stop_buffer_multiplier=mh.stop_buffer_multiplier if mh else 1.0,
                 stop_pct_by_risk=self.stop_pct_by_risk,
             )

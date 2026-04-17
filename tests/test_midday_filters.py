@@ -143,31 +143,33 @@ class TestMiddayHighRiskBlock:
 
     def test_high_risk_blocked_at_midday(self):
         runner = _make_runner()
-        # Create a high-risk snapshot: cheap, volatile, wide spread
+        # Create a high-risk snapshot: volatile, wide spread, modest dollar volume
+        # Prices set so R:R passes MIN_RR with midday caps (3% max TP distance)
         snap = _make_snapshot(
             symbol="LWLG",
-            price=12.0,
+            price=50.0,
             spread_pct=1.6,
-            atr=0.8,
+            atr=3.0,
             dollar_volume=800_000,
-            key_support=11.70,
-            key_resistance=12.60,
-            vwap=11.95,
-            ema9=12.05,
-            ema20=11.90,
+            key_support=49.0,
+            key_resistance=52.5,
+            vwap=49.5,
+            ema9=50.1,
+            ema20=49.8,
+            gap_pct=7.0,
         )
         cards, dropped = _run_build_cards(runner, snap, session_tag="midday")
         assert len(cards) == 0, f"High-risk trade should be blocked at midday, got {[c.symbol for c in cards]}"
         drop_reasons = [r for _, r in dropped]
-        assert any("midday_high_risk" in r for r in drop_reasons), f"Expected midday_high_risk drop, got {drop_reasons}"
+        assert any("high_risk" in r for r in drop_reasons), f"Expected high_risk drop, got {drop_reasons}"
 
     def test_high_risk_passes_at_morning(self):
         runner = _make_runner()
         snap = _make_snapshot(
             symbol="LWLG",
-            price=12.0,
+            price=50.0,
             spread_pct=1.6,
-            atr=0.8,
+            atr=3.0,
             dollar_volume=800_000,
             key_support=11.70,
             key_resistance=12.60,
@@ -207,7 +209,7 @@ class TestMiddayHighRiskBlock:
         )
         cards, dropped = _run_build_cards(runner, snap, session_tag="midday")
         drop_reasons = [r for _, r in dropped]
-        assert not any("midday_high_risk" in r for r in drop_reasons), \
+        assert not any("high_risk" in r for r in drop_reasons), \
             f"Low-risk should pass at midday, drops: {drop_reasons}"
 
 
@@ -220,8 +222,10 @@ class TestMiddayATRExhaustion:
 
     def test_atr_exhausted_blocked_at_midday(self):
         runner = _make_runner()
-        snap = _make_snapshot(symbol="SNAP", price=6.0, key_support=5.85, key_resistance=6.35,
-                              vwap=5.95, ema9=6.02, ema20=5.98)
+        # Prices set so R:R passes the midday TP cap (3% max distance)
+        snap = _make_snapshot(symbol="SNAP", price=50.0, key_support=49.0,
+                              key_resistance=52.5, atr=3.0,
+                              vwap=49.5, ema9=50.1, ema20=49.8)
         cards, dropped = _run_build_cards(
             runner, snap,
             session_tag="midday",
@@ -236,7 +240,8 @@ class TestMiddayATRExhaustion:
 
     def test_atr_exhausted_passes_at_morning(self):
         runner = _make_runner()
-        snap = _make_snapshot(symbol="SNAP", price=6.0, key_support=5.85, key_resistance=6.35)
+        snap = _make_snapshot(symbol="SNAP", price=50.0, key_support=49.0,
+                              key_resistance=52.5, atr=3.0)
         cards, dropped = _run_build_cards(
             runner, snap,
             session_tag="morning",

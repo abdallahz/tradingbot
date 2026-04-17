@@ -25,6 +25,7 @@ class SymbolSnapshot:
     pullback_high: float
     key_support: float = 0.0      # strongest nearby support level
     key_resistance: float = 0.0   # strongest nearby resistance level
+    key_resistance_2: float = 0.0 # second resistance level above key_resistance (for structural TP2)
     atr: float = 0.0              # ATR for stop buffer sizing
     open_price: float = 0.0       # today's regular-session open (or pre-market proxy)
     intraday_change_pct: float = 0.0  # % change from today's open (for midday/close)
