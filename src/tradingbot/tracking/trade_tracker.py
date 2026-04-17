@@ -372,6 +372,23 @@ class TradeTracker:
                     f"{trade['status']} → {new_status} @ ${exit_price:.2f}{bar_tag} "
                     f"(PnL: {pnl:+.2f}%)"
                 )
+            else:
+                # No status change — update unrealized P&L + last price
+                # so the dashboard can show live gain/loss for open trades
+                entry = float(trade.get("entry_price") or 0)
+                if entry > 0:
+                    side = trade.get("side", "long")
+                    if side == "long":
+                        unrealised_pnl = ((price - entry) / entry) * 100
+                    else:
+                        unrealised_pnl = ((entry - price) / entry) * 100
+                    update_outcome(
+                        outcome_id=trade["id"],
+                        status=trade["status"],
+                        pnl_pct=round(unrealised_pnl, 2),
+                        exit_price=round(price, 2),
+                        hit_at=now_str,
+                    )
 
         return {"checked": len(open_trades), "updates": updates, "seeded": seeded}
 

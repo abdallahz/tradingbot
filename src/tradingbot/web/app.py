@@ -222,25 +222,38 @@ def dashboard():
         for o in outcomes:
             aid = o.get("alert_id")
             if aid:
+                import pytz
+                _et = pytz.timezone("America/New_York")
                 # Convert closed_at UTC → ET for display
                 closed_et = ""
                 raw_closed = o.get("closed_at")
                 if raw_closed:
                     try:
-                        from datetime import datetime, timezone
-                        import pytz
-                        _et = pytz.timezone("America/New_York")
                         dt = datetime.fromisoformat(str(raw_closed).replace("Z", "+00:00"))
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=timezone.utc)
                         closed_et = dt.astimezone(_et).strftime("%I:%M %p ET").lstrip("0")
                     except Exception:
                         closed_et = str(raw_closed)[:16]
+                # For open trades, convert hit_at → ET as "last checked" time
+                last_checked_et = ""
+                status = o.get("status", "open")
+                if status in ("open", "tp1_hit"):
+                    raw_hit = o.get("hit_at")
+                    if raw_hit:
+                        try:
+                            dt_h = datetime.fromisoformat(str(raw_hit).replace("Z", "+00:00"))
+                            if dt_h.tzinfo is None:
+                                dt_h = dt_h.replace(tzinfo=timezone.utc)
+                            last_checked_et = dt_h.astimezone(_et).strftime("%I:%M %p ET").lstrip("0")
+                        except Exception:
+                            last_checked_et = ""
                 outcome_map[aid] = {
-                    "status": o.get("status", "open"),
+                    "status": status,
                     "pnl_pct": round(float(o.get("pnl_pct") or 0.0), 2),
                     "exit_price": o.get("exit_price"),
                     "closed_at": closed_et,
+                    "last_checked": last_checked_et,
                 }
     except Exception:
         pass

@@ -2486,7 +2486,19 @@
                         {% elif a.outcome.status == 'expired' %}Expired
                         {% else %}Tracking{% endif %}
                     </span>
-                    {% if a.outcome.status not in ['open'] %}
+                    {% if a.outcome.status in ['open', 'tp1_hit'] %}
+                    {% if a.outcome.exit_price %}
+                    <span class="outcome-exit">@ ${{ "%.2f"|format(a.outcome.exit_price) }}</span>
+                    {% endif %}
+                    {% if a.outcome.pnl_pct is defined and a.outcome.pnl_pct != 0 %}
+                    <span class="outcome-pnl {% if a.outcome.pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ "%+.2f"|format(a.outcome.pnl_pct) }}%
+                    </span>
+                    {% endif %}
+                    {% if a.outcome.last_checked %}
+                    <span class="outcome-exit" title="Last checked (ET)">🕐 {{ a.outcome.last_checked }}</span>
+                    {% endif %}
+                    {% else %}
                     {% if a.outcome.exit_price %}
                     <span class="outcome-exit">@ ${{ "%.2f"|format(a.outcome.exit_price) }}</span>
                     {% endif %}
