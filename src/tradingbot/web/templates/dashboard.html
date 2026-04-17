@@ -2062,7 +2062,7 @@
                 <div class="pnl-stat">
                     <div class="pnl-stat-value {% if open_trades_total_dollar >= 0 %}green{% endif %}"
                         style="{% if open_trades_total_dollar < 0 %}color:var(--red){% endif %}">${{
-                        "%+,.2f"|format(open_trades_total_dollar) }}</div>
+                        "{:+,.2f}".format(open_trades_total_dollar) }}</div>
                     <div class="pnl-stat-label">Total P&amp;L $</div>
                 </div>
                 <div class="pnl-stat">
@@ -2104,10 +2104,10 @@
                         </td>
                         <td
                             style="padding:5px 8px; text-align:right; font-weight:700; {% if t.pnl_dollar >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
-                            ${{ "%+,.2f"|format(t.pnl_dollar) }}
+                            ${{ "{:+,.2f}".format(t.pnl_dollar) }}
                         </td>
                         <td style="padding:5px 8px; text-align:right;">{{ t.shares }}</td>
-                        <td style="padding:5px 8px; text-align:right;">${{ "{:,.0f}".format(t.notional) }}</td>
+                        <td style="padding:5px 8px; text-align:right;">${{ "{:,.0f}".format(t.notional|int) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
