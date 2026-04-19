@@ -1,6 +1,6 @@
 # Operations & Deployment Guide
 
-> **Last updated:** April 17, 2026
+> **Last updated:** April 19, 2026
 > Consolidated from: CLOUD_DEPLOYMENT.md, TASK_SCHEDULER.md, FILE_PERSISTENCE_GUIDE.md
 
 ## Deployment Architecture
@@ -10,11 +10,13 @@ VPS (178.156.202.27)                    Supabase (remote DB)
 ────────────────────────                    ────────────────────
 news-night    (01:00 ET)                alerts, trade_outcomes,
 news-premarket(08:00 ET)                sessions, close_picks
-morning-scan  (08:45 ET)
-intraday-scan (every 15m)               Telegram (primary alerts)
-tracker       (every 2m)                ────────────────────
-close-scan    (15:30 ET)                Trade cards, summaries,
-Flask dashboard (nginx+gunicorn)        circuit breaker alerts
+morning-scout (09:15 ET, alerts only)
+morning-exec  (09:45 ET, orders)         Telegram (primary alerts)
+intraday-scan (every 15m, 10:00–14:45)   ────────────────────
+tracker       (every 2m)                Trade cards, summaries,
+close-scan    (15:30 ET)                circuit breaker alerts
+cleanup       (15:45 ET)
+Flask dashboard (nginx+gunicorn)
 IB Gateway (paper/live)
 IBKR Execution Engine
 ```
@@ -112,13 +114,15 @@ All jobs run via `crontab -e` on VPS (`178.156.202.27`), all times UTC:
 |-----|-------------|---------------|----------|
 | news-night | `0 5 * * 1-5` | 1:00 AM ET | `run-news "Night Research"` |
 | news-premarket | `0 12 * * 1-5` | 8:00 AM ET | `run-news "Pre-Market Research"` |
-| morning-scan | `45 12 * * 1-5` | 8:45 AM ET | `run-morning` |
-| intraday-scan | `*/15 13-18 * * 1-5` | 9 AM–2:45 PM ET | `run-midday` |
+| morning-scout | `15 13 * * 1-5` | 9:15 AM ET | `run-scout` (alerts only, no execution) |
+| morning-execute | `45 13 * * 1-5` | 9:45 AM ET | `run-execute` (re-scan with live data, place orders) |
+| intraday-scan | `*/15 14-18 * * 1-5` | 10:00 AM–2:45 PM ET | `run-midday` |
 | tracker | `*/2 13-20 * * 1-5` | 9 AM–4 PM ET (every 2 min) | `run-tracker` (+ circuit breaker) |
 | close-scan | `30 19 * * 1-5` | 3:30 PM ET | `run-close` |
+| cleanup | `45 19 * * 1-5` | 3:45 PM ET | `run-cleanup` (force-expire unfilled orders) |
 | log-cleanup | `0 6 * * *` | Daily | `find logs -mtime +7 -delete` |
-| ibgw-health | `*/5 4-21 * * 1-5` | Every 5 min | IB Gateway health check |
-| scan-watchdog | `*/5 4-21 * * 1-5` | Every 5 min | Kill hung processes >8 min |
+| ibgw-health | `*/5 8-21 * * 1-5` | 4 AM–5:59 PM ET | IB Gateway health check |
+| scan-watchdog | `*/5 8-21 * * 1-5` | 4 AM–5:59 PM ET | Kill hung processes >8 min |
 
 ### Dashboard
 
@@ -145,7 +149,8 @@ kill -HUP $(pgrep -f gunicorn)  # reload dashboard
 | Task | Time (ET) | Script |
 |------|-----------|--------|
 | News Research | 12:00 AM | `scripts/run_news.ps1` |
-| Morning Scan | 8:45 AM | `scripts/run_morning.ps1` |
+| Morning Scout | 9:15 AM | `scripts/run_morning.ps1 scout` |
+| Morning Execute | 9:45 AM | `scripts/run_morning.ps1 execute` |
 | Midday Scan | 12:00 PM | `scripts/run_midday.ps1` |
 | Close Scan | 3:50 PM | `scripts/run_close.ps1` |
 

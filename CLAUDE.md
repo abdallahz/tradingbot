@@ -17,9 +17,11 @@ python -m tradingbot.cli run-day
 
 # Run with real Alpaca data
 python -m tradingbot.cli --real-data run-news       # Night catalyst research
-python -m tradingbot.cli --real-data run-morning    # 08:45 ET pre-market scan
-python -m tradingbot.cli --real-data run-midday     # 12:00 ET midday scan
+python -m tradingbot.cli --real-data run-scout      # 09:15 ET morning scout (alerts only)
+python -m tradingbot.cli --real-data run-execute    # 09:45 ET morning execute (orders)
+python -m tradingbot.cli --real-data run-midday     # 10:00-14:45 ET midday scan
 python -m tradingbot.cli --real-data run-close      # 15:30 ET close scan
+python -m tradingbot.cli --real-data run-cleanup    # 15:45 ET force-expire unfilled orders
 
 # Show schedule
 python -m tradingbot.cli schedule
@@ -73,14 +75,14 @@ All thresholds live in YAML files under `config/`:
 - `scanner.yaml` — price_min=$5, min_gap=0.5%, min_score=50, max_candidates=8
 - `risk.yaml` — max_trades=8, o2_max=2, stop=2.5%, lockout=1.5%, consecutive=3
 - `indicators.yaml` — EMA 9/20, vol spike morning=1.5×, midday=1.3×
-- `schedule.yaml` — night 20:00, morning 08:00, premarket 08:45, close 15:30
+- `schedule.yaml` — night 01:00, morning news 08:00, scout 09:15, execute 09:45, close 15:30
 - `indicators.yaml` also has `vwap_distance_pct_morning: 3.0`, `vwap_distance_pct_midday: 5.0`
 
 Environment variables override YAML for cloud deployment. See `config/broker.example.yaml` for credential template.
 
 ### Deployment
 
-- **VPS** (`178.156.202.27`): All crons (news, morning, midday every 15min, tracker every 2min, close), Flask dashboard via nginx + gunicorn, IB Gateway + IBKR execution
+- **VPS** (`178.156.202.27`): All crons (news ×2, scout, execute, midday every 15min, tracker every 2min, close, cleanup), Flask dashboard via nginx + gunicorn, IB Gateway + IBKR execution
 - **Heroku**: Decommissioned for crons. Dashboard URL still active but secondary.
 - **Supabase**: Tables: alerts (with `source` column), trade_outcomes, sessions, close_picks
 
@@ -113,7 +115,7 @@ Optional: `DATA_PROVIDER=ibkr` (VPS only), `EXECUTION_MODE=paper|live` (VPS only
 
 - **VPS dashboard**: `http://178.156.202.27` (nginx → gunicorn, dark theme, P&L tracking)
 - **Heroku dashboard** (secondary): `https://aztradingbot-c8a5462555f3.herokuapp.com`
-- **VPS crons**: All 6 cron jobs run via crontab on VPS (Render decommissioned as of Apr 15)
+- **VPS crons**: 10 cron jobs via crontab on VPS (Render decommissioned as of Apr 15). Two-phase morning: scout (9:15, alerts only) → execute (9:45, live data + orders). Cleanup at 3:45 PM.
 
 ## Local Development
 
@@ -151,7 +153,12 @@ python -m tradingbot.cli run-day
 - **Scanner enhanced**: 5 TWS scanners including gap-specific codes (`TOP_OPEN_PERC_GAIN`, `HIGH_OPEN_GAP`) with server-side `priceAbove` and `volumeAbove` filters
 - **Next**: Subscribe to market data → Paper test on VPS → Dashboard execution badges → Validate → Go live
 
-### Recent Improvements (Apr 17)
+### Recent Improvements (Apr 19)
+- **Two-phase morning scan** — 9:15 AM scout (alerts only, no execution) → 9:45 AM execute (re-scan with live data, bypass dedup, place orders). Eliminates fakeout entries by waiting for 15 min of confirmed volume/VWAP.
+- **End-of-day cleanup** — `run-cleanup` at 3:45 PM force-expires unfilled IBKR orders and open Supabase trades. Time-guarded (3:40–4:15 PM ET).
+- **Cron schedule realigned** — midday shifted to 10:00–14:45 ET, IB health/watchdog narrowed to 04:00 AM–5:59 PM ET, old 8:45 morning removed.
+
+### Previous Improvements (Apr 17)
 - **Session-adaptive TP caps** — morning 4%, midday 4%, close 4% with ATR multipliers per session
 - **Portfolio circuit breaker** — 3 triggers: portfolio drawdown, market crash (SPY/QQQ), correlated red
 - **Tracker interval** — 5min → 2min for faster TP/stop detection

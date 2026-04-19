@@ -44,11 +44,13 @@ VPS (Ubuntu 22.04)
 ├── IB Gateway (always running, port 4001 live / 4002 paper)
 ├── IBC (open-source — auto-restarts Gateway daily, handles re-auth)
 ├── tradingbot (this codebase)
-│   ├── cron: run-news     (20:00 ET)
-│   ├── cron: run-morning  (08:45 ET)
-│   ├── cron: run-midday   (12:00 ET)
+│   ├── cron: run-news     (01:00 + 08:00 ET)
+│   ├── cron: run-scout    (09:15 ET, alerts only)
+│   ├── cron: run-execute  (09:45 ET, orders)
+│   ├── cron: run-midday   (10:00–14:45 ET, every 15m)
 │   ├── cron: run-close    (15:30 ET)
-│   └── cron: trade-tracker (every 2 min, 9:00–4:00 ET)
+│   ├── cron: run-cleanup  (15:45 ET, force-expire)
+│   └── cron: run-tracker  (every 2 min, 9:00–4:00 ET)
 ├── Flask dashboard (optional, or keep on Heroku)
 └── Supabase (unchanged — remote persistence)
 ```
@@ -94,8 +96,9 @@ VPS (Ubuntu 22.04)
 
 | Session | Entry Order | Why |
 |---|---|---|
-| Morning (8:45–10:00 ET) | Limit at scan price + 0.1% buffer | Protects against opening volatility slippage |
-| Midday (10:00–2:30 ET) | Market order | Calmer spreads, faster fills |
+| Morning Scout (9:15 ET) | No orders | Alert-only scan for early gapper identification |
+| Morning Execute (9:45 ET) | Limit at scan price + 0.1% buffer | 15 min of confirmed volume/VWAP before committing capital |
+| Midday (10:00–2:45 ET) | Market order | Calmer spreads, faster fills |
 | Time-in-force | `day` | Auto-cancels at 4 PM if unfilled |
 
 **Bracket order structure** (one API call per trade via IBKR):
@@ -305,11 +308,13 @@ Alert fires
 
 | Cron | Time (ET) | Action |
 |---|---|---|
-| Morning scan | 8:45 AM | Generate alerts, execute top 1–2 |
+| Morning scout | 9:15 AM | Generate alerts only (no execution) |
+| Morning execute | 9:45 AM | Re-scan with live data, execute top 1–2 |
 | Tracker | Every 2 min, 9:00–4:00 | Check prices, modify stops, trail, circuit breaker |
 | Morning deadline | 10:30 AM | Sell losers/flat, trail winners to breakeven |
-| Midday scan | Every 30 min, 10:00–2:30 | Generate alerts, execute if slots available |
+| Midday scan | Every 15 min, 10:00–2:45 | Generate alerts, execute if slots available |
 | Close/expire | 3:30 PM | Cancel all pending orders, market sell remaining |
+| Cleanup | 3:45 PM | Force-expire anything the 3:30 pass missed |
 
 ---
 

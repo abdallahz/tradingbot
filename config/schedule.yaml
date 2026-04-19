@@ -1,9 +1,10 @@
 schedule:
   timezone: America/New_York
-  night_research: "20:00"      # 8:00 PM - Night news research
+  night_research: "01:00"       # 1:00 AM - Night news research
   morning_news: "08:00"         # 8:00 AM - Early morning news update
-  premarket_scan: "08:45"       # 8:45 AM - Pre-market scan
-  midday_scan: "*/15 9:00-15:00"  # Every 15 min during market hours
+  morning_scout: "09:15"        # 9:15 AM - Pre-market scout (alerts only)
+  morning_execute: "09:45"      # 9:45 AM - Execute with live confirmed data
+  midday_scan: "*/15 10:00-14:45"  # Every 15 min during market hours
   close_scan: "15:30"           # 3:30 PM - 30 min before market close
-  # eod_reconcile removed — no handler implemented yet
+  cleanup: "15:45"              # 3:45 PM - Force-expire unfilled orders
 

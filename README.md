@@ -10,10 +10,12 @@ An automated day-trading alert system that scans for high-probability intraday s
 |------|-----|-------------|
 | 01:00 | Night Research | Score stocks on news catalysts; send top-10 list to Telegram |
 | 08:00 | Morning News | Refresh catalyst scores; send updated list to Telegram |
-| 08:45 | Pre-Market Scan | Find gappers ≥4%; send individual trade-card alerts |
-| Every 15m | Intraday Scan | Re-scan with stricter volume/spread filters |
+| 09:15 | Morning Scout | Scan pre-market gappers, alert only (no orders) |
+| 09:45 | Morning Execute | Re-scan with live data, place orders for confirmed setups |
+| Every 15m | Intraday Scan | Re-scan 10:00–14:45 ET with stricter volume/spread filters |
 | Every 2m | Trade Tracker | Monitor open trades, trailing stops, circuit breaker |
 | 15:30 | Close Scan | Final sweep for late-session setups |
+| 15:45 | Cleanup | Force-expire unfilled orders + remaining positions |
 
 **For every qualifying setup the bot produces a `TradeCard` containing:**
 - Symbol, side (LONG/SHORT), score (0–100), risk/reward ratio
@@ -35,7 +37,7 @@ An automated day-trading alert system that scans for high-probability intraday s
 VPS (178.156.202.27)              Supabase (remote DB)
 ────────────────────────              ────────────────────
 nginx → gunicorn (Flask)          alerts, trade_outcomes,
-Cron jobs (6 scan + tracker)      sessions, close_picks
+Cron jobs (10 scheduled)          sessions, close_picks
 IB Gateway + Execution Engine
                 │
     ┌───────────┴─────────────────┐
@@ -106,9 +108,12 @@ python -m tradingbot.cli run-day
 
 # Real data — split commands matching the live schedule
 python -m tradingbot.cli run-news       # Night research / morning news
-python -m tradingbot.cli run-morning    # 08:45 AM pre-market scan
-python -m tradingbot.cli run-midday     # 12:00 PM midday scan
+python -m tradingbot.cli run-scout      # 09:15 morning scout (alert only)
+python -m tradingbot.cli run-execute    # 09:45 morning execute (orders)
+python -m tradingbot.cli run-morning    # 08:45 AM pre-market scan (legacy)
+python -m tradingbot.cli run-midday     # 10:00–14:45 midday scan
 python -m tradingbot.cli run-close      # 15:30 PM close scan
+python -m tradingbot.cli run-cleanup    # 15:45 PM force-expire unfilled
 
 # Show the configured schedule
 python -m tradingbot.cli schedule
@@ -276,11 +281,13 @@ Midday filters:
 ```yaml
 schedule:
   timezone: "America/New_York"
-  night_research:  "20:00"
+  night_research:  "01:00"
   morning_news:    "08:00"
-  premarket_scan:  "08:45"
-  midday_scan:     "12:00"
+  morning_scout:   "09:15"   # alert only, no execution
+  morning_execute: "09:45"   # re-scan with live data, place orders
+  midday_scan:     "10:00"   # every 15m until 14:45
   close_scan:      "15:30"
+  cleanup:         "15:45"   # force-expire unfilled orders
 ```
 
 ## Usage
@@ -294,11 +301,14 @@ python -m tradingbot.cli run-day
 # Full-day run (real Alpaca data)
 python -m tradingbot.cli --real-data run-day
 
-# Split commands (matches the live Heroku schedule)
+# Split commands (matches the live schedule)
 python -m tradingbot.cli run-news       # Night / morning news research
-python -m tradingbot.cli run-morning    # Pre-market scan
-python -m tradingbot.cli run-midday     # Midday scan
+python -m tradingbot.cli run-scout      # 09:15 morning scout (alert only)
+python -m tradingbot.cli run-execute    # 09:45 morning execute (orders)
+python -m tradingbot.cli run-morning    # Pre-market scan (legacy)
+python -m tradingbot.cli run-midday     # 10:00–14:45 midday scan
 python -m tradingbot.cli run-close      # Close scan
+python -m tradingbot.cli run-cleanup    # 15:45 force-expire unfilled orders
 
 # Print scheduled times
 python -m tradingbot.cli schedule
