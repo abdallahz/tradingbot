@@ -82,6 +82,14 @@ class Scheduler:
         """Run pre-market scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("morning")
 
+    def run_morning_scout(self) -> tuple[int, ThreeOptionWatchlist]:
+        """9:15 AM scout: scan pre-market gappers, alert only (no execution)."""
+        return self._run_scan_session("morning", alert_only=True)
+
+    def run_morning_execute(self) -> tuple[int, ThreeOptionWatchlist]:
+        """9:45 AM execute: re-scan with live data, bypass dedup for morning alerts, execute confirmed setups."""
+        return self._run_scan_session("morning", skip_dedup=True)
+
     def run_midday_only(self) -> tuple[int, ThreeOptionWatchlist]:
         """Run midday scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("midday")
@@ -172,14 +180,27 @@ class Scheduler:
         return scores
 
     def _run_scan_session(
-        self, session_type: Literal["morning", "midday", "close"]
+        self,
+        session_type: Literal["morning", "midday", "close"],
+        *,
+        alert_only: bool = False,
+        skip_dedup: bool = False,
     ) -> tuple[int, ThreeOptionWatchlist]:
         """Shared core for pre-market / midday / close scan jobs.
 
         Loads catalyst scores, runs the session, writes outputs, archives the
         run, and returns (alert_count, results).
+
+        Args:
+            alert_only: When True, suppress order execution (9:15 scout scan).
+            skip_dedup: When True, bypass dedup so morning alerts can be
+                        re-evaluated with live data (9:45 execute scan).
         """
         runner = SessionRunner(self.root, use_real_data=self.use_real_data)
+
+        # Suppress execution for scout scans
+        if alert_only:
+            runner.execution_mgr = None
 
         # Auto-tune: apply backtest-derived threshold adjustments
         # (safe no-op if <20 historical trades exist)
@@ -190,7 +211,9 @@ class Scheduler:
             _logging.getLogger(__name__).warning(f"[scheduler] auto-tune failed: {_exc}")
 
         catalyst_scores = self._load_catalyst_scores()
-        results, card_count = runner.run_single_session(session_type, catalyst_scores)
+        results, card_count = runner.run_single_session(
+            session_type, catalyst_scores, skip_dedup=skip_dedup,
+        )
         runner._write_single_session_output(results, session_type)
         self.archive.archive_daily_run(session_type)
         self.archive.create_daily_index()

@@ -405,6 +405,8 @@ class SessionRunner:
         catalyst_scores: dict[str, float],
         session_tag: Literal["morning", "midday", "close"],
         stricter: bool = False,
+        *,
+        skip_dedup: bool = False,
     ) -> ThreeOptionWatchlist:
         """Run 3 different scan approaches and provide recommendation."""
 
@@ -455,6 +457,7 @@ class SessionRunner:
             session_tag=session_tag,
             volume_spike=self.volume_spike_midday if stricter else self.volume_spike_morning,
             dropped=o3_dropped,
+            skip_dedup=skip_dedup,
         )
 
         # Option 2: Relaxed filters scan — uses its OWN trade cap so it
@@ -477,6 +480,7 @@ class SessionRunner:
             dropped=o2_dropped,
             independent_cap=True,
             risk_manager_override=self.o2_risk_manager,
+            skip_dedup=skip_dedup,
         )
 
         logging.info(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
@@ -770,6 +774,7 @@ class SessionRunner:
         relaxed: bool = False,
         independent_cap: bool = False,
         risk_manager_override: RiskManager | None = None,
+        skip_dedup: bool = False,
     ) -> list[TradeCard]:
         """Build trade cards from ranked candidates.
 
@@ -788,6 +793,10 @@ class SessionRunner:
 
         If *risk_manager_override* is provided, it replaces self.risk_manager
         for this call (used to give O2 a tighter per-day cap).
+
+        If *skip_dedup* is True, bypass dedup check entirely.  Used by the
+        9:45 AM execute scan so morning scout alerts can be re-evaluated
+        with live market data.
         """
         cards: list[TradeCard] = []
 
@@ -853,7 +862,7 @@ class SessionRunner:
                 continue
 
             # ── Dedup check: skip if already alerted unless pullback ──
-            if not self._passes_dedup(symbol, already_alerted, dropped):
+            if not skip_dedup and not self._passes_dedup(symbol, already_alerted, dropped):
                 continue
 
             # ── ETF conflict / family dedup / concentration cap ─────
@@ -1400,6 +1409,8 @@ class SessionRunner:
         self,
         session_type: Literal["morning", "midday", "close"],
         catalyst_scores: dict[str, float],
+        *,
+        skip_dedup: bool = False,
     ) -> tuple[ThreeOptionWatchlist, int]:
         # Build universe: prefer symbols with catalyst score >= 40.
         # Fall back to top-50 by score so we always have something to scan.
@@ -1475,7 +1486,10 @@ class SessionRunner:
             on_batch_ready=_on_first_batch if use_progressive else None,
         )
         self._alerts_sent_count = 0
-        results = self._run_three_option_session(snapshots, catalyst_scores, session_tag, stricter)
+        results = self._run_three_option_session(
+            snapshots, catalyst_scores, session_tag, stricter,
+            skip_dedup=skip_dedup,
+        )
         return results, self._alerts_sent_count
     
     def _write_single_session_output(self, results: ThreeOptionWatchlist, session_name: str) -> None:

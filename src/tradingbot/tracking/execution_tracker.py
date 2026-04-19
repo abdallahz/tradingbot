@@ -149,6 +149,20 @@ class ExecutionTracker:
         self._notify("🛑 KILL SWITCH — all positions flattened")
         return actions
 
+    def expire(self) -> dict[str, Any]:
+        """Force-expire all open positions.  Called by run-cleanup (3:45 PM).
+
+        Unlike tick()'s built-in 3:30 expire which only fires once,
+        this always runs — catches anything the 3:30 pass missed.
+        """
+        result: dict[str, Any] = {"actions": []}
+        actions = self._mgr.expire_all()
+        result["actions"] = actions
+        for action in actions:
+            logger.info(f"[exec-tracker] Cleanup expire: {action}")
+            self._notify(f"🧹 Cleanup: {action}")
+        return result
+
     # ── Status ─────────────────────────────────────────────────────────
 
     def get_status(self) -> dict[str, Any]:

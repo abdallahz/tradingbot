@@ -1,7 +1,8 @@
 #!/bin/bash
 # Universal scanner wrapper for VPS cron jobs
 # Usage: vps_scan.sh <session> [label]
-#   session: run-news, run-morning, run-midday, run-tracker, run-close
+#   session: run-news, run-scout, run-execute, run-morning, run-midday,
+#            run-tracker, run-close, run-cleanup
 #   label: optional label for news sessions
 
 set -uo pipefail

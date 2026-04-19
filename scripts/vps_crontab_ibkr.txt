@@ -1,0 +1,39 @@
+# TradingBot VPS Cron Schedule (all times UTC, VPS is UTC)
+# ET = UTC - 4 (EDT)
+#
+# Two-phase morning: scout (alerts only) → execute (orders with confirmed data)
+# Midday: 10:00 AM – 2:45 PM ET (every 15 min)
+# Cleanup: force-expire unfilled orders at 3:45 PM ET
+
+# Night catalyst research — 01:00 AM ET (05:00 UTC)
+0 5 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-news "Night Research"
+
+# Pre-market news refresh — 08:00 AM ET (12:00 UTC)
+0 12 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-news "Pre-Market Research"
+
+# Morning scout (alerts only, no execution) — 09:15 AM ET (13:15 UTC)
+15 13 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-scout
+
+# Morning execute (orders with live confirmed data) — 09:45 AM ET (13:45 UTC)
+45 13 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-execute
+
+# Midday scans — every 15 min from 10:00-14:45 ET (14:00-18:45 UTC)
+*/15 14-18 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-midday
+
+# Trade tracker — every 2 min from 09:00-16:59 ET (13:00-20:59 UTC)
+*/2 13-20 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-tracker
+
+# Close scan — 15:30 PM ET (19:30 UTC)
+30 19 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-close
+
+# Cleanup — force-expire unfilled orders — 15:45 PM ET (19:45 UTC)
+45 19 * * 1-5 /opt/tradingbot/scripts/vps_scan.sh run-cleanup
+
+# IB Gateway health check — 04:00 AM – 05:59 PM ET (08:00-21:59 UTC)
+*/5 8-21 * * 1-5 /opt/tradingbot/scripts/ibgw_health_check.sh
+
+# Scan watchdog — kill hung processes — 04:00 AM – 05:59 PM ET (08:00-21:59 UTC)
+*/5 8-21 * * 1-5 /opt/tradingbot/scripts/scan_watchdog.sh
+
+# Log cleanup — keep 7 days
+0 6 * * * find /opt/tradingbot/logs -name "*.log" -mtime +7 -delete

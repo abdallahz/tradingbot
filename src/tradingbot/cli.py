@@ -25,8 +25,11 @@ def _build_parser() -> argparse.ArgumentParser:
     news_parser = sub.add_parser("run-news", help="Run news research only (morning or night)")
     news_parser.add_argument("--label", default="News Research", help="Label for Telegram notification (e.g. 'Night Research')")
     sub.add_parser("run-morning", help="Run pre-market scan (8:45 AM)")
+    sub.add_parser("run-scout", help="Run morning scout scan — alert only, no execution (9:15 AM)")
+    sub.add_parser("run-execute", help="Run morning execute scan — re-scan with live data, place orders (9:45 AM)")
     sub.add_parser("run-midday", help="Run midday scan (12:00 PM)")
     sub.add_parser("run-close", help="Run close scan (overnight holds + daily recap)")
+    sub.add_parser("run-cleanup", help="Run end-of-day cleanup — market sell any remaining positions (3:45 PM)")
     sub.add_parser("run-tracker", help="Run one tracker tick (check open trades for TP/stop hits)")
     sub.add_parser("run-commands", help="Run Telegram command handler (long-running poller)")
     sub.add_parser("auto-tune", help="Run auto-tuner analysis and print recommendations")
@@ -130,6 +133,50 @@ def main() -> None:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         print(f">> Archived to: outputs/archive/{today}/\n")
         return
+
+    if args.command == "run-scout":
+        card_count, results = scheduler.run_morning_scout()
+        _notifier = TelegramNotifier.from_env()
+        pipeline_info = (
+            f"O1={len(results.night_research_picks)} picks | "
+            f"O2={len(results.relaxed_filter_cards)} cards | "
+            f"O3={len(results.strict_filter_cards)} cards"
+        )
+        print(f">> Pipeline (scout — alert only, no orders): {pipeline_info}")
+        if _notifier._enabled:
+            _ok = _notifier.send_session_summary("🔭 Morning Scout", card_count, pipeline_info, night_picks=results.night_research_picks)
+            print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
+        else:
+            print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
+        print(f"\n{mode_str} Morning Scout Scan Complete (alert only)")
+        print(f">> Watchlist: outputs/morning_watchlist.csv")
+        print(f">> Playbook:  outputs/morning_playbook.md")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        print(f">> Archived to: outputs/archive/{today}/\n")
+        return
+
+    if args.command == "run-execute":
+        card_count, results = scheduler.run_morning_execute()
+        _notifier = TelegramNotifier.from_env()
+        pipeline_info = (
+            f"O1={len(results.night_research_picks)} picks | "
+            f"O2={len(results.relaxed_filter_cards)} cards | "
+            f"O3={len(results.strict_filter_cards)} cards"
+        )
+        print(f">> Pipeline (execute — live data, orders enabled): {pipeline_info}")
+        if _notifier._enabled:
+            _ok = _notifier.send_session_summary("🎯 Morning Execute", card_count, pipeline_info, night_picks=results.night_research_picks)
+            print(f">> Telegram notification: {'sent' if _ok else 'FAILED (check token/chat_id)'}")
+        else:
+            print(">> Telegram notification: SKIPPED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)")
+        print(f"\n{mode_str} Morning Execute Scan Complete")
+        print(f">> Watchlist: outputs/morning_watchlist.csv")
+        print(f">> Playbook:  outputs/morning_playbook.md")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        print(f">> Archived to: outputs/archive/{today}/\n")
+        return
     
     if args.command == "run-midday":
         card_count, results = scheduler.run_midday_only()
@@ -175,6 +222,51 @@ def main() -> None:
         exec_result = _run_execution_tracker_tick()
         if exec_result:
             print(f"[exec-tracker] trails={exec_result['trails']} fills={exec_result['fills']}")
+        return
+
+    if args.command == "run-cleanup":
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        # Time guard: only run between 3:40 PM and 4:15 PM ET
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        cleanup_start = now_et.replace(hour=15, minute=40, second=0, microsecond=0)
+        cleanup_end = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
+        if not (cleanup_start <= now_et <= cleanup_end):
+            print(f"[SKIP] run-cleanup called at {now_et.strftime('%H:%M')} ET — "
+                  f"outside 3:40-4:15 PM window. Aborting.")
+            return
+
+        print(f"[cleanup] Running end-of-day cleanup at {now_et.strftime('%H:%M:%S')} ET")
+
+        # 1. Simulated tracker: expire any open trades in Supabase
+        from tradingbot.tracking.trade_tracker import TradeTracker
+        tracker = TradeTracker()
+        tracker.tick()
+        expired = tracker.expire_open_trades()
+        print(f"[cleanup] Supabase: expired {expired} open trade(s)")
+
+        # 2. Execution tracker: cancel pending orders + market sell remaining
+        exec_tracker = _build_execution_tracker(client_id=2)
+        if exec_tracker:
+            try:
+                result = exec_tracker.expire()
+                actions = result.get("actions", [])
+                for action in actions:
+                    print(f"[cleanup] {action}")
+                print(f"[cleanup] IBKR: {len(actions)} action(s) taken")
+            except Exception as exc:
+                print(f"[cleanup] IBKR expire failed: {exc}")
+        else:
+            print("[cleanup] IBKR execution not enabled — skipping")
+
+        # 3. Notify via Telegram
+        _notifier = TelegramNotifier.from_env()
+        if _notifier._enabled:
+            msg = f"🧹 End-of-day cleanup at {now_et.strftime('%H:%M')} ET — {expired} trade(s) expired"
+            _notifier.send_message(msg)
+            print(f">> Telegram notification: sent")
         return
 
     if args.command == "run-commands":
