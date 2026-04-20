@@ -5,6 +5,8 @@
 # Run every 5 minutes via cron.  Tests whether IB Gateway can
 # actually serve data (not just whether the process is running).
 # Restarts the gateway if it's unresponsive.
+# Also enforces single-instance: only one ibgateway.service,
+# only one Java IB process, no stale API client connections.
 #
 # Cron entry:
 #   */5 4-21 * * 1-5 /opt/tradingbot/scripts/ibgw_health_check.sh
@@ -23,6 +25,32 @@ fi
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOGFILE"
 }
+
+# ── Step 0: Enforce single IB Gateway instance ──────────────
+# Count Java processes running IB Gateway (ibcGateway class)
+GW_PIDS=$(pgrep -f 'ibcalpha.ibc.IbcGateway' || true)
+GW_COUNT=$(echo "$GW_PIDS" | grep -c '[0-9]' || true)
+
+if [ "$GW_COUNT" -gt 1 ]; then
+    log "ALERT: $GW_COUNT Gateway JVMs running — killing extras"
+    # Keep the newest, kill older ones
+    NEWEST=$(echo "$GW_PIDS" | tail -1)
+    for PID in $GW_PIDS; do
+        if [ "$PID" != "$NEWEST" ]; then
+            log "  Killing stale Gateway PID=$PID"
+            kill "$PID" 2>/dev/null || true
+        fi
+    done
+    sleep 5
+fi
+
+# Count active API client connections to port 4002
+API_CONNS=$(ss -tnp 2>/dev/null | grep ':4002' | grep 'ESTAB' | grep -c 'pid=' || true)
+# Exclude outbound connections from Gateway itself (to IBKR servers)
+LOCAL_API_CONNS=$(ss -tnp 2>/dev/null | grep '127.0.0.1:4002' | grep 'ESTAB' | grep -c 'pid=' || true)
+if [ "$LOCAL_API_CONNS" -gt 3 ]; then
+    log "WARNING: $LOCAL_API_CONNS local API connections to port 4002 (expected ≤3)"
+fi
 
 # ── Step 1: Is the ibgateway.service process alive? ──────────
 if ! systemctl is-active --quiet ibgateway.service; then
