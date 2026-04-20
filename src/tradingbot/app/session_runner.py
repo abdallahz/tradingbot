@@ -425,6 +425,11 @@ class SessionRunner:
         # ── Run O3 FIRST so high-quality strict picks claim the daily cap ──
         # Option 3: Strict filters scan
         strict_scan = self.scanner.run(snapshots)
+        logging.info(
+            f"[SCANNER] O3 gap scanner: {len(strict_scan.candidates)} candidates "
+            f"from {len(snapshots)} snapshots "
+            f"(dropped: {len(strict_scan.dropped)})"
+        )
 
         # For midday/close sessions, also run the momentum scanner to catch
         # intraday runners (stocks that opened flat but rallied).  Merge
@@ -464,6 +469,10 @@ class SessionRunner:
         # never steals slots from O3.  Alerts are saved & sent but counted
         # against a separate budget.
         relaxed_scan = self.relaxed_scanner.run(snapshots)
+        logging.info(
+            f"[SCANNER] O2 relaxed scanner: {len(relaxed_scan.candidates)} candidates "
+            f"(dropped: {len(relaxed_scan.dropped)})"
+        )
         # Merge momentum candidates into O2 as well for midday/close
         if stricter:
             relaxed_symbols = {c.symbol for c in relaxed_scan.candidates}
@@ -484,6 +493,13 @@ class SessionRunner:
         )
 
         logging.info(f"[{session_tag.upper()}] snapshots={len(snapshots)} O1={len(night_picks)} O2={len(relaxed_cards)} O3={len(strict_cards)}")
+        # Scanner-level drop summary (gap scanner filters)
+        if strict_scan.dropped:
+            scan_drops = {}
+            for _, reason in strict_scan.dropped:
+                key = reason.split(":")[0]
+                scan_drops[key] = scan_drops.get(key, 0) + 1
+            logging.info(f"[{session_tag.upper()}] O3 scanner drops: {scan_drops}")
         if o2_dropped:
             drop_summary = {}
             for _, reason in o2_dropped:

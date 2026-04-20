@@ -85,6 +85,9 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    # Ensure all logging (session_runner filters, market guard, etc.) is visible
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     root = Path.cwd()
     scheduler = Scheduler(root, use_real_data=args.real_data)
     mode_str = "[REAL DATA]" if args.real_data else "[MOCK DATA]"
