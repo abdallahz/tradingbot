@@ -27,9 +27,13 @@ log() {
 }
 
 # ── Step 0: Enforce single IB Gateway instance ──────────────
-# Count Java processes running IB Gateway (ibcGateway class)
-GW_PIDS=$(pgrep -f 'ibcalpha.ibc.IbcGateway' || true)
-GW_COUNT=$(echo "$GW_PIDS" | grep -c '[0-9]' || true)
+# Count Java processes running IB Gateway (exclude bash wrappers)
+GW_PIDS=$(pgrep -f 'ibcalpha.ibc.IbcGateway' -- | while read PID; do
+    # Only count actual java processes, not bash wrappers
+    EXE=$(readlink -f /proc/$PID/exe 2>/dev/null || echo "")
+    if echo "$EXE" | grep -q 'java'; then echo "$PID"; fi
+done)
+GW_COUNT=$(echo "$GW_PIDS" | grep -c '[0-9]' 2>/dev/null || echo 0)
 
 if [ "$GW_COUNT" -gt 1 ]; then
     log "ALERT: $GW_COUNT Gateway JVMs running — killing extras"
