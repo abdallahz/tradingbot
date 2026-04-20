@@ -962,8 +962,14 @@ class IBKRClient:
             "UnrealizedPnL": "unrealized_pnl",
             "RealizedPnL": "realized_pnl",
         }
+        # Detect account base currency (take first non-BASE currency entry)
+        base_currency = "USD"
         for av in account_values:
-            if av.tag in key_map and av.currency == "USD":
+            if av.tag == "NetLiquidation" and av.currency not in ("BASE", ""):
+                base_currency = av.currency
+                break
+        for av in account_values:
+            if av.tag in key_map and av.currency == base_currency:
                 result[key_map[av.tag]] = float(av.value)
         return result
 
