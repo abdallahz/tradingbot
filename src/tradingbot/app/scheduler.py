@@ -16,7 +16,8 @@ class ScheduleWindow:
     timezone: str
     night_research: str
     morning_news: str
-    premarket_scan: str
+    morning_scout: str
+    morning_execute: str
     close_scan: str
 
 
@@ -29,7 +30,8 @@ class Scheduler:
             timezone=cfg["timezone"],
             night_research=cfg["night_research"],
             morning_news=cfg["morning_news"],
-            premarket_scan=cfg["premarket_scan"],
+            morning_scout=cfg.get("morning_scout", cfg.get("premarket_scan", "09:15")),
+            morning_execute=cfg.get("morning_execute", "09:45"),
             close_scan=cfg["close_scan"],
         )
         self.archive = ArchiveManager(root)
@@ -39,7 +41,8 @@ class Scheduler:
             f"TZ={self.window.timezone} | "
             f"night={self.window.night_research} | "
             f"morning_news={self.window.morning_news} | "
-            f"premarket={self.window.premarket_scan} | "
+            f"scout={self.window.morning_scout} | "
+            f"execute={self.window.morning_execute} | "
             f"close={self.window.close_scan}"
         )
 

@@ -68,7 +68,7 @@ def _load_schedule() -> dict[str, str]:
     return {
         "night_research": cfg["night_research"],
         "morning_news":   cfg["morning_news"],
-        "premarket_scan": cfg["premarket_scan"],
+        "morning_scout":  cfg.get("morning_scout", cfg.get("premarket_scan", "09:15")),
         "close_scan":     cfg["close_scan"],
     }
 
@@ -230,7 +230,7 @@ def _run_expire_trades() -> None:
 _HANDLERS = {
     "night_research": _run_news,
     "morning_news":   _run_morning_news,
-    "premarket_scan": _run_morning,
+    "morning_scout":  _run_morning,
     "close_scan":     _run_close,
 }
 
