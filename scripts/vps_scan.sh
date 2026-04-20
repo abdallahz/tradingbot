@@ -49,7 +49,8 @@ mkdir -p /opt/tradingbot/logs
 LOCKFILE="/tmp/tradingbot_ibkr.lock"
 NEEDS_LOCK=true
 case "$SESSION" in
-    run-news) NEEDS_LOCK=false ;;
+    run-news)    NEEDS_LOCK=false ;;   # uses Alpaca/web APIs only
+    run-tracker) NEEDS_LOCK=false ;;   # uses dedicated clientId=2, reads positions only
 esac
 
 run_scan() {
