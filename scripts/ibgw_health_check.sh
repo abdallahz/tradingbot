@@ -65,8 +65,24 @@ if ! systemctl is-active --quiet ibgateway.service; then
     exit 0
 fi
 
+# ── Step 1.5: Cooldown — skip if Gateway was restarted recently ──
+# Prevents restart loops (e.g. NO_DATA between 9:30-10:00 AM ET before
+# the first hourly bar completes).
+COOLDOWN_FILE="/tmp/ibgw_last_restart"
+if [ -f "$COOLDOWN_FILE" ]; then
+    LAST_RESTART=$(cat "$COOLDOWN_FILE" 2>/dev/null || echo 0)
+    NOW=$(date +%s)
+    ELAPSED=$(( NOW - LAST_RESTART ))
+    if [ "$ELAPSED" -lt 600 ]; then
+        # Restarted less than 10 min ago — skip probe
+        exit 0
+    fi
+fi
+
 # ── Step 2: Can we connect and fetch data? ───────────────────
 # This catches the "process alive but data farm disconnected" scenario.
+# Uses useRTH=False so extended-hours data is included — this prevents
+# false NO_DATA between 9:30-10:00 AM ET when no RTH bar has completed.
 HEALTH_SCRIPT=$(mktemp /tmp/ibgw_health_XXXX.py)
 cat > "$HEALTH_SCRIPT" << 'PYEOF'
 """Quick health probe for IB Gateway.
@@ -96,7 +112,7 @@ try:
 
     bars = ib.reqHistoricalData(
         contract, endDateTime="", durationStr="1 D",
-        barSizeSetting="1 hour", whatToShow="TRADES", useRTH=True
+        barSizeSetting="1 hour", whatToShow="TRADES", useRTH=False
     )
 
     ib.disconnect()
@@ -132,11 +148,29 @@ fi
 # ── Step 3: Gateway is unhealthy — restart ───────────────────
 log "ALERT: Gateway unhealthy (exit=$EXIT, result=$RESULT) — restarting"
 
+# Check if a scan is currently running (holds the flock).
+# If so, log but don't restart — the scan will finish and release.
+LOCKFILE="/tmp/tradingbot_ibkr.lock"
+if [ -f "$LOCKFILE" ]; then
+    exec 200>"$LOCKFILE"
+    if ! flock -n 200; then
+        HOLDER=$(cat "$LOCKFILE" 2>/dev/null || echo "unknown")
+        log "SKIP restart: scan running ($HOLDER) — will retry in 5 min"
+        exit 0
+    fi
+    # Release the test lock immediately
+    flock -u 200
+fi
+
 # Kill any stuck tradingbot processes that might be holding connections
 pkill -f 'tradingbot.cli' 2>/dev/null || true
 sleep 2
 
 systemctl restart ibgateway.service
+
+# Record restart timestamp for cooldown
+date +%s > "$COOLDOWN_FILE"
+
 sleep 60  # Wait for re-authentication
 
 # Verify recovery
