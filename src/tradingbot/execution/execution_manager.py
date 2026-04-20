@@ -59,6 +59,7 @@ class ExecutionManager:
             max_notional_per_trade=execution_config.get("max_notional_per_trade", 10_000.0),
             pdt_protection=execution_config.get("pdt_protection", True),
             pdt_threshold=execution_config.get("pdt_threshold", 25_000.0),
+            max_account_value=execution_config.get("max_account_value", 0.0),
         )
 
         self.executor = OrderExecutor(ibkr_client)

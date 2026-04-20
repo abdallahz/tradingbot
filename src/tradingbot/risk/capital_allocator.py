@@ -63,6 +63,7 @@ class CapitalAllocator:
         max_notional_per_trade: float = 10_000.0,
         pdt_protection: bool = True,
         pdt_threshold: float = 25_000.0,
+        max_account_value: float = 0.0,
     ) -> None:
         self.mode = mode
         self.max_concurrent_positions = max_concurrent_positions
@@ -73,6 +74,7 @@ class CapitalAllocator:
         self.max_notional_per_trade = max_notional_per_trade
         self.pdt_protection = pdt_protection
         self.pdt_threshold = pdt_threshold
+        self.max_account_value = max_account_value  # 0 = no cap
 
         # In-memory state
         self._open_positions: dict[str, PositionSlot] = {}
@@ -90,13 +92,22 @@ class CapitalAllocator:
         buying_power: float,
         cash_balance: float,
     ) -> None:
-        """Update cached account values from IBKR."""
+        """Update cached account values from IBKR.
+
+        If max_account_value is set, caps NLV and buying power so the
+        bot only trades with a portion of the total account.
+        """
+        if self.max_account_value > 0:
+            net_liquidation = min(net_liquidation, self.max_account_value)
+            buying_power = min(buying_power, self.max_account_value)
+            cash_balance = min(cash_balance, self.max_account_value)
         self._account_value = net_liquidation
         self._buying_power = buying_power
         self._cash_balance = cash_balance
         logger.debug(
             f"Account updated: NLV=${net_liquidation:,.0f}, "
             f"BP=${buying_power:,.0f}, cash=${cash_balance:,.0f}"
+            + (f" (capped from IBKR to ${self.max_account_value:,.0f})" if self.max_account_value > 0 else "")
         )
 
     @property
