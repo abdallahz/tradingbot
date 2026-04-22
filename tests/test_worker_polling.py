@@ -12,7 +12,8 @@ def test_worker_polling_interval(monkeypatch):
 
     monkeypatch.setattr(time, "sleep", fake_sleep)
     # Patch _now_et and _load_schedule to avoid real time dependency
-    monkeypatch.setattr(worker, "_now_et", lambda: worker.ET.localize(worker.datetime(2023, 3, 17, 8, 0)))
+    from datetime import datetime
+    monkeypatch.setattr(worker, "_now_et", lambda: datetime(2023, 3, 17, 8, 0).replace(tzinfo=worker.ET))
     monkeypatch.setattr(worker, "_load_schedule", lambda: {"morning_scout": "08:00"})
     # Patch _HANDLERS to avoid running real jobs
     monkeypatch.setattr(worker, "_HANDLERS", {"morning_scout": lambda: None})

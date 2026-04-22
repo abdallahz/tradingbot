@@ -430,34 +430,33 @@ class TestScannerYamlMaxGap:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 6. Intraday extension integration (session_runner helpers)
+# 6. Intraday extension filter (CardBuilder)
 # ═══════════════════════════════════════════════════════════════════
 
 class TestIntradayExtensionFilter:
-    """Test _passes_intraday_extension via a minimal SessionRunner."""
+    """Test CardBuilder.passes_intraday_extension directly."""
 
-    def _make_runner(self):
-        from pathlib import Path
-        from tradingbot.app.session_runner import SessionRunner
-        return SessionRunner(Path("."), use_real_data=False)
+    def _make_builder(self):
+        from tradingbot.app.card_builder import CardBuilder
+        return CardBuilder()
 
     def test_flat_stock_passes(self):
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(intraday_change_pct=0.0)
-        assert runner._passes_intraday_extension(stock, None)
+        assert cb.passes_intraday_extension(stock, None)
 
     def test_moderate_move_passes(self):
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(intraday_change_pct=4.0)
-        assert runner._passes_intraday_extension(stock, None)
+        assert cb.passes_intraday_extension(stock, None)
 
     def test_extended_stock_blocked(self):
         """A stock up 8% from open should be blocked.
-        
+
         The default snap has indicators that could pass pullback re-entry,
         so we use a stock below VWAP and EMA9 to ensure it doesn't qualify.
         """
-        runner = self._make_runner()
+        cb = self._make_builder()
         dropped: list[tuple[str, str]] = []
         stock = _snap(
             intraday_change_pct=8.0,
@@ -468,12 +467,12 @@ class TestIntradayExtensionFilter:
             reclaim_level=54.0,
             open_price=46.3,
         )
-        assert not runner._passes_intraday_extension(stock, dropped)
+        assert not cb.passes_intraday_extension(stock, dropped)
         assert any("intraday_extended" in r for _, r in dropped)
 
     def test_extended_with_pullback_allowed(self):
         """Extended stock that has properly pulled back should be allowed."""
-        runner = self._make_runner()
+        cb = self._make_builder()
         # Stock is technically up 7% from open (extended), but has pulled back
         # from a high of $53 to $51, holding VWAP/EMA — pullback re-entry
         stock = _snap(
@@ -487,9 +486,9 @@ class TestIntradayExtensionFilter:
             ema20=50.2,
             relative_volume=2.0,
         )
-        assert runner._passes_intraday_extension(stock, None)
+        assert cb.passes_intraday_extension(stock, None)
 
     def test_negative_change_always_passes(self):
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(intraday_change_pct=-2.0)
-        assert runner._passes_intraday_extension(stock, None)
+        assert cb.passes_intraday_extension(stock, None)

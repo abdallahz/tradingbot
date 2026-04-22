@@ -34,6 +34,7 @@ class PullbackReentrySignal:
 def evaluate_pullback_reentry(
     stock: SymbolSnapshot,
     prev_entry_price: float | None = None,
+    intraday_hod: float | None = None,
 ) -> PullbackReentrySignal:
     """Evaluate whether a stock qualifies for a pullback re-entry.
 
@@ -63,12 +64,17 @@ def evaluate_pullback_reentry(
         )
 
     # ── Measure pullback depth ──
-    # Use reclaim_level (PM high / session high) as the high-water mark.
-    # If reclaim_level isn't useful, fallback to open + gap implied high.
-    high_ref = stock.reclaim_level
-    if high_ref <= 0 or high_ref < stock.price * 0.95:
-        # reclaim_level seems stale — estimate from open + ATR
-        high_ref = stock.price * (1 + stock.gap_pct / 100.0) if stock.gap_pct > 0 else stock.price
+    # Prefer intraday_hod (post-alert HOD saved at stop-out time) — it is
+    # the exact high the stock reached after the alert, making the pullback
+    # depth calculation accurate.  Fall back to reclaim_level (premarket
+    # high) or a gap-implied estimate when neither is available.
+    if intraday_hod and intraday_hod > stock.price:
+        high_ref = intraday_hod
+    else:
+        high_ref = stock.reclaim_level
+        if high_ref <= 0 or high_ref < stock.price * 0.95:
+            # reclaim_level seems stale — estimate from open + ATR
+            high_ref = stock.price * (1 + stock.gap_pct / 100.0) if stock.gap_pct > 0 else stock.price
 
     if high_ref <= 0 or high_ref <= stock.price:
         # Price is AT or ABOVE the high — not a pullback, still running
@@ -147,9 +153,14 @@ def evaluate_pullback_reentry(
         )
 
     # ── If re-entering after a prior alert, require better price ──
+    # After a confirmed stop-out (intraday_hod is set) we know the stock
+    # genuinely dipped.  Any re-entry below the original entry is valid —
+    # use a 0.5% floor so we don't re-alert at essentially the same tick.
+    # For first-pass dedup (no stop history) keep the stricter 2% gate.
     if prev_entry_price is not None and prev_entry_price > 0:
         improvement_pct = (prev_entry_price - stock.price) / prev_entry_price * 100
-        if improvement_pct < 2.0:
+        min_improvement = 0.5 if intraday_hod else 2.0
+        if improvement_pct < min_improvement:
             return PullbackReentrySignal(
                 qualifies=False,
                 reason=f"entry_not_improved:{improvement_pct:.1f}%",

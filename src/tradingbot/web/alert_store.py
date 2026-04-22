@@ -368,6 +368,69 @@ def get_today_alerted_symbols() -> dict[str, float]:
         return {}
 
 
+def get_stopped_symbols_data() -> dict[str, dict]:
+    """Return {symbol: {"hod": float, "stop": float}} for trades stopped out today.
+
+    hod  — post-alert session high saved at stop-out time; used as the
+            accurate high-water mark for pullback-depth calculation.
+    stop — the stop price the trade was closed at; used for the reclaim
+            check (price must recover above this before re-entry is valid).
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return {}
+    try:
+        today_str = _today_et().isoformat()
+        resp = (
+            sb.table("trade_outcomes")
+            .select("symbol, session_high, stop_price")
+            .eq("trade_date", today_str)
+            .eq("status", "stopped")
+            .execute()
+        )
+        result: dict[str, dict] = {}
+        for r in resp.data or []:
+            sym = r.get("symbol", "")
+            if sym:
+                result[sym] = {
+                    "hod": float(r.get("session_high") or 0.0),
+                    "stop": float(r.get("stop_price") or 0.0),
+                }
+        return result
+    except Exception as exc:
+        log.warning(f"[alert_store] get_stopped_symbols_data failed: {exc}")
+        return {}
+
+
+def get_today_alert_counts() -> dict[str, int]:
+    """Return {symbol: count} for all alerts sent today.
+
+    Used to enforce the re-entry cap: a symbol that has already been
+    alerted twice (initial + one re-entry) is blocked from further
+    re-alerts regardless of how good the setup looks.
+    """
+    sb = _get_supabase()
+    if sb is None:
+        return {}
+    try:
+        today_str = _today_et().isoformat()
+        resp = (
+            sb.table("alerts")
+            .select("symbol")
+            .eq("trade_date", today_str)
+            .execute()
+        )
+        counts: dict[str, int] = {}
+        for r in resp.data or []:
+            sym = r.get("symbol", "")
+            if sym:
+                counts[sym] = counts.get(sym, 0) + 1
+        return counts
+    except Exception as exc:
+        log.warning(f"[alert_store] get_today_alert_counts failed: {exc}")
+        return {}
+
+
 def save_catalyst_scores(scores: dict[str, float]) -> None:
     """Persist catalyst scores to Supabase so they survive dyno restarts.
 
@@ -631,6 +694,8 @@ def update_outcome(
     session: str | None = None,
     closed_at: str | None = None,
     tp1_hit_at: str | None = None,
+    session_high: float | None = None,
+    session_low: float | None = None,
 ) -> None:
     """Update a trade outcome row with new status and P&L."""
     sb = _get_supabase()
@@ -650,6 +715,10 @@ def update_outcome(
             updates["closed_at"] = closed_at
         if tp1_hit_at:
             updates["tp1_hit_at"] = tp1_hit_at
+        if session_high is not None:
+            updates["session_high"] = round(session_high, 2)
+        if session_low is not None:
+            updates["session_low"] = round(session_low, 2)
         sb.table("trade_outcomes").update(updates).eq("id", outcome_id).execute()
     except Exception as exc:
         log.warning(f"[alert_store] update_outcome failed: {exc}")

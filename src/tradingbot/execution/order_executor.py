@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
+from tradingbot.utils.pnl import pnl_pct as _pnl_pct
+
 logger = logging.getLogger(__name__)
 
 
@@ -493,7 +495,7 @@ class OrderExecutor:
                         trade.tp1_hit = True
                         trade.close_reason = "tp1_hit"
                         trade.actual_exit_price = exit_price
-                        pnl_pct = ((exit_price - trade.entry_price) / trade.entry_price) * 100
+                        pnl_pct = _pnl_pct(trade.entry_price, exit_price)
 
                         completed.append({
                             "symbol": symbol,
@@ -512,7 +514,7 @@ class OrderExecutor:
                         trade.closed = True
                         trade.close_reason = "stopped"
                         trade.actual_exit_price = exit_price
-                        pnl_pct = ((exit_price - trade.entry_price) / trade.entry_price) * 100
+                        pnl_pct = _pnl_pct(trade.entry_price, exit_price)
 
                         # Trailed out (profitable stop) vs stopped (loss)
                         outcome = "trailed_out" if exit_price > trade.entry_price else "stopped"
@@ -556,7 +558,7 @@ class OrderExecutor:
                 "entry": t.entry_price,
                 "exit": t.actual_exit_price,
                 "reason": t.close_reason,
-                "pnl_pct": ((t.actual_exit_price - t.entry_price) / t.entry_price * 100)
+                "pnl_pct": _pnl_pct(t.entry_price, t.actual_exit_price)
                 if t.entry_price > 0 and t.actual_exit_price > 0 else 0.0,
             }
             for t in self._managed_trades.values()

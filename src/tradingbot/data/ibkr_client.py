@@ -391,9 +391,8 @@ class IBKRClient:
                         return today_per_bar / prev_per_bar
 
         # Fallback: time-of-day scaling
-        from zoneinfo import ZoneInfo
-        _ET = ZoneInfo("America/New_York")
-        now_et = datetime.now(_ET)
+        from tradingbot.utils.timezone import now_et as _now_et
+        now_et = _now_et()
         market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
         elapsed_min = max((now_et - market_open).total_seconds() / 60, 1)
         day_fraction = min(elapsed_min / 390.0, 1.0)
@@ -756,14 +755,8 @@ class IBKRClient:
         location: str = "STK.US.MAJOR",
         timeout: float = 15.0,
     ) -> set[str]:
-        """Run one TWS scanner and return matched symbols.
-
-        Wraps ``reqScannerData`` with a per-scan timeout so a hung
-        gateway doesn't block the entire pipeline.
-        """
-        import asyncio
+        """Run one TWS scanner and return matched symbols."""
         from ib_insync import ScannerSubscription, TagValue
-        from ib_insync.util import getLoop
 
         found: set[str] = set()
         try:
@@ -781,21 +774,12 @@ class IBKRClient:
             if above_volume > 0:
                 tag_values.append(TagValue("volumeAbove", str(above_volume)))
 
-            # Use async version with timeout to prevent indefinite hangs
-            # when IBKR gateway doesn't respond to scanner requests.
-            loop = getLoop()
-            coro = asyncio.wait_for(
-                self.ib.reqScannerDataAsync(sub, scannerSubscriptionFilterOptions=tag_values),
-                timeout=timeout,
-            )
-            results = loop.run_until_complete(coro)
+            results = self._ib.reqScannerData(sub, scannerSubscriptionFilterOptions=tag_values)
             for item in results:
                 sym = item.contractDetails.contract.symbol
                 if not _JUNK_SUFFIX.search(sym) and "." not in sym:
                     found.add(sym)
-            self.ib.sleep(0.5)
-        except asyncio.TimeoutError:
-            logger.warning(f"IBKR scanner {scan_code} timed out after {timeout}s")
+            self._ib.sleep(0.5)
         except Exception as e:
             logger.warning(f"IBKR scanner {scan_code} failed: {e}")
 

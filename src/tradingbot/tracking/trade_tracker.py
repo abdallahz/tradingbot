@@ -34,10 +34,10 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-import pytz
+from tradingbot.utils.timezone import ET
+from tradingbot.utils.pnl import blended_pnl, pnl_pct
 
 log = logging.getLogger(__name__)
-ET = pytz.timezone("America/New_York")
 
 # ── Portfolio Circuit Breaker thresholds ──────────────────────────────
 # These can be overridden via environment variables.
@@ -196,9 +196,7 @@ class TradeTracker:
             if not alerted_raw:
                 # If no alerted_at stored, fall back to market open (9:30 ET)
                 today = _date.today()
-                alerted_dt = ET.localize(
-                    datetime(today.year, today.month, today.day, 9, 30)
-                )
+                alerted_dt = datetime(today.year, today.month, today.day, 9, 30).replace(tzinfo=ET)
             elif isinstance(alerted_raw, str):
                 # Parse ISO timestamp from Supabase
                 try:
@@ -207,15 +205,13 @@ class TradeTracker:
                     )
                 except (ValueError, TypeError):
                     today = _date.today()
-                    alerted_dt = ET.localize(
-                        datetime(today.year, today.month, today.day, 9, 30)
-                    )
+                    alerted_dt = datetime(today.year, today.month, today.day, 9, 30).replace(tzinfo=ET)
             else:
                 alerted_dt = alerted_raw
 
             # Ensure timezone-aware
             if alerted_dt.tzinfo is None:
-                alerted_dt = ET.localize(alerted_dt)
+                alerted_dt = alerted_dt.replace(tzinfo=ET)
 
             # Keep earliest alert per symbol (conservative)
             if sym not in sym_alert_times or alerted_dt < sym_alert_times[sym]:
@@ -233,9 +229,7 @@ class TradeTracker:
             now_utc = datetime.now(timezone.utc)
             # Start from market open today (9:30 ET → UTC)
             today = datetime.now(ET).date()
-            market_open = ET.localize(
-                datetime(today.year, today.month, today.day, 4, 0)
-            ).astimezone(timezone.utc)
+            market_open = datetime(today.year, today.month, today.day, 4, 0).replace(tzinfo=ET).astimezone(timezone.utc)
 
             intraday_tf = TimeFrame(15, TimeFrameUnit.Minute)  # type: ignore[call-arg]
             req = StockBarsRequest(
@@ -266,7 +260,7 @@ class TradeTracker:
                 alert_time = sym_alert_times[sym]
                 # Ensure alert_time is UTC for comparison
                 if alert_time.tzinfo is None:
-                    alert_time = ET.localize(alert_time)
+                    alert_time = alert_time.replace(tzinfo=ET)
                 alert_utc = alert_time.astimezone(timezone.utc)
 
                 highs: list[float] = []
@@ -425,26 +419,7 @@ class TradeTracker:
             if price <= 0 and entry > 0:
                 price = entry  # fallback to entry → PnL=0
 
-            pnl = 0.0
-            if entry > 0 and price > 0:
-                side = trade.get("side", "long")
-                prev_status = trade.get("status", "open")
-                tp1 = float(trade.get("tp1_price") or 0)
-
-                if side == "long":
-                    pnl_final = ((price - entry) / entry) * 100
-                else:
-                    pnl_final = ((entry - price) / entry) * 100
-
-                # Blend if TP1 was already taken
-                if prev_status == "tp1_hit" and tp1 > 0:
-                    if side == "long":
-                        pnl_tp1 = ((tp1 - entry) / entry) * 100
-                    else:
-                        pnl_tp1 = ((entry - tp1) / entry) * 100
-                    pnl = round((pnl_tp1 + pnl_final) / 2, 2)
-                else:
-                    pnl = round(pnl_final, 2)
+            pnl = blended_pnl(trade, price, "emergency_closed") if entry > 0 and price > 0 else 0.0
 
             update_outcome(
                 outcome_id=trade["id"],
@@ -562,6 +537,9 @@ class TradeTracker:
             if new_status and new_status != trade["status"]:
                 exit_price = self._resolve_exit_price(trade, new_status, price)
                 pnl = self._calc_pnl(trade, exit_price, new_status)
+                # Save post-alert HOD when a stop fires so the re-entry
+                # evaluator can use the correct high-water mark.
+                hod = sess_high if (new_status == "stopped" and sess_high > 0) else None
                 update_outcome(
                     outcome_id=trade["id"],
                     status=new_status,
@@ -570,6 +548,7 @@ class TradeTracker:
                     hit_at=now_str,
                     closed_at=now_str if new_status in _terminal else None,
                     tp1_hit_at=now_str if new_status == "tp1_hit" else None,
+                    session_high=hod,
                 )
                 updates += 1
                 bar_tag = " (bar-detected)" if exit_price != price else ""
@@ -583,11 +562,7 @@ class TradeTracker:
                 # so the dashboard can show live gain/loss for open trades
                 entry = float(trade.get("entry_price") or 0)
                 if entry > 0:
-                    side = trade.get("side", "long")
-                    if side == "long":
-                        unrealised_pnl = ((price - entry) / entry) * 100
-                    else:
-                        unrealised_pnl = ((entry - price) / entry) * 100
+                    unrealised_pnl = pnl_pct(entry, price, trade.get("side", "long"))
                     update_outcome(
                         outcome_id=trade["id"],
                         status=trade["status"],
@@ -765,57 +740,7 @@ class TradeTracker:
     # ── Calculate P&L % ────────────────────────────────────────────────────
     @staticmethod
     def _calc_pnl(trade: dict, exit_price: float, status: str = "") -> float:
-        """Return blended percentage P&L from entry to exit.
-
-        Day-trading rule: when TP1 is hit, sell **half** at TP1.  The
-        remaining half rides to the final exit (TP2, stop, expire, …).
-        So any terminal status that follows a TP1 hit must blend the two
-        halves:  blended = (pnl_tp1 + pnl_final) / 2.
-
-        Statuses that imply TP1 was already taken:
-          tp2_hit      – runner hit TP2  (half @ TP1, half @ TP2)
-          tp1_locked   – runner stopped at TP1 level (both halves @ TP1)
-          trailed_out  – runner trailed out above entry (half @ TP1, half @ stop)
-          stopped      – only if previous status was tp1_hit
-          breakeven    – only if previous status was tp1_hit
-
-        For tp1_hit itself we do NOT blend: only the first half has been
-        sold; the runner is still live.
-        """
-        entry = float(trade.get("entry_price") or 0)
-        if entry <= 0:
-            return 0.0
-
-        tp1 = float(trade.get("tp1_price") or 0)
-        side = trade.get("side", "long")
-        prev_status = trade.get("status", "open")
-
-        if side == "long":
-            pnl_final = ((exit_price - entry) / entry) * 100
-        else:
-            pnl_final = ((entry - exit_price) / entry) * 100
-
-        # Determine whether TP1 was already taken (half sold)
-        needs_blend = False
-        if status == "tp2_hit":
-            # TP2 always implies TP1 was taken first
-            needs_blend = True
-        elif status == "tp1_locked":
-            # Runner stopped at TP1 level → both halves at TP1
-            needs_blend = True
-        elif status in ("trailed_out", "stopped", "breakeven", "expired") and prev_status == "tp1_hit":
-            # Runner exited after TP1 was already banked
-            needs_blend = True
-
-        if needs_blend and tp1 > 0:
-            if side == "long":
-                pnl_tp1 = ((tp1 - entry) / entry) * 100
-            else:
-                pnl_tp1 = ((entry - tp1) / entry) * 100
-            blended = (pnl_tp1 + pnl_final) / 2
-            return round(blended, 2)
-
-        return round(pnl_final, 2)
+        return blended_pnl(trade, exit_price, status)
 
     # ── Expire remaining open trades at market close ───────────────────────
     def _fetch_daily_close(self, symbols: list[str], target_date: date | None = None) -> dict[str, float]:

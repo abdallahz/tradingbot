@@ -311,13 +311,10 @@ class TelegramNotifier:
                 raw_closed = o.get("closed_at")
                 if raw_closed:
                     try:
-                        from datetime import datetime as _dt, timezone as _tz
-                        import pytz as _ptz
-                        _et_tz = _ptz.timezone("America/New_York")
+                        from datetime import datetime as _dt
+                        from tradingbot.utils.timezone import to_et
                         _cdt = _dt.fromisoformat(str(raw_closed).replace("Z", "+00:00"))
-                        if _cdt.tzinfo is None:
-                            _cdt = _cdt.replace(tzinfo=_tz.utc)
-                        closed_str = f" 🕐{_cdt.astimezone(_et_tz).strftime('%I:%M %p').lstrip('0')}"
+                        closed_str = f" 🕐{to_et(_cdt).strftime('%I:%M %p').lstrip('0')}"
                     except Exception:
                         pass
 

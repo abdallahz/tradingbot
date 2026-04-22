@@ -24,6 +24,25 @@ midday:
   max_spread_pct: 2.0
   min_score: 60
 
+# Catalyst scoring thresholds used by the filter chain
+catalyst:
+  # Symbols with score >= this are included in night research universe
+  min_night_score: 40
+  # Catalyst score above which strict filters are bypassed (strong news event)
+  bypass_score: 70
+  # Catalyst gate floor for Option 2 (relaxed) mode
+  relaxed_gate_score: 55
+
+# Card-building scoring parameters
+scoring:
+  # Final card score = ranker_score * ranker_weight + confluence * confluence_weight
+  ranker_weight: 0.60
+  confluence_weight: 0.40
+  # Confluence floor raised during 9:30–9:45 ET opening fakeout window
+  opening_window_confluence_floor: 15
+  # Min score for the Option 2 (relaxed) ranker
+  o2_min_score: 25
+
 # Intraday momentum scanner — catches stocks rallying from today's open.
 # Runs alongside GapScanner during midday/close sessions.
 momentum:

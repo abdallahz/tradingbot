@@ -1,5 +1,5 @@
 from tradingbot.research.news_aggregator import CatalystScorerV2, NewsAggregator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class DummyNewsItem:
     def __init__(self, symbol, headline, published_at, relevance_score):
@@ -19,7 +19,7 @@ class DummyNewsAggregator:
 
 def test_catalyst_scorer_negative_predictive_power():
     """Test that high catalyst scores do not correlate with negative news."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     # Simulate two symbols: one with positive news, one with negative news
     news_map = {
         "GOOD": [DummyNewsItem("GOOD", "FDA approval for new drug", now, 90)],

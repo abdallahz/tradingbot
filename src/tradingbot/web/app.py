@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, timezone
+from tradingbot.utils.pnl import blended_pnl
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -579,22 +580,15 @@ def api_diag_repair_expired():
                 fixes.append({"symbol": sym, "id": o["id"], "fixed": False, "reason": "no daily bar"})
                 continue
 
-            # Recalculate PnL
-            pnl = round(((close_price - entry) / entry) * 100, 2)
-            # Check if TP1 was previously hit (blend)
-            prev_status = o.get("status", "expired")
-            tp1 = float(o.get("tp1_price") or 0)
-            if prev_status == "tp1_hit" and tp1 > 0:
-                pnl_tp1 = round(((tp1 - entry) / entry) * 100, 2)
-                pnl = round((pnl_tp1 + pnl) / 2, 2)
-
             # Determine correct status based on close price vs stop/tp
+            prev_status = o.get("status", "expired")
             stop = float(o.get("stop_price") or 0)
             new_status = "expired"
             if stop > 0 and close_price <= stop:
                 new_status = "stopped"
-                pnl = round(((stop - entry) / entry) * 100, 2)
                 close_price = stop
+
+            pnl = blended_pnl({**o, "status": prev_status}, close_price, new_status)
 
             update_outcome(
                 outcome_id=o["id"],

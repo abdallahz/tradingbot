@@ -229,11 +229,10 @@ def main() -> None:
 
     if args.command == "run-cleanup":
         logging.basicConfig(level=logging.INFO, format="%(message)s")
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
+        from tradingbot.utils.timezone import now_et as _now_et
 
         # Time guard: only run between 3:40 PM and 4:15 PM ET
-        now_et = datetime.now(ZoneInfo("America/New_York"))
+        now_et = _now_et()
         cleanup_start = now_et.replace(hour=15, minute=40, second=0, microsecond=0)
         cleanup_end = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
         if not (cleanup_start <= now_et <= cleanup_end):
@@ -300,8 +299,8 @@ def main() -> None:
 
     if args.command == "run-close":
         logging.basicConfig(level=logging.INFO, format="%(message)s")
-        from datetime import datetime, timezone
-        from zoneinfo import ZoneInfo
+        from datetime import timezone
+        from tradingbot.utils.timezone import now_et as _now_et
         from tradingbot.web.alert_store import get_trade_stats, load_outcomes_for_date
         from tradingbot.tracking.trade_tracker import TradeTracker
 
@@ -313,7 +312,7 @@ def main() -> None:
 
         # Time guard: only run between 3:00 PM and 4:30 PM ET
         # Prevents Blueprint syncs or accidental triggers from corrupting data
-        now_et = datetime.now(ZoneInfo("America/New_York"))
+        now_et = _now_et()
         close_start = now_et.replace(hour=15, minute=0, second=0, microsecond=0)
         close_end = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
         if not (close_start <= now_et <= close_end):

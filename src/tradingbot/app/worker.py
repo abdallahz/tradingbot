@@ -17,10 +17,8 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
-
-import pytz
 
 # Load .env for local dev
 try:
@@ -45,11 +43,7 @@ def _find_root() -> Path:
 
 
 ROOT = _find_root()
-ET = pytz.timezone("America/New_York")
-
-
-def _now_et() -> datetime:
-    return datetime.now(timezone.utc).astimezone(ET)
+from tradingbot.utils.timezone import ET, now_et as _now_et  # noqa: E402
 
 
 def _hhmm(dt: datetime) -> str:

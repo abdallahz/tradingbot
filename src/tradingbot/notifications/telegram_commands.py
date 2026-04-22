@@ -26,11 +26,10 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
+
+from tradingbot.utils.timezone import ET
 
 logger = logging.getLogger(__name__)
-
-ET = ZoneInfo("America/New_York")
 _API_BASE = "https://api.telegram.org/bot{token}/{method}"
 _POLL_INTERVAL = 3  # seconds between getUpdates calls
 _POLL_TIMEOUT = 30  # Telegram long-polling timeout (server holds connection)

@@ -164,51 +164,47 @@ class TestATRExhaustionOpenPrice:
 
 
 class TestDailyTrendFilter:
-    """Verify _passes_trend_filter blocks downtrend gap-ups."""
+    """Verify CardBuilder.passes_trend_filter blocks downtrend gap-ups."""
 
-    def _make_runner(self):
-        """Create a minimal SessionRunner-like object with _passes_trend_filter."""
-        from tradingbot.app.session_runner import SessionRunner
-        # Patch __init__ to avoid loading configs/credentials
-        with patch.object(SessionRunner, "__init__", lambda self, *a, **kw: None):
-            runner = SessionRunner.__new__(SessionRunner)
-        return runner
+    def _make_builder(self):
+        from tradingbot.app.card_builder import CardBuilder
+        return CardBuilder(catalyst_bypass_score=70)
 
     def test_blocks_price_below_daily_ema50(self):
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(price=48.0, daily_ema50=52.0, catalyst_score=50.0)
         dropped = []
-        assert runner._passes_trend_filter(stock, dropped) is False
+        assert cb.passes_trend_filter(stock, dropped) is False
         assert any("daily_downtrend" in r for _, r in dropped)
 
     def test_passes_price_above_daily_ema50(self):
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(price=55.0, daily_ema50=52.0)
-        assert runner._passes_trend_filter(stock, None) is True
+        assert cb.passes_trend_filter(stock, None) is True
 
     def test_passes_when_ema50_unavailable(self):
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(price=48.0, daily_ema50=0.0)
-        assert runner._passes_trend_filter(stock, None) is True
+        assert cb.passes_trend_filter(stock, None) is True
 
     def test_catalyst_overrides_downtrend(self):
         """Strong catalyst (>=70) should bypass the downtrend filter."""
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(price=48.0, daily_ema50=52.0, catalyst_score=75.0)
-        assert runner._passes_trend_filter(stock, None) is True
+        assert cb.passes_trend_filter(stock, None) is True
 
     def test_moderate_catalyst_does_not_override(self):
         """Catalyst < 70 should NOT bypass the downtrend filter."""
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(price=48.0, daily_ema50=52.0, catalyst_score=60.0)
         dropped = []
-        assert runner._passes_trend_filter(stock, dropped) is False
+        assert cb.passes_trend_filter(stock, dropped) is False
 
     def test_relaxed_mode_bypasses(self):
         """Relaxed mode (O2) should skip the trend filter."""
-        runner = self._make_runner()
+        cb = self._make_builder()
         stock = _snap(price=48.0, daily_ema50=52.0, catalyst_score=40.0)
-        assert runner._passes_trend_filter(stock, None, relaxed=True) is True
+        assert cb.passes_trend_filter(stock, None, relaxed=True) is True
 
 
 # ════════════════════════════════════════════════════════════════════
