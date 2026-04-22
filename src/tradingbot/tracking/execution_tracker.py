@@ -215,7 +215,7 @@ class ExecutionTracker:
             status_map = {
                 "tp1_partial": "tp1_hit",     # half out — mark tp1_hit but keep open
                 "tp2_hit": "tp2_hit",
-                "runner_stopped": "trailed_out",
+                "runner_stopped": "runner_stopped",
                 "stopped": "stopped",
                 "trailed_out": "trailed_out",
                 "tp1_hit": "tp1_hit",

@@ -617,6 +617,12 @@
             color: #155724;
         }
 
+        .outcome-badge.runner_stopped {
+            background: rgba(74, 222, 128, .15);
+            border: 1px solid rgba(74, 222, 128, .35);
+            color: #166534;
+        }
+
         .outcome-badge.tp1_locked {
             background: rgba(34, 197, 94, .15);
             border: 1px solid rgba(34, 197, 94, .30);
@@ -1292,7 +1298,7 @@
                         <select id="status" name="status">
                             <option value="">All Statuses</option>
                             {% set status_options = [('open', 'Open'), ('tp1_hit', '🎯 TP1 Hit'), ('tp2_hit', '🏆 TP2
-                            Hit'), ('tp1_locked', '🔒 TP1 Locked'), ('trailed_out', '📈 Trailed Out'), ('breakeven', '⚖️
+                            Hit'), ('tp1_locked', '🔒 TP1 Locked'), ('trailed_out', '📈 Trailed Out'), ('runner_stopped', '🏃 Runner Stopped'), ('breakeven', '⚖️
                             Breakeven'), ('stopped', '🛑 Stopped'), ('expired', '⏰ Expired')] %}
                             {% for val, lbl in status_options %}
                             <option value="{{ val }}" {% if val==status_filter %}selected{% endif %}>{{ lbl }}</option>
@@ -1324,7 +1330,7 @@
                 {% if scan_time_filter %}<span class="chip">⏱ {{ scan_time_filter }}</span>{% endif %}
                 {% if status_filter %}{% set status_label_map = {'open':'Open','tp1_hit':'TP1 Hit','tp2_hit':'TP2
                 Hit','tp1_locked':'TP1 Locked','trailed_out':'Trailed
-                Out','breakeven':'Breakeven','stopped':'Stopped','expired':'Expired'} %}<span class="chip">🏷 {{
+                Out','runner_stopped':'Runner Stopped','breakeven':'Breakeven','stopped':'Stopped','expired':'Expired'} %}<span class="chip">🏷 {{
                     status_label_map.get(status_filter, status_filter) }}</span>{% endif %}
             </div>
             {% endif %}
@@ -2549,6 +2555,7 @@
                         {% elif a.outcome.status == 'tp2_hit' %}🏆
                         {% elif a.outcome.status == 'tp1_locked' %}🔒
                         {% elif a.outcome.status == 'trailed_out' %}📈
+                        {% elif a.outcome.status == 'runner_stopped' %}🏃
                         {% elif a.outcome.status == 'breakeven' %}⚖️
                         {% elif a.outcome.status == 'stopped' %}🛑
                         {% elif a.outcome.status == 'expired' %}⏰
@@ -2559,6 +2566,7 @@
                         {% elif a.outcome.status == 'tp2_hit' %}TP1 → TP2
                         {% elif a.outcome.status == 'tp1_locked' %}TP1 → Locked
                         {% elif a.outcome.status == 'trailed_out' %}Trailed Out
+                        {% elif a.outcome.status == 'runner_stopped' %}Runner → TP1 Lock
                         {% elif a.outcome.status == 'breakeven' %}Breakeven
                         {% elif a.outcome.status == 'stopped' %}Stopped Out
                         {% elif a.outcome.status == 'expired' %}Expired
