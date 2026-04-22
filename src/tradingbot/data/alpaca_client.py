@@ -448,15 +448,23 @@ class AlpacaClient:
         # Mega-cap Tech
         "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
         "AVGO", "AMD", "INTC", "MU", "SMCI", "ARM", "PLTR", "CRWD",
+        # Software / SaaS
+        "NOW", "ADBE", "CRM", "ORCL", "NFLX", "PANW", "SNOW", "WDAY",
         # Financials
-        "JPM", "GS", "V", "MA", "PYPL", "XYZ", "COIN",
+        "JPM", "GS", "V", "MA", "PYPL", "COIN",
+        "BAC", "WFC", "MS", "SCHW", "AXP",
         # Healthcare
-        "LLY", "UNH", "MRNA", "BNTX",
+        "LLY", "UNH", "MRNA", "BNTX", "ABBV", "PFE", "GILD",
+        # Industrials / Clean Energy
+        "GEV", "ETN", "CAT", "HON", "NEE",
         # Consumer / EV
         "WMT", "COST", "UBER", "RIVN", "LCID", "NIO",
+        "HD", "MCD", "NKE",
         # Energy
         "XOM", "CVX",
-        # ETFs (market context)
+        # Semiconductors (additional)
+        "QCOM", "TXN", "MRVL",
+        # ETFs (market context — always blocked from alerts by ETF filter)
         "SPY", "QQQ", "IWM",
     ]
 

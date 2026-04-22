@@ -462,20 +462,21 @@ class SessionRunner:
             f"(dropped: {len(strict_scan.dropped)})"
         )
 
-        # For midday/close sessions, also run the momentum scanner to catch
-        # intraday runners (stocks that opened flat but rallied).  Merge
-        # momentum candidates into the strict scan, deduplicating by symbol.
-        if stricter:
-            momentum_scan = self.momentum_scanner.run(snapshots)
-            if momentum_scan.candidates:
-                gap_symbols = {c.symbol for c in strict_scan.candidates}
-                new_momentum = [c for c in momentum_scan.candidates if c.symbol not in gap_symbols]
-                strict_scan.candidates.extend(new_momentum)
-                logging.info(
-                    f"[MOMENTUM] +{len(new_momentum)} intraday runners added "
-                    f"({len(momentum_scan.candidates)} total momentum, "
-                    f"{len(gap_symbols)} already from gap scan)"
-                )
+        # Always run the momentum scanner — catches stocks rallying from today's
+        # open regardless of pre-market gap (e.g. AAPL up 2% intraday, ADBE
+        # breaking out on sector rotation).  The gap scanner finds pre-market
+        # gappers; this finds intraday runners.  The intraday_extended filter
+        # in _build_cards (max 6%) guards against chasing extended moves.
+        momentum_scan = self.momentum_scanner.run(snapshots)
+        if momentum_scan.candidates:
+            gap_symbols = {c.symbol for c in strict_scan.candidates}
+            new_momentum = [c for c in momentum_scan.candidates if c.symbol not in gap_symbols]
+            strict_scan.candidates.extend(new_momentum)
+            logging.info(
+                f"[MOMENTUM] +{len(new_momentum)} intraday runners added "
+                f"({len(momentum_scan.candidates)} total momentum, "
+                f"{len(gap_symbols)} already from gap scan)"
+            )
 
         if stricter:
             cfg = self.midday_config
@@ -504,12 +505,11 @@ class SessionRunner:
             f"[SCANNER] O2 relaxed scanner: {len(relaxed_scan.candidates)} candidates "
             f"(dropped: {len(relaxed_scan.dropped)})"
         )
-        # Merge momentum candidates into O2 as well for midday/close
-        if stricter:
-            relaxed_symbols = {c.symbol for c in relaxed_scan.candidates}
-            for mc in momentum_scan.candidates:
-                if mc.symbol not in relaxed_symbols:
-                    relaxed_scan.candidates.append(mc)
+        # Merge momentum candidates into O2 as well (all sessions)
+        relaxed_symbols = {c.symbol for c in relaxed_scan.candidates}
+        for mc in momentum_scan.candidates:
+            if mc.symbol not in relaxed_symbols:
+                relaxed_scan.candidates.append(mc)
         relaxed_ranked = self.relaxed_ranker.run(relaxed_scan.candidates)
         o2_dropped: list[tuple[str, str]] = []
         relaxed_cards = self._build_cards(
