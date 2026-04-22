@@ -46,13 +46,15 @@ Every scan session produces three parallel watchlists:
 
 CLI → `Scheduler` → `SessionRunner` which:
 1. Loads catalyst scores (from prior `run-news` job saved to `catalyst_scores.json`)
-2. Fetches snapshots via `AlpacaClient`
-3. Filters through `GapScanner` (price_min=$5, long-only positive gaps)
-4. Detects patterns, checks pullback setups, scores confluence
-5. Ranks via `CatalystWeightedRanker` (11 scoring components)
-6. `_build_cards` 21-step filter chain (market guard → price guard → inverse ETF blocker → gap fade → catalyst gate → confluence engine → etc.)
-7. Builds `TradeCard` (entry/stop/TP1/TP2), blends score 60% ranker + 40% confluence
-8. Sends via `TelegramNotifier` (1.5s delay, retries), persists to `AlertStore` (Supabase + JSONL fallback)
+2. Fetches snapshots via `AlpacaClient` or `IBKRClient`
+3. Builds universe: 70-symbol `_CORE_WATCHLIST` (always included, 0.2% gap threshold) + IBKR/Alpaca screener results (~150–200 total)
+4. Filters through `GapScanner` (price_min=$5, long-only positive gaps) AND `MomentumScanner` (1.5%+ intraday, above VWAP) — both run every session
+5. Detects patterns, checks pullback setups, scores confluence
+6. Ranks via `CatalystWeightedRanker` (11 scoring components)
+7. `_build_cards` 22-step filter chain (market guard → price guard → ETF blocker → dedup/re-entry → gap fade → EMA50 trend → catalyst gate → confluence engine → etc.)
+8. Builds `TradeCard` (entry/stop/TP1/TP2), blends score 60% ranker + 40% confluence
+9. Sends via `TelegramNotifier` (1.5s delay, retries), persists to `AlertStore` (Supabase + JSONL fallback)
+10. IBKR execution (feature branch): bracket orders with TP1/TP2 partial sells (50% at TP1, runner OCA to TP2)
 
 ### Key Modules
 
@@ -110,6 +112,11 @@ Optional: `DATA_PROVIDER=ibkr` (VPS only), `EXECUTION_MODE=paper|live` (VPS only
 - **Source tagging**: Each alert tagged `render-alpaca` or `vps-ibkr` in Telegram + Supabase.
 - **Daily EMA50 trend filter**: Blocks stocks gapping up below daily EMA50 (bear rally protection).
 - **Portfolio circuit breaker**: Closes all open trades if portfolio drawdown ≥ 1.5%, SPY/QQQ down ≥ 2%, or ≥ 75% of trades losing. Fires once per session, sends Telegram alert.
+- **Core watchlist**: 70 mega-cap/sector-leader symbols always included in every scan (lower 0.2% gap threshold). Both `AlpacaClient` and `IBKRClient` must stay in sync.
+- **Momentum scanner always runs**: `MomentumScanner` runs every session (morning, midday, close) — catches stocks that opened flat but rallied. The `if stricter:` gate was removed Apr 22.
+- **TP1/TP2 partial sells** (feature branch): 50% exit at TP1, runner OCA (stop at TP1 + TP2 limit) for remaining 50%. Blended P&L = avg of TP1 exit and runner exit.
+- **HOD tracking**: `session_high` saved to Supabase at stop-out time — correct pullback depth reference for re-entry evaluation.
+- **Re-entry cap**: Max 2 alerts/symbol/day (initial + 1 re-entry). Reclaim confirmation: price must be above prior stop level before re-entry is allowed.
 
 ## Live Deployment
 
@@ -151,14 +158,23 @@ python -m tradingbot.cli run-day
 - **Non-Professional approval**: APPROVED — subscribe to US Securities Snapshot & Futures Value Bundle ($10/mo) or US Equity and Options Add-On Streaming Bundle ($4.50/mo)
 - **Market data type**: Switched to live (type 1) — auto-falls back to delayed if subscription missing for an exchange
 - **Scanner enhanced**: 5 TWS scanners including gap-specific codes (`TOP_OPEN_PERC_GAIN`, `HIGH_OPEN_GAP`) with server-side `priceAbove` and `volumeAbove` filters
-- **Next**: Subscribe to market data → Paper test on VPS → Dashboard execution badges → Validate → Go live
+- **Next**: Subscribe to market data → Paper test on VPS → Validate → Go live
+
+### Recent Improvements (Apr 22)
+- **TP1/TP2 partial sells** — 50% exit at TP1, runner OCA (stop at TP1 + TP2 limit) for remaining 50%. Blended P&L on final close. `runner_stopped` outcome added.
+- **`runner_stopped` dashboard badge** — green badge, 🏃 icon, "Runner → TP1 Lock" label.
+- **IBKR historical data fix** — replaced broken `getLoop()/run_until_complete()` with synchronous `reqHistoricalData()` call (ib_insync version compatibility).
+- **Core watchlist expanded 35 → 70 symbols** — added NOW, ADBE, CRM, ORCL, NFLX, PANW, SNOW, WDAY, BAC, WFC, MS, SCHW, AXP, ABBV, PFE, GILD, GEV, ETN, CAT, HON, NEE, HD, MCD, NKE, QCOM, TXN, MRVL. Both `AlpacaClient` and `IBKRClient` updated.
+- **Momentum scanner always runs** — removed `if stricter:` gate; now runs in morning, midday, and close sessions.
+- **Pullback re-entry logic** — max 2 alerts/symbol/day, reclaim confirmation, HOD-based pullback depth (30–70% Fib), support hold, volume confirmation.
+- **HOD tracking** — `session_high` saved to Supabase `trade_outcomes` at stop-out time (correct pullback depth reference).
 
 ### Recent Improvements (Apr 19)
 - **Two-phase morning scan** — 9:15 AM scout (alerts only, no execution) → 9:45 AM execute (re-scan with live data, bypass dedup, place orders). Eliminates fakeout entries by waiting for 15 min of confirmed volume/VWAP.
 - **End-of-day cleanup** — `run-cleanup` at 3:45 PM force-expires unfilled IBKR orders and open Supabase trades. Time-guarded (3:40–4:15 PM ET).
 - **Cron schedule realigned** — midday shifted to 10:00–14:45 ET, IB health/watchdog narrowed to 04:00 AM–5:59 PM ET, old 8:45 morning removed.
 
-### Previous Improvements (Apr 17)
+### Recent Improvements (Apr 17)
 - **Session-adaptive TP caps** — morning 4%, midday 4%, close 4% with ATR multipliers per session
 - **Portfolio circuit breaker** — 3 triggers: portfolio drawdown, market crash (SPY/QQQ), correlated red
 - **Tracker interval** — 5min → 2min for faster TP/stop detection
@@ -168,10 +184,15 @@ python -m tradingbot.cli run-day
 - **Structural TP2** — uses key_resistance_2 when available
 - **VWAP anchor** — below-VWAP plays anchor TP1 to VWAP
 
-### Backlog (biggest potential improvements)
-- **Volume decay detection** — track fading participation across bars.
-- **Dynamic R:R by score** — high-conviction setups should accept lower R:R.
-- **Midday entry improvement** — 0% WR in backtest vs 100% morning. Consider tighter midday filters.
-- **TP1/TP2 partial sell** — sell 50% at TP1, trail remainder to TP2.
+### Backlog (biggest potential improvements, by priority)
+- 🔴 **Earnings calendar filter** — block trades within 2 days of earnings (prevents catastrophic overnight gap risk)
+- 🟡 **Digestion window awareness** — pause/raise thresholds 10:00–10:30 ET (highest fakeout rate)
+- 🟡 **Correlated position protection** — block AMD+NVDA, AAPL+AVGO simultaneously (concentration risk)
+- 🟡 **SPY-magnitude adaptive TP targets** — widen targets on strong bull days (SPY up 1.5%+)
+- 🟡 **Sector rotation detection** — boost scoring when 3+ sector peers are moving 2%+
+- 🟢 **Volume decay detection** — track fading participation across bars
+- 🟢 **Dynamic R:R by score** — high-conviction setups accept lower R:R
+- 🟢 **Midday entry improvement** — 0% WR in backtest. Consider tighter midday filters.
+- 🟢 **Dynamic watchlist rotation** — auto-add trailing 30-day S&P 500 leaders
 
-See `docs/IMPROVEMENTS.md` for the full tracker.
+See `docs/IMPROVEMENTS.md` for the full tracker with validation verdicts.

@@ -1,6 +1,6 @@
 # Algorithm Improvements Tracker
 
-> **Last updated:** April 17, 2026
+> **Last updated:** April 22, 2026
 
 ## Status Key
 - [ ] Not started
@@ -38,6 +38,17 @@
 | 23 | Intraday ATR | Quality improvement | **FIXED** (2026-04-17) |
 | 24 | Structural TP2 | Quality improvement | **FIXED** (2026-04-17) |
 | 25 | Portfolio circuit breaker | Risk protection | **FIXED** (2026-04-17) |
+| 26 | CardBuilder extraction | Refactor | **FIXED** (2026-04-22) |
+| 27 | Pullback re-entry improvements | Risk + opportunity | **FIXED** (2026-04-22) |
+| 28 | TP1/TP2 partial sells | Execution quality | **FIXED** (2026-04-22) |
+| 29 | Morning momentum scanner | Opportunity capture | **FIXED** (2026-04-22) |
+| 30 | Core watchlist expansion 35→70 | Coverage | **FIXED** (2026-04-22) |
+| 31 | Earnings calendar filter | Risk protection | [ ] Backlog |
+| 32 | Time-of-day awareness (digestion window) | Signal quality | [ ] Backlog |
+| 33 | Correlated position protection | Risk protection | [ ] Backlog |
+| 34 | SPY-magnitude adaptive TP targets | Opportunity capture | [ ] Backlog |
+| 35 | Sector rotation detection | Opportunity capture | [ ] Backlog |
+| 36 | Dynamic watchlist rotation (30-day leaders) | Coverage | [ ] Backlog |
 
 ### Additional Fixes Applied (2026-04-01 – 2026-04-02)
 
@@ -76,6 +87,22 @@ These fixes were applied based on live performance analysis and are not in the o
 | Session-adaptive VWAP | `dc1e568` | Apr 9 | VWAP distance: 3% morning, 5% midday/close |
 | **TP1 cap 3%→5%** | `82c8b41` | Apr 10 | **CRITICAL**: 3% cap made R:R mathematically impossible (max 1.2 < MIN_RR 1.5). Raised to `min(2.5×ATR, 5%)` → max R:R 2.0 |
 | Source tagging | `bfb25c4` | Apr 10 | Alerts tagged with source: `render-alpaca` or `vps-ibkr` in Telegram + Supabase |
+
+### Fixes Applied (2026-04-22)
+
+| Fix | Commit | Date | Description |
+|-----|--------|------|-------------|
+| CardBuilder extraction | `9547e36` | Apr 22 | Extracted 6 filter methods from SessionRunner into standalone `CardBuilder` class — fully unit-tested, no SessionRunner required |
+| NightResearchSelector extraction | `9547e36` | Apr 22 | Extracted night research logic into its own class |
+| Pullback re-entry cap | `9547e36` | Apr 22 | Max 1 re-entry per symbol per day (initial alert + 1 re-entry = 2 total) — prevents revenge trading |
+| Reclaim confirmation | `9547e36` | Apr 22 | Long-only: price must be above original stop level before re-entry qualifies — breakdown vs shakeout distinction |
+| HOD tracking at stop-out | `9547e36` | Apr 22 | `trade_tracker` saves session high (`session_high` column in Supabase) when stop fires — used as correct pullback depth reference |
+| HOD-aware pullback evaluator | `9547e36` | Apr 22 | `evaluate_pullback_reentry` uses saved HOD (not premarket high) for accurate depth calculation; relaxes improvement threshold to 0.5% (vs 2%) when HOD is known |
+| TP1/TP2 partial sells | `7b5982f` | Apr 22 | TP1 sells 50% of position; runner OCA (stop at TP1 + TP2 limit) placed automatically for remaining 50% — blended P&L on close |
+| IBKR `_loop` fix | `7b5982f` | Apr 22 | Replaced broken `getLoop()/run_until_complete()` with synchronous `reqHistoricalData()` — fixes ib_insync version compatibility error |
+| Dashboard runner_stopped badge | `2e79b0f` | Apr 22 | Green 🏃 badge + "Runner → TP1 Lock" label for partial-exit runner outcomes; status stored directly (not remapped to trailed_out) |
+| Morning momentum scanner | `85aed7d` | Apr 22 | MomentumScanner now runs every session (morning + midday + close) — previously only ran midday. Catches AAPL/AVGO/ADBE type moves without pre-market gap |
+| Core watchlist 35→70 symbols | `85aed7d` | Apr 22 | Added: NOW, ADBE, CRM, ORCL, NFLX, PANW, SNOW, WDAY (SaaS); BAC, WFC, MS, SCHW, AXP (Financials); ABBV, PFE, GILD (Healthcare); GEV, ETN, CAT, HON, NEE (Industrials); HD, MCD, NKE (Consumer); QCOM, TXN, MRVL (Semis). Removed invalid XYZ ticker. |
 
 ### Fixes Applied (2026-04-17)
 
@@ -275,11 +302,28 @@ Or pass session context into `build_trade_card` and let it decide.
 - Structural TP2 (key_resistance_2)
 - Portfolio circuit breaker (3 triggers → emergency close)
 
-**Backlog (new features, not bugs):**
-- #9 (trend filter) — daily EMA50 done; weekly trend still in backlog
-- #10 (stop timing) — partially solved by fakeout guard fix
-- #11 (dynamic R:R)
-- #13 (volume decay detection)
-- #15-19 (gap fill model, 5-min vol, sector correlation, etc.)
-- **Midday entry improvement** — 0% WR in backtest; consider tighter midday-specific filters
-- **TP1/TP2 partial sell** — sell 50% at TP1, trail remainder to TP2 (trailing stop system partially addresses this)
+**DONE — Apr 22:**
+- CardBuilder extraction + full unit test suite
+- Pullback re-entry cap (max 2 alerts/symbol/day) + reclaim confirmation
+- HOD tracking at stop-out → accurate pullback depth reference
+- TP1/TP2 partial sells (50% at TP1, runner to TP2) — IBKR execution layer
+- IBKR `_loop` compatibility fix
+- Morning momentum scanner (all sessions, not just midday)
+- Core watchlist expanded 35→70 symbols
+
+**Backlog (prioritized):**
+
+| Priority | Item | Description |
+|----------|------|-------------|
+| 🔴 HIGH | #31 Earnings calendar filter | Skip stocks within 2 days of earnings — prevents catastrophic overnight gap risk |
+| 🟡 MEDIUM | #32 Time-of-day awareness | Pause/raise thresholds 10:00–10:30 ET digestion window — highest fakeout rate |
+| 🟡 MEDIUM | #33 Correlated position protection | Block AMD+NVDA, AAPL+AVGO simultaneously — same event = 2 stops |
+| 🟡 MEDIUM | #34 SPY-magnitude adaptive targets | SPY up 1.5%+ → widen TP caps; SPY flat → tighten filters |
+| 🟡 MEDIUM | #35 Sector rotation detection | 3+ sector peers moving 2%+ → boost scoring for all sector members |
+| 🟢 LOW | #36 Dynamic watchlist rotation | Auto-add trailing 30-day S&P 500 leaders to universe |
+| 🟢 LOW | #9 Weekly trend check | EMA50 done; weekly timeframe trend still in backlog |
+| 🟢 LOW | #10 Stop timing | Time-aware ATR buffer (wider before 10:00 AM) |
+| 🟢 LOW | #11 Dynamic R:R | High-conviction (score ≥80) → accept MIN_RR 1.2; low-conviction → require 2.0 |
+| 🟢 LOW | #13 Volume decay detection | Flag fading volume participation across 5-bar window |
+| 🟢 LOW | #15-19 | Gap fill model, 5-min volatility, sector correlation, volume profile, entry timing |
+| 🟢 LOW | Midday entry improvement | 0% WR in backtest — tighter midday-specific filters needed |

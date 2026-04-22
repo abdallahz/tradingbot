@@ -97,6 +97,7 @@ def build_trade_card(
     account_value: float = 25_000.0,
     stop_buffer_multiplier: float = 1.0,
     stop_pct_by_risk: dict[str, float] | None = None,
+    spy_change_pct: float = 0.0,
 ) -> TradeCard | None:
     """Build a level-based trade card.
 
@@ -110,10 +111,10 @@ def build_trade_card(
     so that each trade risks exactly the configured % of the account.
     Volume-scaled: high relvol trades get up to 1.5× risk budget.
 
-    Session-adaptive TP caps:
-      Morning: min(2.5×ATR, 5%)  — full momentum
-      Midday:  min(1.0×ATR, 3%)  — reduced move potential
-      Close:   min(0.75×ATR, 2%) — minimal move window
+    Session-adaptive TP caps (widened by 1.2× when SPY up >= 1.5%):
+      Morning: min(2.5×ATR, 4%)  — full momentum
+      Midday:  min(2.0×ATR, 4%)  — reduced move potential
+      Close:   min(1.5×ATR, 4%)  — minimal move window
 
     The fixed_stop_pct is kept as a MAXIMUM stop distance — if the level-derived
     stop is wider than this %, we cap it so risk stays bounded.
@@ -123,6 +124,9 @@ def build_trade_card(
 
     stop_buffer_multiplier widens the ATR buffer in weak markets (from MarketGuard):
       green=1.0, yellow=1.5, red=2.0 (red halts entries, so effectively 1.0-1.5).
+
+    spy_change_pct: when SPY is up >= 1.5%, TP caps are widened 20% to allow
+      stocks more room to run on strong bull-tape days.
     """
     entry = round(stock.price, 2)
 
@@ -162,12 +166,13 @@ def build_trade_card(
         else:  # close
             max_tp_dist = min(effective_atr * 1.5, entry * 0.04)
     else:
-        if session_tag == "morning":
-            max_tp_dist = entry * 0.04
-        elif session_tag == "midday":
-            max_tp_dist = entry * 0.04
-        else:
-            max_tp_dist = entry * 0.04
+        max_tp_dist = entry * 0.04
+
+    # SPY-magnitude adaptive TP: widen targets on strong bull-tape days.
+    # When SPY is up >= 1.5% intraday, stocks have more room to run —
+    # expand TP caps by 20%, hard-capped at 6% to prevent unrealistic targets.
+    if spy_change_pct >= 1.5:
+        max_tp_dist = min(max_tp_dist * 1.2, entry * 0.06)
 
     # Long-only: stop below support, targets above entry
     level_stop = stock.key_support - atr_buffer

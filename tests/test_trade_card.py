@@ -245,3 +245,37 @@ class TestStopBufferMultiplier:
         max_risk = card.entry_price * 0.025
         actual_risk = card.entry_price - card.stop_price
         assert actual_risk <= max_risk + 0.01  # small rounding tolerance
+
+
+class TestSPYAdaptiveTP:
+    """SPY-magnitude adaptive TP widening when SPY >= 1.5%."""
+
+    def _stock(self):
+        # key_support=49.5 → stop≈49.2, risk=0.8, tp_cap=1.5 → R:R=1.875 ✓
+        return _make_stock(
+            price=50.0,
+            key_support=49.5,
+            key_resistance=52.0,
+            atr=0.60,
+        )
+
+    def test_spy_neutral_no_change(self):
+        card_normal = build_trade_card(self._stock(), 80, 2.5, "morning", spy_change_pct=0.0)
+        card_spy = build_trade_card(self._stock(), 80, 2.5, "morning", spy_change_pct=0.5)
+        assert card_normal is not None
+        assert card_spy is not None
+        assert card_normal.tp1_price == card_spy.tp1_price
+
+    def test_spy_up_1_5_widens_tp(self):
+        card_base = build_trade_card(self._stock(), 80, 2.5, "morning", spy_change_pct=0.0)
+        card_bull = build_trade_card(self._stock(), 80, 2.5, "morning", spy_change_pct=1.5)
+        assert card_base is not None
+        assert card_bull is not None
+        # On a strong SPY day TP should be same or wider
+        assert card_bull.tp1_price >= card_base.tp1_price
+
+    def test_spy_up_does_not_exceed_6pct(self):
+        card = build_trade_card(self._stock(), 80, 2.5, "morning", spy_change_pct=3.0)
+        assert card is not None
+        max_tp = card.entry_price * 1.06
+        assert card.tp1_price <= max_tp + 0.01

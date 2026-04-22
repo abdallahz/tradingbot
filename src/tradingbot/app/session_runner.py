@@ -31,6 +31,8 @@ from tradingbot.research.catalyst_scorer import CatalystScorer
 from tradingbot.risk.risk_manager import RiskManager
 from tradingbot.scanner.gap_scanner import GapScanner
 from tradingbot.scanner.momentum_scanner import MomentumScanner
+from tradingbot.scanner.earnings_filter import EarningsFilter
+from tradingbot.analysis.sector_rotation import compute_sector_boosts
 from tradingbot.signals.pullback_setup import has_valid_setup
 from tradingbot.signals.pullback_reentry import evaluate_pullback_reentry
 from tradingbot.strategy.trade_card import build_trade_card
@@ -213,6 +215,8 @@ class SessionRunner:
         self._card_builder = CardBuilder(
             catalyst_bypass_score=self._catalyst_bypass_score,
         )
+        # Earnings calendar filter — loaded once per calendar day, cached.
+        self._earnings_filter = EarningsFilter()
         # Current market condition — populated by _run_three_option_session,
         # consumed by _build_cards for dynamic filter thresholds.
         self._market_condition: MarketCondition | None = None
@@ -649,7 +653,37 @@ class SessionRunner:
         # marginal setups in weak-tape environments.
         yellow_score_penalty = 5.0 if (mh and mh.regime == "yellow") else 0.0
 
+        # ── Earnings filter — load once per session ───────────────
+        # Uses Nasdaq earnings API (same source as night research job).
+        # Cached by calendar day so O2 + O3 both calling _build_cards
+        # only costs one network round-trip per day.
+        all_symbols = [item.snapshot.symbol for item in ranked]
+        try:
+            self._earnings_filter.load(all_symbols)
+        except Exception as exc:
+            logging.warning(f"[EARNINGS] Failed to load earnings calendar: {exc}")
+
+        # ── Sector rotation boosts ─────────────────────────────────
+        # Boost scores by 5 points for symbols in sectors where 3+
+        # peers are already moving >= 2% intraday.
+        try:
+            all_snapshots = [item.snapshot for item in ranked]
+            sector_boosts = compute_sector_boosts(all_snapshots)
+        except Exception as exc:
+            logging.warning(f"[SECTOR] Failed to compute sector boosts: {exc}")
+            sector_boosts = {}
+
+        # SPY change pct for adaptive TP widening
+        spy_change_pct = mh.spy_change_pct if mh else 0.0
+
         for item in ranked:
+            # ── Sector rotation score boost ───────────────────────
+            if item.snapshot.symbol in sector_boosts:
+                item.score = min(100.0, item.score + sector_boosts[item.snapshot.symbol])
+                logging.info(
+                    f"[SECTOR_BOOST] {item.snapshot.symbol}: score +{sector_boosts[item.snapshot.symbol]:.0f} "
+                    f"(sector in rotation)"
+                )
             # ── Yellow regime score gate ──────────────────────────
             if yellow_score_penalty > 0 and item.score < (self.ranker.min_score + yellow_score_penalty):
                 if dropped is not None:
@@ -694,6 +728,24 @@ class SessionRunner:
                 if dropped is not None:
                     dropped.append((symbol.symbol, "etf_blocked"))
                 logging.info(f"[DROP] {symbol.symbol}: ETF blocked — ETFs have 0% intraday WR")
+                continue
+
+            # ── Earnings filter ────────────────────────────────────────
+            # Block entries within 2 days of earnings — overnight gap risk
+            # from a miss can exceed the stop-loss (gap down 10-20% at open).
+            if not cb.passes_earnings_filter(symbol, self._earnings_filter, dropped):
+                continue
+
+            # ── Digestion window (10:00-10:30 ET) ──────────────────
+            # Opening momentum settles; fakeout rate highest in this window.
+            # Only high-catalyst stocks (>= 55) are allowed through.
+            if not cb.passes_digestion_window(symbol, dropped):
+                continue
+
+            # ── Correlated position protection ─────────────────────
+            # Block if a highly correlated peer is already in today's alerts
+            # (e.g. NVDA already alerted → block AMD to avoid sector down-leg).
+            if not cb.passes_correlation_check(symbol, already_alerted, dropped):
                 continue
 
             # ── VWAP distance filter (regime-adaptive + session-adaptive) ──
@@ -768,6 +820,7 @@ class SessionRunner:
                 account_value=self.account_value,
                 stop_buffer_multiplier=mh.stop_buffer_multiplier if mh else 1.0,
                 stop_pct_by_risk=self.stop_pct_by_risk,
+                spy_change_pct=spy_change_pct,
             )
             if card is None:
                 if dropped is not None:

@@ -6,6 +6,7 @@ the filter chain testable without a full SessionRunner instance.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from tradingbot.models import SymbolSnapshot
 from tradingbot.data.etf_metadata import is_etf, get_etf_family
@@ -18,6 +19,32 @@ _MAX_ETF_ALERTS = 3
 _VWAP_DISTANCE_MORNING = 3.0
 _VWAP_DISTANCE_MIDDAY = 5.0
 _MAX_INTRADAY_CHANGE = 6.0
+
+# ── Digestion window ──────────────────────────────────────────────────
+# 10:00-10:30 ET has the highest fakeout rate — opening momentum settles.
+# Only high-catalyst stocks (>= threshold) are allowed through.
+_DIGESTION_WINDOW_START_H = 10
+_DIGESTION_WINDOW_END_MIN = 30  # 10:00 → 10:30
+_DIGESTION_MIN_CATALYST = 55
+
+# ── Correlated pairs ──────────────────────────────────────────────────
+# If one member of a pair is already alerted, block the other to prevent
+# concentration risk when the sector reverses.
+_CORRELATED_PAIRS: dict[str, list[str]] = {
+    "AMD":  ["NVDA", "SMCI"],
+    "NVDA": ["AMD", "SMCI"],
+    "SMCI": ["AMD", "NVDA"],
+    "AAPL": ["AVGO"],
+    "AVGO": ["AAPL"],
+    "COIN": ["MSTR", "RIOT", "MARA"],
+    "MSTR": ["COIN", "RIOT", "MARA"],
+    "RIOT": ["COIN", "MSTR", "MARA"],
+    "MARA": ["COIN", "MSTR", "RIOT"],
+    "TSLA": ["RIVN", "LCID", "NIO"],
+    "RIVN": ["TSLA", "LCID", "NIO"],
+    "LCID": ["TSLA", "RIVN", "NIO"],
+    "NIO":  ["TSLA", "RIVN", "LCID"],
+}
 
 
 class CardBuilder:
@@ -286,3 +313,91 @@ class CardBuilder:
             f"below daily EMA50 ${symbol.daily_ema50:.2f} (bear rally risk)"
         )
         return False
+
+    def passes_earnings_filter(
+        self,
+        symbol: SymbolSnapshot,
+        earnings_filter,  # EarningsFilter — avoids circular import
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Block if symbol has earnings within earnings_filter.block_days.
+
+        Entering a position 0-2 days before earnings creates overnight gap
+        risk that invalidates the stop-loss — the stock can open 10-20% lower
+        on a miss with no chance to exit at the stop level.
+        """
+        blocked, days = earnings_filter.is_blocked(symbol.symbol)
+        if not blocked:
+            return True
+        label = "today" if days == 0 else ("tomorrow" if days == 1 else f"in {days}d")
+        if dropped is not None:
+            dropped.append((symbol.symbol, f"earnings_{label}"))
+        log.info(
+            f"[DROP] {symbol.symbol}: earnings {label} — "
+            f"overnight gap risk exceeds stop-loss protection"
+        )
+        return False
+
+    def passes_digestion_window(
+        self,
+        symbol: SymbolSnapshot,
+        dropped: list[tuple[str, str]] | None,
+        now: datetime | None = None,
+    ) -> bool:
+        """Block low-conviction entries during the 10:00-10:30 ET digestion window.
+
+        The opening gap impulse settles in the first hour.  10:00-10:30 has
+        the highest fakeout rate — volume dries up and previous gaps often
+        retrace.  Only high-catalyst stocks pass through during this window.
+        """
+        try:
+            import zoneinfo
+            ET = zoneinfo.ZoneInfo("America/New_York")
+            current = (now or datetime.now(ET)).astimezone(ET)
+            h, m = current.hour, current.minute
+            in_window = (h == _DIGESTION_WINDOW_START_H and m < _DIGESTION_WINDOW_END_MIN)
+        except Exception:
+            return True  # Can't determine time — fail open
+
+        if not in_window:
+            return True
+
+        if symbol.catalyst_score >= _DIGESTION_MIN_CATALYST:
+            log.info(
+                f"[DIGESTION_PASS] {symbol.symbol}: catalyst={symbol.catalyst_score:.0f} "
+                f">= {_DIGESTION_MIN_CATALYST} — passes digestion window"
+            )
+            return True
+
+        if dropped is not None:
+            dropped.append((
+                symbol.symbol,
+                f"digestion_window:catalyst={symbol.catalyst_score:.0f}<{_DIGESTION_MIN_CATALYST}",
+            ))
+        log.info(
+            f"[DROP] {symbol.symbol}: 10:00-10:30 ET digestion window — "
+            f"catalyst={symbol.catalyst_score:.0f} < {_DIGESTION_MIN_CATALYST}"
+        )
+        return False
+
+    def passes_correlation_check(
+        self,
+        symbol: SymbolSnapshot,
+        already_alerted: dict[str, float],
+        dropped: list[tuple[str, str]] | None,
+    ) -> bool:
+        """Block if a highly correlated sector peer is already in today's alerts.
+
+        Prevents concentration risk when e.g. both AMD and NVDA are bought and
+        the semiconductor sector reverses — both positions lose simultaneously.
+        """
+        for peer in _CORRELATED_PAIRS.get(symbol.symbol, []):
+            if peer in already_alerted:
+                if dropped is not None:
+                    dropped.append((symbol.symbol, f"correlated_peer:{peer}"))
+                log.info(
+                    f"[DROP] {symbol.symbol}: correlated peer {peer} already alerted "
+                    f"— sector concentration risk"
+                )
+                return False
+        return True

@@ -295,3 +295,129 @@ class TestPassesTrendFilter:
     def test_dropped_none_does_not_raise(self, builder):
         sym = _snap(price=48.0, daily_ema50=52.0, catalyst_score=10.0)
         builder.passes_trend_filter(sym, None)
+
+
+# ── passes_earnings_filter ───────────────────────────────────────────
+
+class _FakeEarnings:
+    """Minimal EarningsFilter stand-in for testing.
+
+    blocked_map: symbol -> days_away (int).  Only returns blocked=True
+    when days_away <= block_days (matching the real EarningsFilter behaviour).
+    """
+    def __init__(self, blocked_map: dict, block_days: int = 2):
+        self._map = blocked_map
+        self.block_days = block_days
+
+    def is_blocked(self, symbol: str) -> tuple[bool, int]:
+        days = self._map.get(symbol)
+        if days is None:
+            return False, -1
+        if days <= self.block_days:
+            return True, days
+        return False, -1
+
+
+class TestPassesEarningsFilter:
+    def test_no_earnings_passes(self, builder):
+        sym = _snap("AAPL")
+        assert builder.passes_earnings_filter(sym, _FakeEarnings({}), []) is True
+
+    def test_earnings_today_blocked(self, builder):
+        sym = _snap("AAPL")
+        dropped = []
+        result = builder.passes_earnings_filter(sym, _FakeEarnings({"AAPL": 0}), dropped)
+        assert result is False
+        assert any("earnings" in r for _, r in dropped)
+
+    def test_earnings_tomorrow_blocked(self, builder):
+        sym = _snap("NVDA")
+        dropped = []
+        result = builder.passes_earnings_filter(sym, _FakeEarnings({"NVDA": 1}), dropped)
+        assert result is False
+
+    def test_earnings_day_after_blocked(self, builder):
+        sym = _snap("AMD")
+        result = builder.passes_earnings_filter(sym, _FakeEarnings({"AMD": 2}), [])
+        assert result is False
+
+    def test_earnings_far_away_passes(self, builder):
+        # 3+ days away → not blocked
+        sym = _snap("MSFT")
+        assert builder.passes_earnings_filter(sym, _FakeEarnings({"MSFT": 5}), []) is True
+
+    def test_dropped_none_does_not_raise(self, builder):
+        sym = _snap("AAPL")
+        builder.passes_earnings_filter(sym, _FakeEarnings({"AAPL": 0}), None)
+
+
+# ── passes_digestion_window ──────────────────────────────────────────
+
+class TestPassesDigestionWindow:
+    def _now(self, hour: int, minute: int):
+        from datetime import datetime
+        import zoneinfo
+        ET = zoneinfo.ZoneInfo("America/New_York")
+        return datetime(2026, 4, 22, hour, minute, 0, tzinfo=ET)
+
+    def test_outside_window_always_passes(self, builder):
+        sym = _snap(catalyst_score=20.0)
+        assert builder.passes_digestion_window(sym, [], now=self._now(11, 0)) is True
+
+    def test_morning_outside_window_passes(self, builder):
+        sym = _snap(catalyst_score=20.0)
+        assert builder.passes_digestion_window(sym, [], now=self._now(9, 45)) is True
+
+    def test_in_window_low_catalyst_blocked(self, builder):
+        sym = _snap(catalyst_score=30.0)
+        dropped = []
+        result = builder.passes_digestion_window(sym, dropped, now=self._now(10, 15))
+        assert result is False
+        assert any("digestion_window" in r for _, r in dropped)
+
+    def test_in_window_high_catalyst_passes(self, builder):
+        sym = _snap(catalyst_score=70.0)
+        assert builder.passes_digestion_window(sym, [], now=self._now(10, 0)) is True
+
+    def test_window_boundary_10_30_passes(self, builder):
+        # 10:30 is outside the window (window is 10:00 - <10:30)
+        sym = _snap(catalyst_score=20.0)
+        assert builder.passes_digestion_window(sym, [], now=self._now(10, 30)) is True
+
+    def test_dropped_none_does_not_raise(self, builder):
+        sym = _snap(catalyst_score=20.0)
+        builder.passes_digestion_window(sym, None, now=self._now(10, 10))
+
+
+# ── passes_correlation_check ─────────────────────────────────────────
+
+class TestPassesCorrelationCheck:
+    def test_no_peer_alerted_passes(self, builder):
+        sym = _snap("AMD")
+        assert builder.passes_correlation_check(sym, {}, []) is True
+
+    def test_correlated_peer_alerted_blocked(self, builder):
+        sym = _snap("AMD")
+        dropped = []
+        result = builder.passes_correlation_check(sym, {"NVDA": 100.0}, dropped)
+        assert result is False
+        assert any("correlated_peer" in r for _, r in dropped)
+
+    def test_non_correlated_peer_passes(self, builder):
+        sym = _snap("AMD")
+        assert builder.passes_correlation_check(sym, {"AAPL": 150.0}, []) is True
+
+    def test_both_peers_blocked(self, builder):
+        # AAPL blocks if AVGO is alerted, and AVGO blocks if AAPL is alerted
+        sym_aapl = _snap("AAPL")
+        sym_avgo = _snap("AVGO")
+        assert builder.passes_correlation_check(sym_aapl, {"AVGO": 200.0}, []) is False
+        assert builder.passes_correlation_check(sym_avgo, {"AAPL": 150.0}, []) is False
+
+    def test_unknown_symbol_always_passes(self, builder):
+        sym = _snap("XYZ")
+        assert builder.passes_correlation_check(sym, {"NVDA": 100.0, "AAPL": 150.0}, []) is True
+
+    def test_dropped_none_does_not_raise(self, builder):
+        sym = _snap("AMD")
+        builder.passes_correlation_check(sym, {"NVDA": 100.0}, None)

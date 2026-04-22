@@ -1,6 +1,6 @@
 # Trading Algorithm — Full Pipeline
 
-> **Last updated:** April 17, 2026
+> **Last updated:** April 22, 2026
 > Consolidated from: ALGORITHM.md, SCORING_METHODOLOGY.md, SMART_MONEY_TRACKING.md, AI_INTEGRATION.md
 
 ## Overview
@@ -113,31 +113,74 @@ gap_pct = ((current_price - prev_close) / prev_close) × 100
 
 ---
 
-## Step 3: Gap Scanner (filter pass)
+## Step 3: Universe Building
 
-**Purpose**: Remove stocks that don't meet minimum quality thresholds.
+**Purpose**: Build the set of stocks to scan each session.
 
-### Current Scanner Thresholds (`config/scanner.yaml`)
+### Core Watchlist (always scanned — 70 symbols)
+
+Every symbol in `_CORE_WATCHLIST` (defined in `AlpacaClient` and `IBKRClient`) is always included in the scan universe regardless of scanner results. These symbols also receive:
+- **Lower gap threshold**: 0.2% (vs 0.5% for unknown symbols) — quality names with small gaps are still worth evaluating
+- **Catalyst scoring**: nightly news job researches all 70 symbols
+
+| Sector | Symbols |
+|--------|---------|
+| Mega-cap Tech | AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA |
+| Semiconductors | AVGO, AMD, INTC, MU, SMCI, ARM, QCOM, TXN, MRVL |
+| Software/Security | PLTR, CRWD, NOW, ADBE, CRM, ORCL, NFLX, PANW, SNOW, WDAY |
+| Financials | JPM, GS, V, MA, PYPL, COIN, BAC, WFC, MS, SCHW, AXP |
+| Healthcare | LLY, UNH, MRNA, BNTX, ABBV, PFE, GILD |
+| Industrials/Energy | GEV, ETN, CAT, HON, NEE, XOM, CVX |
+| Consumer/EV | WMT, COST, UBER, RIVN, LCID, NIO, HD, MCD, NKE |
+| ETFs (context only) | SPY, QQQ, IWM (always blocked from alerts by ETF filter) |
+
+### Dynamic Universe (IBKR scanner + screener movers)
+
+- IBKR TWS scanners: `TOP_OPEN_PERC_GAIN`, `HIGH_OPEN_GAP`, `TOP_VOLUME_RATE`, `MOST_ACTIVE`, `HIGH_VS_13W_HL` — returns ~111 symbols per session
+- Alpaca screener: most-actives by volume/trades + market movers — returns ~80–150 symbols
+- Combined + deduped with core watchlist → typically 150–200 total symbols per session
+
+---
+
+## Step 4: Gap Scanner + Momentum Scanner (filter pass)
+
+**Purpose**: Find candidates with real price movement and liquidity.
+
+### Gap Scanner Thresholds (`config/scanner.yaml`)
 
 | Setting | Option 3 (Strict) | Option 2 (Relaxed) | Midday |
 |---------|-------------------|---------------------|--------|
 | `price_min` | **$5.00** | $5.00 | — |
 | `price_max` | $2,000 | $2,000 | — |
-| `min_gap_pct` | **0.5%** | 0.0% | — |
+| `min_gap_pct` | **0.5%** (0.2% for quality symbols) | 0.0% | — |
 | `min_premarket_volume` | **50,000** | 0 | — |
 | `min_dollar_volume` | **$500K** | $50K | $500K |
 | `max_spread_pct` | **2.0%** | 5.0% | 2.0% |
 | `min_score` | **50** | 50 | 50 |
 | `max_candidates` | **8** | 8 | — |
 
-- Long-only: no `abs()` — negative gaps fail naturally since they're below 0.5% threshold
+- Long-only: no `abs()` — negative gaps fail naturally
 - Scanner outputs a `ScanResult` with `candidates` and `dropped` lists
 
-**Key file**: `src/tradingbot/scanner/gap_scanner.py`
+### Momentum Scanner (runs every session — morning, midday, close)
+
+Catches stocks that opened flat but rallied intraday — complements the gap scanner which focuses on pre-market gaps. Both feed into the same card builder pipeline.
+
+| Setting | Value |
+|---------|-------|
+| `min_intraday_change_pct` | **1.5%** from today's open |
+| `min_relative_volume` | **1.3×** |
+| `min_dollar_volume` | **$500K** |
+| `max_spread_pct` | **2.0%** |
+| `require_above_vwap` | **true** — price above VWAP confirms demand |
+
+> The 1.5% threshold is intentionally conservative — it ensures the stock has shown sustained directional movement, not just opening noise. The full card builder filter chain (R:R floor, VWAP distance, intraday_extended cap) protects against chasing extended moves.
+
+**Key files**: `src/tradingbot/scanner/gap_scanner.py`, `src/tradingbot/scanner/momentum_scanner.py`
 
 ---
 
-## Step 4: Technical Indicators
+## Step 5: Technical Indicators
 
 **Purpose**: Compute indicators for scoring and setup confirmation.
 
@@ -172,7 +215,7 @@ gap_pct = ((current_price - prev_close) / prev_close) × 100
 
 ---
 
-## Step 5: Ranking
+## Step 6: Ranking
 
 **Purpose**: Score each candidate 0–100 and select the best setups.
 
@@ -219,7 +262,7 @@ gap_pct = ((current_price - prev_close) / prev_close) × 100
 
 ---
 
-## Step 6: `_build_cards` Filter Chain
+## Step 7: `_build_cards` Filter Chain
 
 **Purpose**: Apply safety filters and generate trade cards from ranked candidates.
 
@@ -230,7 +273,7 @@ This is the core filter pipeline. Each candidate passes through **every gate in 
  2. Yellow Regime Score Gate (+5 point floor on min_score)
  3. Risk Manager (daily trade limit, loss lockout, streak)
  4. Secondary Price Guard (hard floor at scanner.price_min = $5)
- 5. Dedup Check (skip if already alerted today, unless 50% pullback)
+ 5. Dedup Check (skip if already alerted today, unless qualifying pullback re-entry)
  6. ALL ETF Blocker (all ETFs blocked — going long on ETFs has poor edge)
  7. ETF Family / Concentration Limit
  8. VWAP Distance Filter (session-adaptive: 3% morning, 5% midday/close)
@@ -273,6 +316,22 @@ Blocks in long-only mode (going long on inverse = short bet):
 - **Blocks** stocks gapping up below their daily EMA50 — these are bear rallies, not continuation
 - Partially addresses the "higher-timeframe trend filter" backlog item (#9)
 
+#### Dedup + Pullback Re-Entry Logic (`CardBuilder.passes_dedup`)
+
+First-time alerts always pass. Previously-alerted symbols must meet ALL conditions:
+
+1. **Re-entry cap**: Max 2 alerts per symbol per day (initial + 1 re-entry). Third entry blocked — prevents revenge trading a losing position.
+2. **Reclaim confirmation** (long-only): Price must be above the original stop level from the prior alert. Below stop = breakdown still in progress, not a shakeout.
+3. **Pullback depth**: 30–70% Fibonacci retracement from the intraday HOD (saved at stop-out time) — too shallow = not a real dip, too deep = likely a breakdown.
+4. **Support hold**: Price above VWAP or EMA20 (institutional anchors).
+5. **Recovery signal**: Price at or above EMA9 (short-term momentum recovering).
+6. **Volume confirmation**: Relative volume ≥ 1.0× — participants still engaged.
+7. **Better entry**: Price meaningfully below prior alert entry (0.5% if HOD known, 2% otherwise).
+
+HOD reference: When a stop fires, `trade_tracker` saves the intraday session high (`session_high` in Supabase `trade_outcomes`). This is the correct reference for pullback depth — not the premarket high, which becomes stale once the stock trades.
+
+**Key file**: `src/tradingbot/app/card_builder.py`, `src/tradingbot/signals/pullback_reentry.py`
+
 #### Gap Fade Detection
 - If stock gapped up but current price < VWAP → gap is fading → blocked
 - Skipped in relaxed mode (catalyst-driven entries tolerate drift)
@@ -302,7 +361,7 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 
 ---
 
-## Step 7: Trade Card Construction
+## Step 8: Trade Card Construction
 
 **Purpose**: Calculate exact entry, stop, and target prices.
 
@@ -358,6 +417,40 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 - Minimum R:R: **1.5:1** — cards below this are rejected (`build_trade_card()` returns `None`)
 - Maximum R:R cap: **3.0:1** — unusually high R:R often means thin resistance
 
+### TP1/TP2 Partial Sell Execution (IBKR feature branch)
+
+When IBKR execution is enabled, TP1 and TP2 are executed as a two-stage partial exit:
+
+**Stage 1 — TP1 (50% exit)**:
+- A limit sell for 50% of position quantity is placed as part of an OCA (One-Cancels-All) group alongside the full-position stop
+- When TP1 fills: the original full-position stop is cancelled automatically by IBKR via OCA
+
+**Stage 2 — Runner OCA (placed immediately after TP1 fills)**:
+- A new OCA group is placed for the remaining 50% ("the runner"):
+  - `runner_stop` = stop limit at TP1 price (locks in breakeven on runner)
+  - `tp2_order` = limit sell at TP2 price
+- Whichever fills first cancels the other
+
+**Blended P&L calculation**:
+```
+tp1_pnl = (tp1_price - entry) / entry × 100
+runner_pnl = (exit_price - entry) / entry × 100   # exit = TP2 or runner_stop
+blended_pnl = (tp1_pnl + runner_pnl) / 2
+```
+
+**Four fill outcomes** recorded in Supabase `trade_outcomes`:
+
+| Outcome | Trigger | P&L |
+|---------|---------|-----|
+| `tp1_partial` | TP1 limit fills (trade still open) | Not final — row stays open |
+| `tp2_hit` | TP2 limit fills (runner fully sold) | Blended P&L (TP1 avg + TP2) |
+| `runner_stopped` | Runner stop fills at TP1 price | Blended P&L (locked-in profit, no loss) |
+| `stopped` | Full stop before TP1 (no partial) | Full loss from entry |
+
+**ManagedTrade tracking fields**: `tp1_filled`, `tp1_fill_price`, `tp2_order_id`, `runner_stop_order_id`
+
+**Key files**: `src/tradingbot/execution/order_executor.py`, `src/tradingbot/tracking/execution_tracker.py`
+
 ### Position Sizing
 - Base risk per trade: 0.5% of account
 - Yellow regime: 50% of base (0.25%)
@@ -370,7 +463,7 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 
 ---
 
-## Step 8: Risk Management
+## Step 9: Risk Management
 
 ### Current Risk Config (`config/risk.yaml`)
 
@@ -401,7 +494,7 @@ Grades: A (≥80), B (≥65), C (≥50), D (≥40), F (<40)
 
 ---
 
-## Step 9: Three-Option Watchlist System
+## Step 10: Three-Option Watchlist System
 
 Every scan session produces three parallel watchlists:
 
@@ -435,7 +528,7 @@ Every scan session produces three parallel watchlists:
 
 ---
 
-## Step 10: Trade Tracking & Outcomes
+## Step 11: Trade Tracking & Outcomes
 
 ### Trailing Stop System
 
@@ -446,6 +539,18 @@ Every scan session produces three parallel watchlists:
 | TP1 hit | Move stop to TP1 price |
 | Price drops below trail | Stop triggered |
 | 3:30 PM ET expire | Market sell at current price |
+
+### Fill Outcomes (IBKR execution branch)
+
+| Outcome | Telegram emoji | Dashboard badge | Meaning |
+|---------|---------------|-----------------|---------|
+| `tp1_partial` | 🟡 | — (row stays open) | Half out at TP1; runner OCA placed |
+| `tp2_hit` | 🏆 | TP2 Hit | TP2 filled; blended P&L recorded |
+| `runner_stopped` | 🟢 | 🏃 Runner → TP1 Lock | Runner stopped at TP1 price; locked-in profit |
+| `stopped` | 🔴 | Stopped | Full stop hit before TP1 |
+| `trailed_out` | 🟠 | Trailed Out | Trailing stop fired (non-partial path) |
+| `expired` | ⏰ | Expired | Closed at 3:30 PM without hitting TP or stop |
+| `emergency_closed` | 🚨 | Emergency | Circuit breaker fired; all positions closed |
 
 ### Portfolio Circuit Breaker
 
@@ -465,15 +570,16 @@ The tracker runs a portfolio-level risk check **before** evaluating individual t
 
 All trades tracked in Supabase `trade_outcomes` table with:
 - Entry price, exit price, PnL percentage
-- Exit reason (stop, TP1, TP2, trail, expire, emergency_closed)
+- Exit reason: `stopped`, `tp1_hit`, `tp2_hit`, `runner_stopped`, `trailed_out`, `expired`, `emergency_closed`
+- `session_high` field: saved at stop-out time (correct HOD reference for re-entry pullback depth)
 - Duration, session tag, patterns
 - Polling interval: every **2 minutes** during market hours (9 AM–4 PM ET)
 
-**Key files**: `src/tradingbot/tracking/trade_tracker.py`, `src/tradingbot/web/alert_store.py`
+**Key files**: `src/tradingbot/tracking/trade_tracker.py`, `src/tradingbot/tracking/execution_tracker.py`, `src/tradingbot/web/alert_store.py`
 
 ---
 
-## Step 11: Chart Generation & Persistence
+## Step 12: Chart Generation & Persistence
 
 ### Charts
 - Candlestick charts generated per trade card alert
@@ -530,7 +636,12 @@ Alpaca's free IEX tier occasionally returns stale or incorrect prices. Built-in 
 1. **EMA hold check** uses `pullback_low >= ema20` which may be too loose (allows EMA9 breaks). Tightening to EMA9 may be too aggressive given ATR-based pullback_low computation. Deferred.
 2. **Midday volume multiplier** (1.3×) is low but has a fallback path via relvol + premarket check.
 3. ~~**No higher-timeframe trend filter**~~ — **Partially addressed** (Apr 8): Daily EMA50 trend filter blocks stocks below daily EMA50. Weekly trend check still in backlog.
-4. **No volume decay detection** — snapshots are point-in-time, no tracking of fading participation.
-5. **Midday scans underperform** — Apr 10 backtest showed 0% WR on midday vs 100% on morning. Gap momentum fades by midday.
+4. **No volume decay detection** — snapshots are point-in-time, no tracking of fading participation across bars.
+5. **Midday scans underperform** — Apr 10 backtest showed 0% WR on midday vs 100% on morning. Gap momentum fades by midday. Tighter midday filters on backlog.
+6. **No earnings calendar filter** — system can enter a position 1 day before earnings, creating overnight gap risk. Highest-priority backlog item.
+7. **No digestion window awareness** — 10:00–10:30 ET has the highest fakeout rate (opening momentum settling). Planned: raise thresholds or pause during this window.
+8. **No correlated position protection** — AMD+NVDA or AAPL+AVGO can both be bought in the same session, creating concentration risk in a sector down-leg.
+9. ~~**TP1/TP2 partial sell**~~ — **Done** (Apr 22, feature branch): 50% exit at TP1 with runner OCA to TP2 or TP1-lock stop. Blended P&L recorded.
+10. ~~**Morning momentum scanner gated**~~ — **Done** (Apr 22): `if stricter:` gate removed; momentum scanner now runs every session.
 
 See `docs/IMPROVEMENTS.md` for the full improvement tracker with validation verdicts and priorities.
