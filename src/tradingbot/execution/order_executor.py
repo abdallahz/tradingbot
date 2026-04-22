@@ -74,6 +74,11 @@ class ManagedTrade:
     closed: bool = False
     close_reason: str = ""
     actual_exit_price: float = 0.0
+    # Partial-exit state (TP1 = 50%, runner = 50%)
+    tp1_filled: bool = False           # first half sold at TP1
+    tp1_fill_price: float = 0.0        # actual TP1 fill price
+    tp2_order_id: int = 0              # limit order for runner's TP2
+    runner_stop_order_id: int = 0      # stop at TP1 price for runner
 
 
 class OrderExecutor:
@@ -160,9 +165,10 @@ class OrderExecutor:
         parent.transmit = False  # don't send until children are attached
 
         # ── Take profit (OCA child) ──────────────────────────────────
-        # Scalp mode: 100% at TP1. Normal: 100% at TP1 (partial sell
-        # to be implemented in Phase 2 via manual split).
-        tp_order = LimitOrder("SELL", quantity, round(tp1_price, 2))
+        # Scalp mode: 100% at TP1.
+        # Normal mode: 50% at TP1 (runner 50% continues to TP2).
+        tp1_qty = quantity if is_scalp else quantity // 2
+        tp_order = LimitOrder("SELL", tp1_qty, round(tp1_price, 2))
         tp_order.ocaGroup = oca_group
         tp_order.ocaType = 1  # cancel remaining on fill
         tp_order.tif = "DAY"
@@ -410,6 +416,47 @@ class OrderExecutor:
 
         return actions
 
+    # ── Runner order placement ─────────────────────────────────────────
+
+    def _place_runner_orders(self, symbol: str, trade: "ManagedTrade", runner_qty: int) -> None:
+        """Place runner OCA after TP1 partially fills: stop at TP1 + TP2 limit.
+
+        Both legs protect the remaining 50% of the position. When the runner
+        stop fires the position exits at breakeven on that half; when TP2 fires
+        the full trade achieves a blended TP1/TP2 P&L.
+        """
+        from ib_insync import LimitOrder, StopOrder
+
+        try:
+            contract = self._stock_contract(symbol)
+            runner_oca = f"runner_{symbol}_{int(time.time())}"
+
+            runner_stop = StopOrder("SELL", runner_qty, round(trade.tp1_price, 2))
+            runner_stop.ocaGroup = runner_oca
+            runner_stop.ocaType = 1
+            runner_stop.tif = "DAY"
+            runner_stop.transmit = False
+
+            tp2_order = LimitOrder("SELL", runner_qty, round(trade.tp2_price, 2))
+            tp2_order.ocaGroup = runner_oca
+            tp2_order.ocaType = 1
+            tp2_order.tif = "DAY"
+            tp2_order.transmit = True
+
+            rs_trade = self.ib.placeOrder(contract, runner_stop)
+            self.ib.sleep(0.3)
+            tp2_trade = self.ib.placeOrder(contract, tp2_order)
+
+            trade.runner_stop_order_id = rs_trade.order.orderId
+            trade.tp2_order_id = tp2_trade.order.orderId
+
+            logger.info(
+                f"[runner] {symbol}: stop@${trade.tp1_price:.2f} (#{rs_trade.order.orderId}), "
+                f"TP2@${trade.tp2_price:.2f} (#{tp2_trade.order.orderId}) — qty {runner_qty}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to place runner orders for {symbol}: {e}")
+
     # ── Cancel and market sell helper ──────────────────────────────────
 
     def _cancel_trade_orders(self, symbol: str) -> None:
@@ -418,9 +465,14 @@ class OrderExecutor:
         if not trade:
             return
 
-        for order_id in [trade.tp_order_id, trade.stop_order_id]:
+        order_ids = [trade.tp_order_id, trade.stop_order_id]
+        if trade.tp2_order_id:
+            order_ids.append(trade.tp2_order_id)
+        if trade.runner_stop_order_id:
+            order_ids.append(trade.runner_stop_order_id)
+
+        for order_id in order_ids:
             try:
-                # Find the open order and cancel it
                 for open_trade in self.ib.openTrades():
                     if open_trade.order.orderId == order_id:
                         self.ib.cancelOrder(open_trade.order)
@@ -429,8 +481,17 @@ class OrderExecutor:
                 logger.warning(f"Failed to cancel order {order_id} for {symbol}: {e}")
 
     def _market_sell(self, symbol: str, quantity: int, reason: str) -> str:
-        """Cancel pending orders and place a market sell for a position."""
+        """Cancel pending orders and place a market sell for a position.
+
+        When TP1 has already partially filled, only the runner qty remains.
+        """
         from ib_insync import MarketOrder
+
+        managed = self._managed_trades.get(symbol)
+        # If half already sold at TP1, only exit the runner portion
+        remaining_qty = quantity
+        if managed and managed.tp1_filled:
+            remaining_qty = quantity - quantity // 2
 
         # Cancel existing TP/stop orders first
         self._cancel_trade_orders(symbol)
@@ -438,13 +499,11 @@ class OrderExecutor:
 
         try:
             contract = self._stock_contract(symbol)
-            sell_order = MarketOrder("SELL", quantity)
+            sell_order = MarketOrder("SELL", remaining_qty)
             sell_order.tif = "IOC"  # immediate-or-cancel
             trade_result = self.ib.placeOrder(contract, sell_order)
             self.ib.sleep(1)
 
-            # Mark as closed
-            managed = self._managed_trades.get(symbol)
             if managed:
                 managed.closed = True
                 managed.close_reason = reason
@@ -452,7 +511,7 @@ class OrderExecutor:
                     managed.actual_exit_price = trade_result.orderStatus.avgFillPrice
 
             exit_price = trade_result.orderStatus.avgFillPrice or 0.0
-            return f"Market sold {quantity} shares @ ${exit_price:.2f} ({reason})"
+            return f"Market sold {remaining_qty} shares @ ${exit_price:.2f} ({reason})"
 
         except Exception as e:
             logger.error(f"Market sell failed for {symbol}: {e}")
@@ -482,57 +541,124 @@ class OrderExecutor:
                         logger.info(f"Parent fill confirmed: {symbol} @ ${trade.entry_price:.2f}")
                         break
 
-            # Check if TP or stop filled (trade completed)
+            # Check if TP, stop, or runner orders filled
             for open_trade in self.ib.trades():
                 order_id = open_trade.order.orderId
                 status = open_trade.orderStatus.status
 
-                if status == "Filled":
-                    if order_id == trade.tp_order_id:
-                        # TP hit
-                        exit_price = open_trade.orderStatus.avgFillPrice
+                if status != "Filled":
+                    continue
+
+                if order_id == trade.tp_order_id and not trade.tp1_filled:
+                    exit_price = open_trade.orderStatus.avgFillPrice
+                    tp1_pnl = _pnl_pct(trade.entry_price, exit_price)
+
+                    if trade.is_scalp:
+                        # Scalp mode: full exit at TP1
                         trade.closed = True
                         trade.tp1_hit = True
                         trade.close_reason = "tp1_hit"
                         trade.actual_exit_price = exit_price
-                        pnl_pct = _pnl_pct(trade.entry_price, exit_price)
-
                         completed.append({
                             "symbol": symbol,
                             "entry_price": trade.entry_price,
                             "exit_price": exit_price,
                             "quantity": trade.quantity,
-                            "pnl_pct": pnl_pct,
+                            "pnl_pct": tp1_pnl,
                             "outcome": "tp1_hit",
                             "session": trade.session,
                         })
-                        logger.info(f"✅ TP1 hit: {symbol} exit ${exit_price:.2f} ({pnl_pct:+.1f}%)")
-
-                    elif order_id == trade.stop_order_id:
-                        # Stop hit
-                        exit_price = open_trade.orderStatus.avgFillPrice
-                        trade.closed = True
-                        trade.close_reason = "stopped"
-                        trade.actual_exit_price = exit_price
-                        pnl_pct = _pnl_pct(trade.entry_price, exit_price)
-
-                        # Trailed out (profitable stop) vs stopped (loss)
-                        outcome = "trailed_out" if exit_price > trade.entry_price else "stopped"
-                        trade.close_reason = outcome
-
+                        logger.info(f"✅ TP1 (scalp): {symbol} exit ${exit_price:.2f} ({tp1_pnl:+.1f}%)")
+                    else:
+                        # Normal: 50% filled, place runner OCA (stop at TP1 + TP2 limit)
+                        trade.tp1_filled = True
+                        trade.tp1_hit = True
+                        trade.tp1_fill_price = exit_price
+                        runner_qty = trade.quantity - trade.quantity // 2
+                        self._place_runner_orders(symbol, trade, runner_qty)
                         completed.append({
                             "symbol": symbol,
                             "entry_price": trade.entry_price,
                             "exit_price": exit_price,
-                            "quantity": trade.quantity,
-                            "pnl_pct": pnl_pct,
-                            "outcome": outcome,
+                            "quantity": trade.quantity // 2,
+                            "pnl_pct": tp1_pnl,
+                            "outcome": "tp1_partial",
                             "session": trade.session,
                         })
                         logger.info(
-                            f"{'🟢' if pnl_pct > 0 else '🔴'} {outcome}: "
-                            f"{symbol} exit ${exit_price:.2f} ({pnl_pct:+.1f}%)"
+                            f"🟡 TP1 partial: {symbol} half out @ ${exit_price:.2f} "
+                            f"({tp1_pnl:+.1f}%), runner placed"
                         )
+
+                elif order_id == trade.stop_order_id and not trade.tp1_filled:
+                    # Stop hit on full position (TP1 not yet filled)
+                    exit_price = open_trade.orderStatus.avgFillPrice
+                    trade.closed = True
+                    trade.actual_exit_price = exit_price
+                    pnl_pct = _pnl_pct(trade.entry_price, exit_price)
+                    outcome = "trailed_out" if exit_price > trade.entry_price else "stopped"
+                    trade.close_reason = outcome
+                    completed.append({
+                        "symbol": symbol,
+                        "entry_price": trade.entry_price,
+                        "exit_price": exit_price,
+                        "quantity": trade.quantity,
+                        "pnl_pct": pnl_pct,
+                        "outcome": outcome,
+                        "session": trade.session,
+                    })
+                    logger.info(
+                        f"{'🟢' if pnl_pct > 0 else '🔴'} {outcome}: "
+                        f"{symbol} exit ${exit_price:.2f} ({pnl_pct:+.1f}%)"
+                    )
+
+                elif order_id == trade.tp2_order_id and trade.tp1_filled:
+                    # Runner hit TP2 — trade fully closed
+                    exit_price = open_trade.orderStatus.avgFillPrice
+                    trade.closed = True
+                    trade.close_reason = "tp2_hit"
+                    trade.actual_exit_price = exit_price
+                    tp2_pnl = _pnl_pct(trade.entry_price, exit_price)
+                    tp1_pnl = _pnl_pct(trade.entry_price, trade.tp1_fill_price)
+                    pnl_pct = round((tp1_pnl + tp2_pnl) / 2, 2)
+                    completed.append({
+                        "symbol": symbol,
+                        "entry_price": trade.entry_price,
+                        "exit_price": exit_price,
+                        "quantity": trade.quantity,
+                        "pnl_pct": pnl_pct,
+                        "outcome": "tp2_hit",
+                        "session": trade.session,
+                        "tp1_fill_price": trade.tp1_fill_price,
+                    })
+                    logger.info(
+                        f"🏆 TP2 hit: {symbol} runner exit ${exit_price:.2f} "
+                        f"(blended {pnl_pct:+.1f}%)"
+                    )
+
+                elif order_id == trade.runner_stop_order_id and trade.tp1_filled:
+                    # Runner stopped at TP1 price — locked-in profit exit
+                    exit_price = open_trade.orderStatus.avgFillPrice
+                    trade.closed = True
+                    trade.close_reason = "runner_stopped"
+                    trade.actual_exit_price = exit_price
+                    runner_pnl = _pnl_pct(trade.entry_price, exit_price)
+                    tp1_pnl = _pnl_pct(trade.entry_price, trade.tp1_fill_price)
+                    pnl_pct = round((tp1_pnl + runner_pnl) / 2, 2)
+                    completed.append({
+                        "symbol": symbol,
+                        "entry_price": trade.entry_price,
+                        "exit_price": exit_price,
+                        "quantity": trade.quantity,
+                        "pnl_pct": pnl_pct,
+                        "outcome": "runner_stopped",
+                        "session": trade.session,
+                        "tp1_fill_price": trade.tp1_fill_price,
+                    })
+                    logger.info(
+                        f"🟢 Runner stopped: {symbol} @ ${exit_price:.2f} "
+                        f"(blended {pnl_pct:+.1f}%)"
+                    )
 
         return completed
 

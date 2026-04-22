@@ -93,12 +93,7 @@ class ExecutionTracker:
         result["fills"] = len(fills)
         for fill in fills:
             self._record_fill_to_supabase(fill)
-            pnl = fill.get("pnl_pct", 0.0)
-            emoji = "✅" if pnl > 0 else "🔴"
-            msg = (
-                f"{emoji} {fill['symbol']}: {fill['outcome']} "
-                f"@ ${fill['exit_price']:.2f} ({pnl:+.1f}%)"
-            )
+            msg = self._format_fill_message(fill)
             logger.info(f"[exec-tracker] Fill: {msg}")
             self._notify(msg)
 
@@ -184,29 +179,56 @@ class ExecutionTracker:
             logger.error(f"[exec-tracker] Price fetch failed: {exc}")
             return {}
 
+    def _format_fill_message(self, fill: dict) -> str:
+        """Build a human-readable Telegram message for a fill event."""
+        sym = fill["symbol"]
+        price = fill["exit_price"]
+        pnl = fill.get("pnl_pct", 0.0)
+        outcome = fill["outcome"]
+
+        if outcome == "tp1_partial":
+            return f"🟡 {sym}: Half out at TP1 @ ${price:.2f} ({pnl:+.1f}%) — runner to TP2"
+        if outcome == "tp2_hit":
+            tp1 = fill.get("tp1_fill_price", 0.0)
+            tp1_tag = f", TP1 was ${tp1:.2f}" if tp1 else ""
+            return f"🏆 {sym}: TP2 hit @ ${price:.2f} (blended {pnl:+.1f}%{tp1_tag})"
+        if outcome == "runner_stopped":
+            return f"🟢 {sym}: Runner stopped @ ${price:.2f} (blended {pnl:+.1f}%) — locked profit"
+        emoji = "✅" if pnl > 0 else "🔴"
+        return f"{emoji} {sym}: {outcome} @ ${price:.2f} ({pnl:+.1f}%)"
+
     def _record_fill_to_supabase(self, fill: dict) -> None:
         """Write a completed trade fill to Supabase trade_outcomes.
 
         Bridges the execution engine fills back into the existing
         Supabase outcome tracking so the dashboard shows real results.
+        tp1_partial is a mid-trade event — we update status to tp1_hit but
+        don't close it; terminal outcomes (tp2_hit, runner_stopped, etc.) close.
         """
         try:
             from datetime import datetime, timezone
             from tradingbot.web.alert_store import update_outcome_by_symbol
+            outcome = fill["outcome"]
+            now_str = datetime.now(timezone.utc).isoformat()
+
+            terminal_outcomes = {"tp1_hit", "stopped", "trailed_out", "tp2_hit", "runner_stopped"}
             status_map = {
-                "tp1_hit": "tp1_hit",
+                "tp1_partial": "tp1_hit",     # half out — mark tp1_hit but keep open
+                "tp2_hit": "tp2_hit",
+                "runner_stopped": "trailed_out",
                 "stopped": "stopped",
                 "trailed_out": "trailed_out",
+                "tp1_hit": "tp1_hit",
             }
-            status = status_map.get(fill["outcome"], fill["outcome"])
-            now_str = datetime.now(timezone.utc).isoformat()
+            status = status_map.get(outcome, outcome)
+            is_terminal = outcome in terminal_outcomes
             update_outcome_by_symbol(
                 symbol=fill["symbol"],
                 status=status,
                 exit_price=fill["exit_price"],
                 pnl_pct=fill["pnl_pct"],
                 hit_at=now_str,
-                closed_at=now_str,
+                closed_at=now_str if is_terminal else None,
             )
         except Exception as exc:
             logger.warning(f"[exec-tracker] Supabase fill sync failed: {exc}")

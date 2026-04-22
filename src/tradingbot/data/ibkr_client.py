@@ -253,23 +253,20 @@ class IBKRClient:
 
         Returns list of dicts with: date, open, high, low, close, volume
         """
-        import asyncio
-        from ib_insync.util import getLoop
-
-        loop = getLoop()
-        coro = asyncio.wait_for(
-            self.ib.reqHistoricalDataAsync(
-                contract,
-                endDateTime="",
-                durationStr=duration,
-                barSizeSetting=bar_size,
-                whatToShow=what_to_show,
-                useRTH=use_rth,
-                formatDate=1,
-            ),
+        # Use the synchronous API — ib_insync's IB.run() manages the event loop
+        # internally and reqHistoricalData is safe to call from the main thread.
+        # The async path via getLoop()/run_until_complete() broke in newer
+        # ib_insync versions where Client._loop was removed.
+        bars = self.ib.reqHistoricalData(
+            contract,
+            endDateTime="",
+            durationStr=duration,
+            barSizeSetting=bar_size,
+            whatToShow=what_to_show,
+            useRTH=use_rth,
+            formatDate=1,
             timeout=timeout,
         )
-        bars = loop.run_until_complete(coro)
         result = []
         for bar in bars:
             result.append({
