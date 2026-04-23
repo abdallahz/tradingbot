@@ -126,35 +126,67 @@ class TelegramNotifier:
         pipeline_info: str = "",
         night_picks: list | None = None,
     ) -> bool:
-        """Send a short session summary after a scan completes."""
+        """Send a short session summary after a scan completes.
+
+        When no O2/O3 cards fired but O1 picks exist, sends the summary first
+        then a SECOND dedicated watchlist message so the picks are not buried.
+        """
         if not self._enabled:
             return False
 
-        import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
         _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
 
         if card_count == 0:
-            text = f"\U0001f4ed *{session} scan complete* \u2014 no qualifying setups found. [{_src}]"
+            text = f"📭 *{session} scan complete* — no qualifying setups found. [{_src}]"
         else:
             text = (
-                f"\U0001f4cb *{session} scan complete* \u2014 "
+                f"📋 *{session} scan complete* — "
                 f"{card_count} alert{'s' if card_count != 1 else ''} sent above. [{_src}]"
             )
         if pipeline_info:
-            text += f"\n\n\U0001f50e Pipeline: {pipeline_info}"
+            text += f"\n\n🔎 Pipeline: `{pipeline_info}`"
 
-        # When no cards fired, include Option 1 night research picks so the
-        # user still has actionable watchlist items from the night research.
+        self._send_message(text)
+
+        # When no trade cards fired, send O1 picks as a SEPARATE dedicated
+        # message so they are clearly visible and not buried in the footer.
         if card_count == 0 and night_picks:
-            text += "\n\n\U0001f4cb *News Research Watchlist:*"
-            for pick in night_picks[:8]:
-                score = getattr(pick, "catalyst_score", 0)
-                reasons = ", ".join(getattr(pick, "reasons", [])) or "catalyst"
-                bar = "\U0001f7e2" if score >= 75 else "\U0001f7e1" if score >= 60 else "\u26aa"
-                text += f"\n{bar} `{pick.symbol}` — catalyst {score:.0f} | {reasons}"
+            time.sleep(0.5)
+            self._send_o1_watchlist(night_picks, _src)
 
-        return self._send_message(text)
+        return True
+
+    def _send_o1_watchlist(self, night_picks: list, src_tag: str) -> None:
+        """Send Option 1 catalyst picks as a standalone Telegram message."""
+        lines = [
+            f"📊 *Option 1 Watchlist — Watch These Today* [{src_tag}]",
+            "_No auto-alerts fired. Top catalyst picks for manual consideration:_",
+            "",
+        ]
+        for pick in night_picks[:10]:
+            score = getattr(pick, "catalyst_score", 0)
+            reasons = getattr(pick, "reasons", [])
+            bar = "🟢" if score >= 75 else "🟡" if score >= 60 else "⚪"
+
+            detail_parts, other_reasons = [], []
+            for r in reasons:
+                if r.startswith("Gap:") or r.startswith("RelVol:"):
+                    detail_parts.append(r)
+                else:
+                    other_reasons.append(r)
+
+            detail = "  |  ".join(detail_parts)
+            catalyst_label = ", ".join(other_reasons) if other_reasons else "high catalyst"
+
+            line = f"{bar} `{pick.symbol}` — score {score:.0f}"
+            if detail:
+                line += f"  |  {detail}"
+            line += f"\n    _{catalyst_label}_"
+            lines.append(line)
+
+        lines += ["", "_Requires manual entry — no stop/TP calculated._"]
+        self._send_message("\n".join(lines))
 
     def send_news_summary(self, session: str, scores: dict) -> bool:
         """Send top catalyst symbols from news research."""
