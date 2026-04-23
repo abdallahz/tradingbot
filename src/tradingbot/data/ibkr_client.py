@@ -737,16 +737,18 @@ class IBKRClient:
         "JPM", "GS", "V", "MA", "PYPL", "COIN",
         "BAC", "WFC", "MS", "SCHW", "AXP",
         # Healthcare
-        "LLY", "UNH", "MRNA", "BNTX", "ABBV", "PFE", "GILD",
+        "LLY", "UNH", "MRNA", "BNTX", "ABBV", "PFE", "GILD", "MRK", "JNJ",
         # Industrials / Clean Energy
-        "GEV", "ETN", "CAT", "HON", "NEE",
+        "GEV", "ETN", "CAT", "HON", "NEE", "DE", "UNP",
         # Consumer / EV
         "WMT", "COST", "UBER", "RIVN", "LCID", "NIO",
-        "HD", "MCD", "NKE",
+        "HD", "MCD", "NKE", "KO", "PG",
         # Energy
         "XOM", "CVX",
         # Semiconductors (additional)
-        "QCOM", "TXN", "MRVL",
+        "QCOM", "TXN", "MRVL", "ADI",
+        # Telecom
+        "TMUS",
         # ETFs (market context — always blocked from alerts by ETF filter)
         "SPY", "QQQ", "IWM",
     ]

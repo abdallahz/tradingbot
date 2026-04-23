@@ -15,15 +15,16 @@ log = logging.getLogger(__name__)
 # ── Sector peer groups ────────────────────────────────────────────────────────
 # Keep in sync with _CORE_WATCHLIST in alpaca_client.py / ibkr_client.py
 _SECTOR_MAP: dict[str, list[str]] = {
-    "semiconductors": ["NVDA", "AMD", "AVGO", "MU", "INTC", "SMCI", "ARM", "QCOM", "TXN", "MRVL"],
+    "semiconductors": ["NVDA", "AMD", "AVGO", "MU", "INTC", "SMCI", "ARM", "QCOM", "TXN", "MRVL", "ADI"],
     "mega_tech":      ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA"],
     "software":       ["PLTR", "CRWD", "NOW", "ADBE", "CRM", "ORCL", "NFLX", "PANW", "SNOW", "WDAY"],
     "ev":             ["TSLA", "RIVN", "LCID", "NIO"],
     "crypto":         ["COIN", "MSTR", "RIOT", "MARA"],
     "financials":     ["JPM", "GS", "V", "MA", "BAC", "WFC", "MS", "SCHW", "AXP"],
-    "healthcare":     ["LLY", "UNH", "MRNA", "BNTX", "ABBV", "PFE", "GILD"],
-    "industrials":    ["GEV", "ETN", "CAT", "HON", "NEE"],
-    "consumer":       ["WMT", "COST", "HD", "MCD", "NKE", "UBER"],
+    "healthcare":     ["LLY", "UNH", "MRNA", "BNTX", "ABBV", "PFE", "GILD", "MRK", "JNJ"],
+    "industrials":    ["GEV", "ETN", "CAT", "HON", "NEE", "DE", "UNP"],
+    "consumer":       ["WMT", "COST", "HD", "MCD", "NKE", "UBER", "KO", "PG"],
+    "telecom":        ["TMUS"],
 }
 
 # Reverse map: symbol -> sector name
