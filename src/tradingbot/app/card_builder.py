@@ -325,16 +325,20 @@ class CardBuilder:
         Entering a position 0-2 days before earnings creates overnight gap
         risk that invalidates the stop-loss — the stock can open 10-20% lower
         on a miss with no chance to exit at the stop level.
+
+        Exception: earnings TODAY + stock already gapping >= 3% → the report
+        almost certainly came out pre-market (BMO).  The result is public,
+        the overnight risk is resolved, and the gap IS the trade setup.
         """
-        blocked, days = earnings_filter.is_blocked(symbol.symbol)
+        blocked, days = earnings_filter.is_blocked(symbol.symbol, gap_pct=symbol.gap_pct)
         if not blocked:
             return True
         label = "today" if days == 0 else ("tomorrow" if days == 1 else f"in {days}d")
         if dropped is not None:
             dropped.append((symbol.symbol, f"earnings_{label}"))
         log.info(
-            f"[DROP] {symbol.symbol}: earnings {label} — "
-            f"overnight gap risk exceeds stop-loss protection"
+            f"[DROP] {symbol.symbol}: earnings {label} "
+            f"(gap={symbol.gap_pct:.1f}%) — overnight gap risk exceeds stop-loss protection"
         )
         return False
 

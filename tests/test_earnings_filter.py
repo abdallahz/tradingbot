@@ -26,7 +26,25 @@ class TestEarningsFilterIsBlocked:
         ef = EarningsFilter()
         ef._earnings_map["AAPL"] = date.today()
         ef._fetch_date = date.today()
-        blocked, days = ef.is_blocked("AAPL")
+        blocked, days = ef.is_blocked("AAPL", gap_pct=0.0)
+        assert blocked is True
+        assert days == 0
+
+    def test_earnings_today_bmo_large_gap_passes(self):
+        # Gap >= 3% on earnings day → assume BMO report, allow entry
+        ef = EarningsFilter()
+        ef._earnings_map["MBLY"] = date.today()
+        ef._fetch_date = date.today()
+        blocked, days = ef.is_blocked("MBLY", gap_pct=5.0)
+        assert blocked is False
+        assert days == 0
+
+    def test_earnings_today_small_gap_still_blocked(self):
+        # Gap < 3% on earnings day → could be AMC, block
+        ef = EarningsFilter()
+        ef._earnings_map["NEE"] = date.today()
+        ef._fetch_date = date.today()
+        blocked, days = ef.is_blocked("NEE", gap_pct=1.5)
         assert blocked is True
         assert days == 0
 

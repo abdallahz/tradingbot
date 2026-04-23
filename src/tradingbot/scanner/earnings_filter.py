@@ -13,9 +13,15 @@ from datetime import date, timedelta
 
 log = logging.getLogger(__name__)
 
-DEFAULT_BLOCK_DAYS = 2    # Block if earnings are today, tomorrow, or day after
+DEFAULT_BLOCK_DAYS = 2    # Block if earnings are tomorrow or day after
 _LOOKAHEAD_DAYS = 7       # How many days ahead to scan the calendar
 _HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+# When earnings are scheduled TODAY but the stock is already gapping this
+# much, the report almost certainly came out pre-market (BMO).  The result
+# is public — overnight risk is resolved — so we allow the entry.
+# A stock doesn't gap 3%+ at 9:15 AM purely by chance on earnings day.
+_PRE_MARKET_GAP_THRESHOLD = 3.0  # %
 
 
 class EarningsFilter:
@@ -83,11 +89,30 @@ class EarningsFilter:
             return None
         return max(0, (d - date.today()).days)
 
-    def is_blocked(self, symbol: str) -> tuple[bool, int]:
-        """Return (True, days_away) if earnings are within block_days, else (False, -1)."""
+    def is_blocked(self, symbol: str, gap_pct: float = 0.0) -> tuple[bool, int]:
+        """Return (True, days_away) if earnings are within block_days, else (False, -1).
+
+        Special case — earnings TODAY (days_away == 0) with large gap:
+        If the stock is already up >= _PRE_MARKET_GAP_THRESHOLD%, the report
+        almost certainly came out before market open (BMO).  The overnight risk
+        is already resolved — the gap IS the earnings reaction — so we allow
+        the entry rather than blocking it.
+
+        For future earnings (days_away >= 1) the block always applies regardless
+        of gap, because the report has not happened yet.
+        """
         days = self.days_to_earnings(symbol)
         if days is None:
             return False, -1
-        if days <= self.block_days:
-            return True, days
-        return False, -1
+        if days > self.block_days:
+            return False, -1
+
+        # Today's earnings + big gap → pre-market report already resolved
+        if days == 0 and gap_pct >= _PRE_MARKET_GAP_THRESHOLD:
+            log.info(
+                f"[EARNINGS] {symbol}: earnings today but gap={gap_pct:.1f}% "
+                f">= {_PRE_MARKET_GAP_THRESHOLD}% — pre-market report, allowing entry"
+            )
+            return False, 0
+
+        return True, days

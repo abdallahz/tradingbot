@@ -309,13 +309,16 @@ class _FakeEarnings:
         self._map = blocked_map
         self.block_days = block_days
 
-    def is_blocked(self, symbol: str) -> tuple[bool, int]:
+    def is_blocked(self, symbol: str, gap_pct: float = 0.0) -> tuple[bool, int]:
         days = self._map.get(symbol)
         if days is None:
             return False, -1
-        if days <= self.block_days:
-            return True, days
-        return False, -1
+        if days > self.block_days:
+            return False, -1
+        # BMO heuristic: earnings today + large gap → pre-market report, allow entry
+        if days == 0 and gap_pct >= 3.0:
+            return False, 0
+        return True, days
 
 
 class TestPassesEarningsFilter:
@@ -324,7 +327,7 @@ class TestPassesEarningsFilter:
         assert builder.passes_earnings_filter(sym, _FakeEarnings({}), []) is True
 
     def test_earnings_today_blocked(self, builder):
-        sym = _snap("AAPL")
+        sym = _snap("AAPL", gap_pct=1.0)  # small gap → not BMO, should block
         dropped = []
         result = builder.passes_earnings_filter(sym, _FakeEarnings({"AAPL": 0}), dropped)
         assert result is False
@@ -347,8 +350,20 @@ class TestPassesEarningsFilter:
         assert builder.passes_earnings_filter(sym, _FakeEarnings({"MSFT": 5}), []) is True
 
     def test_dropped_none_does_not_raise(self, builder):
-        sym = _snap("AAPL")
+        sym = _snap("AAPL", gap_pct=1.0)
         builder.passes_earnings_filter(sym, _FakeEarnings({"AAPL": 0}), None)
+
+    def test_earnings_today_bmo_large_gap_passes(self, builder):
+        # Earnings today but stock gapping 5% → BMO report already resolved
+        sym = _snap("MBLY", gap_pct=5.0)
+        result = builder.passes_earnings_filter(sym, _FakeEarnings({"MBLY": 0}), [])
+        assert result is True
+
+    def test_earnings_today_small_gap_still_blocked(self, builder):
+        # Earnings today, gap only 1% → could be AMC/after-hours, still block
+        sym = _snap("AAPL", gap_pct=1.0)
+        result = builder.passes_earnings_filter(sym, _FakeEarnings({"AAPL": 0}), [])
+        assert result is False
 
 
 # ── passes_digestion_window ──────────────────────────────────────────
