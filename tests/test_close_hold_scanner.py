@@ -1,10 +1,13 @@
-"""Tests for CloseHoldScanner – verify scores stay within 0-100."""
+"""Tests for CloseHoldScanner – verify scores stay within 0-100.
+Also tests calc_pick_outcomes() for overnight outcome annotation.
+"""
 from __future__ import annotations
 
 import pytest
 
 from tradingbot.models import SymbolSnapshot
 from tradingbot.scanner.close_hold_scanner import CloseHoldScanner
+from tradingbot.web.alert_store import calc_pick_outcomes
 
 
 def _make_snap(**overrides) -> SymbolSnapshot:
@@ -110,3 +113,69 @@ class TestScoreCap:
         picks = scanner.scan(snaps)
         for p in picks:
             assert p.score <= 100.0, f"{p.symbol} score {p.score} > 100"
+
+
+class TestCalcPickOutcomes:
+    """Unit tests for calc_pick_outcomes() — no Supabase needed."""
+
+    def _pick(self, symbol, price, support, resistance):
+        return {"symbol": symbol, "price": price, "key_support": support, "key_resistance": resistance}
+
+    def test_gap_up_outcome(self):
+        picks = [self._pick("NVDA", 100.0, 95.0, 105.0)]
+        result = calc_pick_outcomes(picks, {"NVDA": 103.0})
+        p = result[0]
+        assert p["overnight_pct"] == pytest.approx(3.0)
+        assert p["outcome"] == "gap_up"
+        assert p["next_open"] == 103.0
+        assert p["hit_target"] is False   # 103 < 105
+        assert p["hit_stop"] is False
+
+    def test_gap_down_outcome(self):
+        picks = [self._pick("AAPL", 200.0, 195.0, 210.0)]
+        result = calc_pick_outcomes(picks, {"AAPL": 196.0})
+        p = result[0]
+        assert p["overnight_pct"] == pytest.approx(-2.0)
+        assert p["outcome"] == "gap_down"
+        assert p["hit_stop"] is False   # 196 > 195
+
+    def test_flat_outcome(self):
+        picks = [self._pick("MSFT", 400.0, 390.0, 410.0)]
+        result = calc_pick_outcomes(picks, {"MSFT": 400.5})
+        assert result[0]["outcome"] == "flat"
+
+    def test_hit_target(self):
+        picks = [self._pick("TSLA", 150.0, 145.0, 155.0)]
+        result = calc_pick_outcomes(picks, {"TSLA": 156.0})
+        p = result[0]
+        assert p["hit_target"] is True
+        assert p["outcome"] == "gap_up"
+
+    def test_hit_stop(self):
+        picks = [self._pick("AMD", 90.0, 87.0, 95.0)]
+        result = calc_pick_outcomes(picks, {"AMD": 86.0})
+        p = result[0]
+        assert p["hit_stop"] is True
+        assert p["outcome"] == "gap_down"
+
+    def test_missing_price_leaves_pick_unchanged(self):
+        """Symbol not in price_map → pick returned without outcome fields."""
+        picks = [self._pick("COIN", 50.0, 45.0, 55.0)]
+        result = calc_pick_outcomes(picks, {})
+        assert "overnight_pct" not in result[0]
+
+    def test_original_picks_not_mutated(self):
+        """calc_pick_outcomes must not modify the input dicts in-place."""
+        original = self._pick("GS", 500.0, 490.0, 510.0)
+        picks = [original]
+        calc_pick_outcomes(picks, {"GS": 502.0})
+        assert "overnight_pct" not in original
+
+    def test_multiple_picks(self):
+        picks = [
+            self._pick("NVDA", 100.0, 95.0, 105.0),
+            self._pick("AMD",  50.0, 47.0,  53.0),
+        ]
+        result = calc_pick_outcomes(picks, {"NVDA": 103.0, "AMD": 48.0})
+        assert result[0]["outcome"] == "gap_up"
+        assert result[1]["outcome"] == "gap_down"

@@ -160,6 +160,14 @@ def main() -> None:
         return
 
     if args.command == "run-execute":
+        # Evaluate previous night's close picks before today's scan (informational only)
+        try:
+            outcome_summary = scheduler.evaluate_close_pick_outcomes()
+            if outcome_summary:
+                TelegramNotifier.from_env().send_close_pick_outcomes(outcome_summary)
+        except Exception:
+            pass
+
         card_count, results = scheduler.run_morning_execute()
         _notifier = TelegramNotifier.from_env()
         pipeline_info = (

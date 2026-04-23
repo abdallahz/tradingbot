@@ -252,6 +252,45 @@ class TelegramNotifier:
         text = "\n".join(lines)
         return self._send_message(text)
 
+    def send_close_pick_outcomes(self, summary: dict) -> bool:
+        """Send a recap of the previous night's close pick outcomes.
+
+        Args:
+            summary: dict with "date" (str) and "picks" (list[dict]) where each
+                     pick may carry overnight_pct / outcome / hit_target / hit_stop.
+        """
+        if not self._enabled:
+            return False
+
+        picks = summary.get("picks", [])
+        trade_date = summary.get("date", "")
+        evaluated = [p for p in picks if p.get("overnight_pct") is not None]
+        if not evaluated:
+            return False
+
+        gap_ups = sum(1 for p in evaluated if p.get("outcome") == "gap_up")
+        avg_pct = sum(p["overnight_pct"] for p in evaluated) / len(evaluated)
+
+        lines = [
+            f"📊 *Close Picks Recap — {trade_date}*",
+            f"_{gap_ups}/{len(evaluated)} gapped up · avg {avg_pct:+.1f}% overnight_",
+            "",
+        ]
+        for p in evaluated:
+            sym = p.get("symbol", "?")
+            pct = p.get("overnight_pct", 0.0)
+            outcome = p.get("outcome", "flat")
+            score = p.get("score", 0)
+            badge = "✅" if outcome == "gap_up" else "❌" if outcome == "gap_down" else "➡️"
+            extra = ""
+            if p.get("hit_target"):
+                extra = " 🎯"
+            elif p.get("hit_stop"):
+                extra = " 🛑"
+            lines.append(f"{badge} `{sym}` {pct:+.1f}%  _(score {score:.0f})_{extra}")
+
+        return self._send_message("\n".join(lines))
+
     def send_daily_recap(
         self,
         stats: dict,

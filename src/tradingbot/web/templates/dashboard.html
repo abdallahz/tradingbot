@@ -1672,6 +1672,19 @@
                 color: rgba(255, 255, 255, .5);
             }
 
+            /* Close pick outcome badge */
+            .cp-outcome {
+                font-size: .75rem;
+                font-weight: 600;
+                text-align: center;
+                padding: 3px 8px;
+                border-radius: 4px;
+                margin-top: 6px;
+            }
+            .cp-outcome.outcome-up   { background: rgba(0,200,100,.15); color: #00c864; }
+            .cp-outcome.outcome-down { background: rgba(220,50,50,.15);  color: #dc3232; }
+            .cp-outcome.outcome-flat { background: rgba(200,200,200,.1); color: #aaa; }
+
             /* Close Picks (overnight holds) */
             .close-picks-grid {
                 display: grid;
@@ -2309,6 +2322,15 @@
                             <span>R: <span class="resist-val">${{ "%.2f"|format(p.key_resistance) }}</span></span>
                         </div>
                         <div class="cp-thesis">💡 {{ p.thesis }}</div>
+                        {% if p.overnight_pct is not none and p.overnight_pct != "" %}
+                        <div class="cp-outcome
+                            {% if p.outcome == 'gap_up' %}outcome-up
+                            {% elif p.outcome == 'gap_down' %}outcome-down
+                            {% else %}outcome-flat{% endif %}">
+                            {{ "%+.1f"|format(p.overnight_pct) }}% next open
+                            {% if p.hit_target %}🎯{% elif p.hit_stop %}🛑{% endif %}
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>

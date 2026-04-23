@@ -1237,19 +1237,20 @@ def card_to_dict(card: Any) -> dict[str, Any]:
 
 # ── Close-hold picks persistence ──────────────────────────────────────────────
 
-def save_close_picks(picks: list[dict]) -> None:
-    """Persist today's close-hold overnight picks to Supabase.
+def save_close_picks(picks: list[dict], trade_date: str | None = None) -> None:
+    """Persist close-hold overnight picks to Supabase.
 
     Stores one row per day with the full JSON list, so the dashboard can
-    display them without re-running the scanner.
+    display them without re-running the scanner.  Pass *trade_date* to update
+    a prior day's row (e.g. when writing back next-morning outcome data).
     """
     sb = _get_supabase()
     if sb is None:
         return
     try:
-        today_str = _today_et().isoformat()
+        date_str = trade_date or _today_et().isoformat()
         row = {
-            "trade_date": today_str,
+            "trade_date": date_str,
             "picks": json.dumps(picks),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -1281,3 +1282,51 @@ def load_close_picks(trade_date: str | None = None) -> list[dict]:
     except Exception as exc:
         log.warning(f"[alert_store] load_close_picks failed: {exc}")
     return []
+
+
+def calc_pick_outcomes(picks: list[dict], price_map: dict[str, float]) -> list[dict]:
+    """Apply next-morning open prices to a list of close-pick dicts.
+
+    Returns new dicts (originals unchanged) with these fields added for each
+    symbol that has a price in *price_map*:
+      - next_open     float   next morning's opening price
+      - overnight_pct float   % change from close-pick price to next open
+      - outcome       str     "gap_up" | "flat" | "gap_down"
+      - hit_target    bool    next_open >= key_resistance
+      - hit_stop      bool    next_open <= key_support
+    """
+    result: list[dict] = []
+    for p in picks:
+        p = dict(p)
+        sym = p.get("symbol", "")
+        next_open = price_map.get(sym)
+        if next_open is None or next_open <= 0:
+            result.append(p)
+            continue
+        close_px = p.get("price", 0.0)
+        if close_px <= 0:
+            result.append(p)
+            continue
+        pct = (next_open - close_px) / close_px * 100
+        p["next_open"] = round(next_open, 2)
+        p["overnight_pct"] = round(pct, 2)
+        p["outcome"] = "gap_up" if pct >= 1.0 else "gap_down" if pct <= -1.0 else "flat"
+        p["hit_target"] = next_open >= p.get("key_resistance", float("inf"))
+        p["hit_stop"] = next_open <= p.get("key_support", 0.0)
+        result.append(p)
+    return result
+
+
+def update_close_pick_outcomes(trade_date: str, price_map: dict[str, float]) -> None:
+    """Merge next-morning prices into a prior day's close picks and re-save.
+
+    Loads the picks for *trade_date*, annotates each with outcome fields via
+    calc_pick_outcomes(), and upserts back to Supabase.
+    """
+    picks = load_close_picks(trade_date)
+    if not picks:
+        log.info(f"[alert_store] No close picks found for {trade_date} — skipping outcome update")
+        return
+    updated = calc_pick_outcomes(picks, price_map)
+    save_close_picks(updated, trade_date)
+    log.info(f"[alert_store] Close pick outcomes updated for {trade_date}")

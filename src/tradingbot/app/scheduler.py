@@ -93,6 +93,64 @@ class Scheduler:
         """9:45 AM execute: re-scan with live data, bypass dedup for morning alerts, execute confirmed setups."""
         return self._run_scan_session("morning", skip_dedup=True)
 
+    def evaluate_close_pick_outcomes(self) -> dict | None:
+        """Evaluate the most recent prior close picks against this morning's open prices.
+
+        Looks back up to 4 calendar days to find picks that haven't been
+        annotated yet (handles weekends: Monday finds Friday's picks).
+        Fetches current prices, annotates outcomes, persists to Supabase, and
+        returns a summary dict {date, picks} for the caller to Telegram-notify.
+        Returns None when there are no pending picks.
+        """
+        import logging as _log
+        from datetime import date, timedelta
+        import os
+        from tradingbot.web.alert_store import load_close_picks, update_close_pick_outcomes
+
+        _logger = _log.getLogger(__name__)
+
+        # Find the most recent prior date that has picks without outcomes yet
+        today = date.today()
+        target_date: str | None = None
+        prior_picks: list[dict] = []
+        for days_back in range(1, 5):
+            check = (today - timedelta(days=days_back)).isoformat()
+            candidates = load_close_picks(check)
+            # Already evaluated if any pick has overnight_pct set
+            if candidates and candidates[0].get("overnight_pct") is None:
+                target_date = check
+                prior_picks = candidates
+                break
+
+        if not prior_picks or target_date is None:
+            return None
+
+        symbols = [p["symbol"] for p in prior_picks if p.get("symbol")]
+        if not symbols:
+            return None
+
+        # Fetch current morning prices for just those symbols
+        try:
+            provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
+            if provider == "ibkr":
+                from tradingbot.data.ibkr_client import IBKRClient
+                client: object = IBKRClient()
+            else:
+                from tradingbot.data.alpaca_client import AlpacaClient
+                client = AlpacaClient()
+            snapshots = client.get_premarket_snapshots(symbols)
+            price_map = {s.symbol: s.price for s in snapshots if s.price > 0}
+        except Exception as exc:
+            _logger.warning(f"[scheduler] close pick outcome price fetch failed: {exc}")
+            return None
+
+        if not price_map:
+            return None
+
+        update_close_pick_outcomes(target_date, price_map)
+        updated_picks = load_close_picks(target_date)
+        return {"date": target_date, "picks": updated_picks}
+
     def run_midday_only(self) -> tuple[int, ThreeOptionWatchlist]:
         """Run midday scan using saved catalyst_scores.json. Returns (alert_count, results)."""
         return self._run_scan_session("midday")
