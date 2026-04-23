@@ -733,22 +733,53 @@ class IBKRClient:
         "AVGO", "AMD", "INTC", "MU", "SMCI", "ARM", "PLTR", "CRWD",
         # Software / SaaS
         "NOW", "ADBE", "CRM", "ORCL", "NFLX", "PANW", "SNOW", "WDAY",
-        # Financials
-        "JPM", "GS", "V", "MA", "PYPL", "COIN",
-        "BAC", "WFC", "MS", "SCHW", "AXP",
-        # Healthcare
-        "LLY", "UNH", "MRNA", "BNTX", "ABBV", "PFE", "GILD", "MRK", "JNJ",
-        # Industrials / Clean Energy
-        "GEV", "ETN", "CAT", "HON", "NEE", "DE", "UNP",
-        # Consumer / EV
-        "WMT", "COST", "UBER", "RIVN", "LCID", "NIO",
-        "HD", "MCD", "NKE", "KO", "PG",
-        # Energy
-        "XOM", "CVX",
+        "INTU", "CDNS", "SNPS", "ADP",
+        # Semiconductor Equipment
+        "LRCX", "AMAT", "KLAC",
         # Semiconductors (additional)
-        "QCOM", "TXN", "MRVL", "ADI",
-        # Telecom
-        "TMUS",
+        "QCOM", "TXN", "MRVL", "ADI", "ON",
+        # Networking / Comm Equipment
+        "CSCO", "ANET", "APH", "GLW",
+        # Computer Hardware / Storage / IT Services
+        "IBM", "DELL", "WDC", "ACN",
+        # Financials — Banks
+        "JPM", "GS", "BAC", "WFC", "MS", "SCHW", "AXP", "C", "COF", "PNC", "USB", "TFC",
+        # Financials — Payments & Crypto
+        "V", "MA", "PYPL", "COIN",
+        # Financials — Asset Mgmt / Exchanges / Insurance
+        "BX", "BLK", "KKR", "AMP", "SPGI", "ICE", "CME", "PGR", "CB", "AFL",
+        # Healthcare — Pharma / Biotech
+        "LLY", "UNH", "ABBV", "PFE", "GILD", "MRK", "JNJ", "MRNA", "BNTX",
+        "AMGN", "BMY", "VRTX", "REGN", "BIIB",
+        # Healthcare — Managed Care / Distributors
+        "CVS", "CI", "HCA", "MCK",
+        # Healthcare — Devices & Instruments
+        "ABT", "MDT", "SYK", "ISRG", "BSX", "EW", "TMO", "DHR",
+        # Industrials — Aerospace & Defense
+        "GE", "RTX", "LMT", "BA", "NOC", "GD", "LHX",
+        # Industrials — Capital Goods / Clean Energy
+        "GEV", "ETN", "CAT", "HON", "NEE", "DE", "EMR", "ITW", "TT", "JCI", "VRT",
+        # Industrials — Transportation / Logistics
+        "UNP", "FDX", "UPS", "NSC", "PCAR", "CTAS", "URI",
+        # Consumer Cyclical — Retail & Services
+        "WMT", "COST", "HD", "MCD", "NKE", "UBER",
+        "LOW", "TJX", "BKNG", "YUM", "DKNG",
+        # Consumer Cyclical — Auto
+        "GM", "F", "RIVN", "LCID", "NIO",
+        # Consumer Cyclical — Travel & Hospitality
+        "MAR", "HLT", "ABNB", "RCL", "CCL",
+        # Consumer Defensive
+        "KO", "PG", "PM", "PEP", "MO", "DG", "CL", "KDP", "ADM",
+        # Telecom / Communication Services (GOOGL/META/NFLX already above)
+        "TMUS", "VZ", "T", "DIS", "CMCSA",
+        # Energy
+        "XOM", "CVX", "COP", "EOG", "OXY", "SLB",
+        # Utilities (NEE already above)
+        "SO", "DUK", "CEG", "VST",
+        # Real Estate
+        "EQIX", "AMT", "PLD", "SPG",
+        # Basic Materials
+        "LIN", "SHW", "APD", "NEM", "FCX",
         # ETFs (market context — always blocked from alerts by ETF filter)
         "SPY", "QQQ", "IWM",
     ]
