@@ -432,7 +432,7 @@ def format_institutional_alert(
     # ── Source badge ───────────────────────────────────────────────
     import os
     _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-    _src_badge = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+    _src_badge = "IBKR" if _provider == "ibkr" else "ALPACA"
 
     lines = [
         f"🚨 <b>TRADE ALERT — {card.symbol}</b>  [{_src_badge}]",

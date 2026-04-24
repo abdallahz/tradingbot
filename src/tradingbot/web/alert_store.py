@@ -1196,8 +1196,8 @@ def _alert_source() -> str:
     import os
     provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
     if provider == "ibkr":
-        return "vps-ibkr"
-    return "vps-alpaca"
+        return "ibkr"
+    return "alpaca"
 
 
 def card_to_dict(card: Any) -> dict[str, Any]:

@@ -135,7 +135,7 @@ class TelegramNotifier:
             return False
 
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+        _src = "IBKR" if _provider == "ibkr" else "ALPACA"
 
         if card_count == 0:
             text = f"📭 *{session} scan complete* — no qualifying setups found. [{_src}]"
@@ -194,7 +194,7 @@ class TelegramNotifier:
             return False
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+        _src = "IBKR" if _provider == "ibkr" else "ALPACA"
         top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:10]
         if not top:
             text = f"📰 *{session} research complete* — no catalyst symbols found. [{_src}]"
@@ -218,7 +218,7 @@ class TelegramNotifier:
 
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+        _src = "IBKR" if _provider == "ibkr" else "ALPACA"
 
         if not picks:
             text = (
@@ -309,7 +309,7 @@ class TelegramNotifier:
 
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+        _src = "IBKR" if _provider == "ibkr" else "ALPACA"
 
         total = stats.get("total", 0)
 
@@ -415,7 +415,7 @@ class TelegramNotifier:
 
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+        _src = "IBKR" if _provider == "ibkr" else "ALPACA"
 
         lines = [
             f"📋 *Nightly Performance Digest* [{_src}]",
@@ -566,7 +566,7 @@ class TelegramNotifier:
         # Source tag (VPS/IBKR vs Render/Alpaca)
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src_badge = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
+        _src_badge = "IBKR" if _provider == "ibkr" else "ALPACA"
 
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>  [{_src_badge}]",
