@@ -2322,7 +2322,7 @@
                             <span>R: <span class="resist-val">${{ "%.2f"|format(p.key_resistance) }}</span></span>
                         </div>
                         <div class="cp-thesis">💡 {{ p.thesis }}</div>
-                        {% if p.overnight_pct is not none and p.overnight_pct != "" %}
+                        {% if p.overnight_pct is defined and p.overnight_pct is not none and p.overnight_pct != "" %}
                         <div class="cp-outcome
                             {% if p.outcome == 'gap_up' %}outcome-up
                             {% elif p.outcome == 'gap_down' %}outcome-down
