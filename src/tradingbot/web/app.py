@@ -247,8 +247,8 @@ def dashboard():
                         closed_et = str(raw_closed)[:16]
                 # For open trades, convert hit_at → ET as "last checked" time
                 last_checked_et = ""
-                status = o.get("status", "open")
-                if status in ("open", "tp1_hit"):
+                trade_status = o.get("status", "open")
+                if trade_status in ("open", "tp1_hit"):
                     raw_hit = o.get("hit_at")
                     if raw_hit:
                         try:
@@ -259,7 +259,7 @@ def dashboard():
                         except Exception:
                             last_checked_et = ""
                 outcome_map[aid] = {
-                    "status": status,
+                    "status": trade_status,
                     "pnl_pct": round(float(o.get("pnl_pct") or 0.0), 2),
                     "exit_price": o.get("exit_price"),
                     "closed_at": closed_et,
