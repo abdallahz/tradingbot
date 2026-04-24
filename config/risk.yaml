@@ -4,7 +4,7 @@ risk:
   o2_max_trades_per_day: 2
   daily_loss_lockout_pct: 1.5
   max_consecutive_losses: 3
-  risk_per_trade_pct: 0.5
+  risk_per_trade_pct: 0.75
   fixed_stop_pct: 2.5
   # Risk-tiered stops: low-risk trades get tighter stops to reduce
   # loss magnitude. Data shows low-risk trades have 36% WR with avg
