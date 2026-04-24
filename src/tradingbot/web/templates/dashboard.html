@@ -2398,6 +2398,68 @@
         </div>
         {% endif %}
 
+        {% if prev_close_picks %}
+        <div class="watchlist-section">
+            <div class="watchlist-header"
+                onclick="this.querySelector('.watchlist-chevron').classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+                <div class="watchlist-title">
+                    📊 Previous Night Results
+                    <span class="watchlist-count">{{ prev_close_picks | length }}</span>
+                </div>
+                <svg class="watchlist-chevron open" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="watchlist-body open">
+                <div class="close-picks-grid">
+                    {% for p in prev_close_picks %}
+                    <div class="close-pick-card long-pick">
+                        <div class="cp-header">
+                            <span class="cp-symbol">{{ p.symbol }}</span>
+                            <span class="cp-score-badge {% if p.score >= 55 %}high{% elif p.score >= 40 %}medium{% else %}low{% endif %}">
+                                {{ p.score }}/100
+                            </span>
+                        </div>
+                        {% set risk = p.price - p.key_support %}
+                        {% set tp1 = p.key_resistance %}
+                        {% set tp2 = p.key_resistance + (p.key_resistance - p.key_support) %}
+                        <div class="cp-trade-plan">
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label">Entry</span>
+                                <span class="cp-plan-val">${{ "%.2f"|format(p.price) }}</span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label" style="color:var(--red)">Stop</span>
+                                <span class="cp-plan-val" style="color:var(--red)">${{ "%.2f"|format(p.key_support) }}
+                                    <small>({{ "%-.1f"|format((p.key_support - p.price) / p.price * 100) }}%)</small></span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label" style="color:var(--green)">TP1</span>
+                                <span class="cp-plan-val" style="color:var(--green)">${{ "%.2f"|format(tp1) }}
+                                    <small>(+{{ "%.1f"|format((tp1 - p.price) / p.price * 100) }}%)</small></span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label" style="color:#4fc3f7">TP2</span>
+                                <span class="cp-plan-val" style="color:#4fc3f7">${{ "%.2f"|format(tp2) }}
+                                    <small>(+{{ "%.1f"|format((tp2 - p.price) / p.price * 100) }}%)</small></span>
+                            </div>
+                        </div>
+                        {% if p.overnight_pct is defined and p.overnight_pct is not none %}
+                        <div class="cp-outcome {% if p.outcome == 'gap_up' %}outcome-up{% elif p.outcome == 'gap_down' %}outcome-down{% else %}outcome-flat{% endif %}">
+                            {{ "%+.1f"|format(p.overnight_pct) }}% at open
+                            {% if p.hit_target %} 🎯 Hit TP1{% elif p.hit_stop %} 🛑 Hit Stop{% endif %}
+                            <small> (opened ${{ "%.2f"|format(p.next_open) }})</small>
+                        </div>
+                        {% endif %}
+                        <div class="cp-thesis">💡 {{ p.thesis }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- ── Trading Terms Legend ────────────────────────────────────────── -->
         <div class="legend-section">
             <div class="legend-header"

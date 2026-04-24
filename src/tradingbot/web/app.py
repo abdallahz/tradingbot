@@ -201,9 +201,17 @@ def dashboard():
 
     # Load close-hold overnight picks for the dashboard panel
     close_picks = []
+    prev_close_picks = []  # yesterday's picks with outcome annotations
     try:
         from tradingbot.web.alert_store import load_close_picks
+        from datetime import date, timedelta
         close_picks = load_close_picks(date_filter or None)
+        # Load the previous trading day's picks (outcomes annotated by run-execute)
+        prev_date = (date.today() - timedelta(days=1)).isoformat()
+        prev_picks = load_close_picks(prev_date)
+        # Only show if at least one pick has an outcome annotated
+        if any(p.get("overnight_pct") is not None for p in prev_picks):
+            prev_close_picks = prev_picks
     except Exception:
         pass
 
@@ -324,6 +332,7 @@ def dashboard():
         session_labels=SESSION_LABELS,
         catalyst_picks=catalyst_picks,
         close_picks=close_picks,
+        prev_close_picks=prev_close_picks,
         trade_stats=trade_stats,
         perf_history=perf_history,
         open_trades_summary=open_trades_summary,
