@@ -5,7 +5,7 @@ Sends trade alerts to a Telegram chat via the Bot API.
 No third-party SDK — uses only the standard `urllib` from the stdlib,
 so no extra dependencies are needed.
 
-Required environment variables (set in .env or Render):
+Required environment variables (set in .env on VPS):
   TELEGRAM_BOT_TOKEN  — token from @BotFather
   TELEGRAM_CHAT_ID    — numeric chat ID (get from /getUpdates)
 
@@ -135,7 +135,7 @@ class TelegramNotifier:
             return False
 
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
 
         if card_count == 0:
             text = f"📭 *{session} scan complete* — no qualifying setups found. [{_src}]"
@@ -194,7 +194,7 @@ class TelegramNotifier:
             return False
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
         top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:10]
         if not top:
             text = f"📰 *{session} research complete* — no catalyst symbols found. [{_src}]"
@@ -218,7 +218,7 @@ class TelegramNotifier:
 
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
 
         if not picks:
             text = (
@@ -309,7 +309,7 @@ class TelegramNotifier:
 
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
 
         total = stats.get("total", 0)
 
@@ -415,7 +415,7 @@ class TelegramNotifier:
 
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src = "🖥 VPS" if _provider == "ibkr" else "☁️ Render"
+        _src = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
 
         lines = [
             f"📋 *Nightly Performance Digest* [{_src}]",
@@ -566,7 +566,7 @@ class TelegramNotifier:
         # Source tag (VPS/IBKR vs Render/Alpaca)
         import os
         _provider = os.getenv("DATA_PROVIDER", "alpaca").lower()
-        _src_badge = "🖥 VPS/IBKR" if _provider == "ibkr" else "☁️ Render/Alpaca"
+        _src_badge = "🖥 VPS/IBKR" if _provider == "ibkr" else "🖥 VPS/Alpaca"
 
         lines = [
             f"🚨 <b>TRADE ALERT — {card.symbol}</b>  [{_src_badge}]",
