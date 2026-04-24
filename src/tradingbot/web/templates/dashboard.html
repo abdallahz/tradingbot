@@ -1794,6 +1794,42 @@
                 font-weight: 600;
             }
 
+            .cp-trade-plan {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                background: rgba(255,255,255,.03);
+                border-radius: 6px;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+                font-size: 12px;
+            }
+
+            .cp-plan-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .cp-plan-label {
+                color: var(--sub);
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: .04em;
+            }
+
+            .cp-plan-val {
+                font-weight: 600;
+                font-size: 12px;
+            }
+
+            .cp-plan-val small {
+                font-weight: 400;
+                font-size: 10px;
+                opacity: .75;
+                margin-left: 3px;
+            }
+
             .cp-thesis {
                 font-size: 12px;
                 font-style: italic;
@@ -2307,7 +2343,6 @@
                             🟢 LONG
                         </div>
                         <div class="cp-metrics">
-                            <span>Price <span class="val">${{ "%.2f"|format(p.price) }}</span></span>
                             <span>Day <span class="val {% if p.change_pct >= 0 %}" style="color:var(--green){% else %}"
                                     style="color:var(--red){% endif %}">{{ "%+.1f"|format(p.change_pct)
                                     }}%</span></span>
@@ -2317,9 +2352,34 @@
                             {% endif %}
                             <span>RSI <span class="val">{{ "%.0f"|format(p.rsi) }}</span></span>
                         </div>
-                        <div class="cp-levels">
-                            <span>S: <span class="support-val">${{ "%.2f"|format(p.key_support) }}</span></span>
-                            <span>R: <span class="resist-val">${{ "%.2f"|format(p.key_resistance) }}</span></span>
+                        {% set risk = p.price - p.key_support %}
+                        {% set tp1 = p.key_resistance %}
+                        {% set tp2 = p.key_resistance + (p.key_resistance - p.key_support) %}
+                        {% set rr = ((tp1 - p.price) / risk) if risk > 0 else 0 %}
+                        <div class="cp-trade-plan">
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label">Entry</span>
+                                <span class="cp-plan-val">${{ "%.2f"|format(p.price) }}</span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label" style="color:var(--red)">Stop</span>
+                                <span class="cp-plan-val" style="color:var(--red)">${{ "%.2f"|format(p.key_support) }}
+                                    <small>({{ "%-.1f"|format((p.key_support - p.price) / p.price * 100) }}%)</small></span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label" style="color:var(--green)">TP1</span>
+                                <span class="cp-plan-val" style="color:var(--green)">${{ "%.2f"|format(tp1) }}
+                                    <small>(+{{ "%.1f"|format((tp1 - p.price) / p.price * 100) }}%)</small></span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label" style="color:#4fc3f7">TP2</span>
+                                <span class="cp-plan-val" style="color:#4fc3f7">${{ "%.2f"|format(tp2) }}
+                                    <small>(+{{ "%.1f"|format((tp2 - p.price) / p.price * 100) }}%)</small></span>
+                            </div>
+                            <div class="cp-plan-row">
+                                <span class="cp-plan-label">R:R</span>
+                                <span class="cp-plan-val">{{ "%.1f"|format(rr) }}×</span>
+                            </div>
                         </div>
                         <div class="cp-thesis">💡 {{ p.thesis }}</div>
                         {% if p.overnight_pct is defined and p.overnight_pct is not none and p.overnight_pct != "" %}
