@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 log = logging.getLogger(__name__)
 
-DEFAULT_BLOCK_DAYS = 2    # Block if earnings are tomorrow or day after
+DEFAULT_BLOCK_DAYS = 1    # Block if earnings are today or tomorrow only
 _LOOKAHEAD_DAYS = 7       # How many days ahead to scan the calendar
 _HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 

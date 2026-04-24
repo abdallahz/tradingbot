@@ -305,7 +305,7 @@ class _FakeEarnings:
     blocked_map: symbol -> days_away (int).  Only returns blocked=True
     when days_away <= block_days (matching the real EarningsFilter behaviour).
     """
-    def __init__(self, blocked_map: dict, block_days: int = 2):
+    def __init__(self, blocked_map: dict, block_days: int = 1):
         self._map = blocked_map
         self.block_days = block_days
 
@@ -339,10 +339,11 @@ class TestPassesEarningsFilter:
         result = builder.passes_earnings_filter(sym, _FakeEarnings({"NVDA": 1}), dropped)
         assert result is False
 
-    def test_earnings_day_after_blocked(self, builder):
+    def test_earnings_2_days_away_now_passes(self, builder):
+        # 2 days away is outside the 1-day block window → should pass
         sym = _snap("AMD")
         result = builder.passes_earnings_filter(sym, _FakeEarnings({"AMD": 2}), [])
-        assert result is False
+        assert result is True
 
     def test_earnings_far_away_passes(self, builder):
         # 3+ days away → not blocked

@@ -322,7 +322,7 @@ class CardBuilder:
     ) -> bool:
         """Block if symbol has earnings within earnings_filter.block_days.
 
-        Entering a position 0-2 days before earnings creates overnight gap
+        Entering a position 0-1 days before earnings creates overnight gap
         risk that invalidates the stop-loss — the stock can open 10-20% lower
         on a miss with no chance to exit at the stop level.
 

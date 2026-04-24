@@ -56,13 +56,13 @@ class TestEarningsFilterIsBlocked:
         assert blocked is True
         assert days == 1
 
-    def test_earnings_in_two_days_is_blocked(self):
+    def test_earnings_in_two_days_not_blocked(self):
+        # 2 days away is outside the 1-day block window
         ef = EarningsFilter()
         ef._earnings_map["AMD"] = date.today() + timedelta(days=2)
         ef._fetch_date = date.today()
         blocked, days = ef.is_blocked("AMD")
-        assert blocked is True
-        assert days == 2
+        assert blocked is False
 
     def test_earnings_in_three_days_not_blocked(self):
         ef = EarningsFilter()
