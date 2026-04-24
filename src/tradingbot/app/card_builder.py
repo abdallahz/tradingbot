@@ -170,8 +170,18 @@ class CardBuilder:
 
         Stocks already up >max_intraday_change% have made their primary move.
         Exception: a qualifying pullback re-entry pattern is allowed through.
+        BMO earnings exception: gap_pct >= 3% means the stock opened at the
+        earnings reaction price — intraday_change_pct is price discovery around
+        that new level, not chasing.  Other filters (VWAP distance, RR floor,
+        catalyst gate) still apply.
         """
         if symbol.intraday_change_pct <= 0:
+            return True
+        if symbol.gap_pct >= 3.0:
+            log.info(
+                f"[BMO_PASS] {symbol.symbol}: intraday +{symbol.intraday_change_pct:.1f}% "
+                f"but gap={symbol.gap_pct:.1f}% (BMO earnings) — skipping extension cap"
+            )
             return True
         max_move = (tuning_overrides or {}).get("max_intraday_change_pct", self.max_intraday_change)
         if symbol.intraday_change_pct > max_move:

@@ -163,17 +163,29 @@ class TestPassesIntradayExtension:
 
     def test_over_limit_drops(self, builder):
         b = CardBuilder(max_intraday_change=6.0)
-        # reclaim_level == price → stock is still at its high (not pulling back),
-        # so evaluate_pullback_reentry returns qualifies=False and the drop fires.
-        sym = _snap(intraday_change_pct=7.0, patterns=[], reclaim_level=50.0)
+        # gap_pct=1.0 (< 3%) so BMO bypass does not fire.
+        # reclaim_level == price → not pulling back → drop fires.
+        sym = _snap(intraday_change_pct=7.0, gap_pct=1.0, patterns=[], reclaim_level=50.0)
+        dropped = []
+        assert b.passes_intraday_extension(sym, dropped) is False
+        assert any("intraday_extended" in r for _, r in dropped)
+
+    def test_bmo_earnings_gap_bypasses_extension(self, builder):
+        # gap_pct >= 3% → BMO earnings heuristic — extension cap skipped
+        sym = _snap(intraday_change_pct=14.0, gap_pct=20.0)
+        assert builder.passes_intraday_extension(sym, []) is True
+
+    def test_small_gap_still_blocked_when_extended(self, builder):
+        b = CardBuilder(max_intraday_change=6.0)
+        sym = _snap(intraday_change_pct=8.0, gap_pct=1.5, patterns=[], reclaim_level=50.0)
         dropped = []
         assert b.passes_intraday_extension(sym, dropped) is False
         assert any("intraday_extended" in r for _, r in dropped)
 
     def test_tuning_override_respected(self, builder):
-        sym = _snap(intraday_change_pct=7.0, patterns=[])
+        # gap_pct=1.0 so BMO bypass doesn't fire — tuning override is the reason it passes
+        sym = _snap(intraday_change_pct=7.0, gap_pct=1.0, patterns=[])
         dropped = []
-        # Override max to 10% — should pass
         result = builder.passes_intraday_extension(
             sym, dropped, tuning_overrides={"max_intraday_change_pct": 10.0}
         )
