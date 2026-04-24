@@ -413,11 +413,17 @@ class TestPassesCorrelationCheck:
         assert builder.passes_correlation_check(sym, {}, []) is True
 
     def test_correlated_peer_alerted_blocked(self, builder):
+        # SMCI still blocks AMD (and NVDA)
         sym = _snap("AMD")
         dropped = []
-        result = builder.passes_correlation_check(sym, {"NVDA": 100.0}, dropped)
+        result = builder.passes_correlation_check(sym, {"SMCI": 30.0}, dropped)
         assert result is False
         assert any("correlated_peer" in r for _, r in dropped)
+
+    def test_nvda_no_longer_blocks_amd(self, builder):
+        # AMD↔NVDA link removed — they can both be alerted on the same day
+        sym = _snap("AMD")
+        assert builder.passes_correlation_check(sym, {"NVDA": 100.0}, []) is True
 
     def test_non_correlated_peer_passes(self, builder):
         sym = _snap("AMD")

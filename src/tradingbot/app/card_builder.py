@@ -31,15 +31,19 @@ _DIGESTION_MIN_CATALYST = 55
 # If one member of a pair is already alerted, block the other to prevent
 # concentration risk when the sector reverses.
 _CORRELATED_PAIRS: dict[str, list[str]] = {
-    "AMD":  ["NVDA", "SMCI"],
-    "NVDA": ["AMD", "SMCI"],
+    # SMCI is volatile/speculative — block alongside either large semi
+    "AMD":  ["SMCI"],
+    "NVDA": ["SMCI"],
     "SMCI": ["AMD", "NVDA"],
+    # Apple supply chain — extremely tight correlation
     "AAPL": ["AVGO"],
     "AVGO": ["AAPL"],
+    # Crypto proxies — effectively the same asset with leverage
     "COIN": ["MSTR", "RIOT", "MARA"],
     "MSTR": ["COIN", "RIOT", "MARA"],
     "RIOT": ["COIN", "MSTR", "MARA"],
     "MARA": ["COIN", "MSTR", "RIOT"],
+    # EV — macro sentiment drives all simultaneously
     "TSLA": ["RIVN", "LCID", "NIO"],
     "RIVN": ["TSLA", "LCID", "NIO"],
     "LCID": ["TSLA", "RIVN", "NIO"],
